@@ -260,7 +260,7 @@ export class Sleeve {
     this.size = size;
     this.thick = thick;
     this.seed = seed;
-    this.fit = 0; this.fitTo = 0; this.lift = 0; this.liftV = 0; this.liftRate = 1; this.peek = 0; this.bump = 0; this.appear = 0; this.drop = 1;
+    this.fit = 0; this.fitTo = 0; this.pullX = 0; this.pullY = 0; this.lift = 0; this.liftV = 0; this.liftRate = 1; this.peek = 0; this.bump = 0; this.appear = 0; this.drop = 1;
     this.empty = false;      // the vinyl is away (playing / being picked)
     this.hot = false;
     this.art = item.art;
@@ -622,7 +622,7 @@ function heldUnder(core, pointer, camera) {
 // inside the frame, but never so far that it leaves the cursor. It runs after layout(), so every rack
 // gets it. Hover is picked from rest spots and the camera's pivot is fixed per record, so rising moves
 // neither of them.
-const TAG_FLOOR = -0.82, RECORD_FLOOR = -0.9, CURSOR_MARGIN = 0.05; // NDC y: painted edge + tucked suitcase; record's bottom; cursor inside it
+const TAG_FLOOR = -0.82, RECORD_FLOOR = -0.9; // NDC y: painted edge + tucked suitcase; record's bottom
 const FIT_FROM = 0.9, FIT_RATE = 9, DECIDE_AT = 0.6, HOVER_DIST = 1.35; // lift; ease; lift; metres from the camera once zoomed (about)
 const _fUp = new THREE.Vector3(), _fA = new THREE.Vector3(), _fB = new THREE.Vector3(), _fV = new THREE.Vector3();
 function keepTagInFrame(core, camera, dt, pointer) {
@@ -641,6 +641,7 @@ function keepTagInFrame(core, camera, dt, pointer) {
     parent.worldToLocal(_fB);
     s.mesh.position.add(_fB.sub(_fA));
   }
+  keepUnderCursor(core, camera, dt, pointer);
   if (!hov || tag.parent !== hov.mesh) return;
   const p5 = camera.projectionMatrix.elements[5];
   // a point on the record in view space -> _fV; returns its NDC y
@@ -666,10 +667,76 @@ function keepTagInFrame(core, camera, dt, pointer) {
   else {
     for (const x of [-t.w / 2, t.w / 2]) need = Math.max(need, pxToM(TAG_FLOOR - ndcY(tag, x, t.h / 2 - cardH)));
   }
-  // as far as the cursor allows: the record's bottom edge stays below it
-  const bottom = ndcY(hov.mesh, 0, -hov.size / 2);
-  const room = pointer ? pxToM(pointer.y - CURSOR_MARGIN - bottom) : 0;
+  // as far as the cursor allows: the record's bottom edge stays below it (as far below as keepUnderCursor
+  // wants it, so the two never push against each other)
+  const bottom = ndcY(hov.mesh, 0, -hov.size / 2), recH = Math.abs(ndcY(hov.mesh, 0, hov.size / 2) - bottom);
+  const room = pointer ? pxToM(pointer.y - CURSOR_INSET * recH - bottom) : 0;
   hov.fitTo = Math.max(0, Math.min(Math.max(hov.fitTo, hov.fit + need), hov.fit + room));
+}
+
+// Lajoon: a hovered record must never lift, swing or zoom out from under the cursor, in any rack, at
+// any moment of its animation (otherwise the hover is lost or you have to chase it to press it). Each
+// rack's layout() poses the record as it likes; this runs after it and slides the hovered record across
+// the view (along the camera's right and up, at its own depth) just far enough that the cursor stays
+// CURSOR_INSET of its size inside its edges. Worked out afresh from the rack's pose every frame, so it is
+// exact mid-animation and lets go as soon as the pose itself comes back under the cursor; when the hover
+// ends the slide eases back out (PULL_RATE) so the record goes home along its normal path.
+const CURSOR_INSET = 0.15, PULL_RATE = 10, EDGE_ON = 0.25; // share of size; per second; area / longest side² below which the inset fades (edge-on)
+const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]], _quad = CORNERS.map(() => [0, 0]);
+const _pR = new THREE.Vector3(), _pU = new THREE.Vector3(), _pA = new THREE.Vector3(), _pB = new THREE.Vector3(), _pV = new THREE.Vector3();
+function keepUnderCursor(core, camera, dt, pointer) {
+  camera.updateWorldMatrix(true, false);
+  _pR.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+  _pU.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+  const hov = core.sleeves[core.hovered], k = 1 - Math.exp(-dt * PULL_RATE);
+  const p = camera.projectionMatrix.elements;
+  for (const s of core.sleeves) {
+    const parent = s.mesh.parent;
+    if (!parent) continue;
+    if (s === hov && pointer && s.lift > 0.01) {
+      // the rack's own pose (fit included): its cover's corners in NDC, then shrunk about their middle
+      // by the inset. A turned or tipped record is a slanted quad, so its box on screen would not do.
+      s.mesh.updateWorldMatrix(true, false);
+      let cx = 0, cy = 0, z = 0;
+      CORNERS.forEach(([a, c], i) => {
+        _pV.set((a * s.size) / 2, (c * s.size) / 2, 0).applyMatrix4(s.mesh.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
+        const w = -_pV.z, q = _quad[i];
+        q[0] = (p[0] * _pV.x) / w; q[1] = (p[5] * _pV.y) / w;
+        cx += q[0] / 4; cy += q[1] / 4; z += w / 4;
+      });
+      // seen almost edge-on (trough records rising out of the row) the cover is a sliver: the inset fades
+      // out, so the sliver itself is kept under the cursor (smoothly, as the record turns to face you)
+      let area = 0, edge = 0;
+      for (let i = 0; i < 4; i++) {
+        const [ax, ay] = _quad[i], [bx, by] = _quad[(i + 1) % 4];
+        area += (ax * by - bx * ay) / 2; edge = Math.max(edge, Math.hypot(bx - ax, by - ay));
+      }
+      const inset = CURSOR_INSET * Math.min(1, Math.abs(area) / (EDGE_ON * edge * edge || 1));
+      for (const q of _quad) { q[0] = cx + (q[0] - cx) * (1 - 2 * inset); q[1] = cy + (q[1] - cy) * (1 - 2 * inset); }
+      // inside (same side of every edge) -> no slide; outside -> slide by cursor minus the nearest point
+      let pos = 0, neg = 0, best = Infinity, dx = 0, dy = 0;
+      for (let i = 0; i < 4; i++) {
+        const [ax, ay] = _quad[i], [bx, by] = _quad[(i + 1) % 4], ex = bx - ax, ey = by - ay;
+        const cr = ex * (pointer.y - ay) - ey * (pointer.x - ax);
+        if (cr > 0) pos++; else if (cr < 0) neg++;
+        const t = Math.max(0, Math.min(1, ((pointer.x - ax) * ex + (pointer.y - ay) * ey) / (ex * ex + ey * ey || 1)));
+        const nx = ax + ex * t, ny = ay + ey * t, d = Math.hypot(pointer.x - nx, pointer.y - ny);
+        if (d < best) { best = d; dx = pointer.x - nx; dy = pointer.y - ny; }
+      }
+      if (!(pos && neg) && Math.abs(area) > 1e-9) dx = dy = 0; // inside (a flat sliver never is)
+      s.pullX = (dx * z) / p[0];
+      s.pullY = (dy * z) / p[5];
+    } else {
+      s.pullX -= s.pullX * k;
+      s.pullY -= s.pullY * k;
+    }
+    if (Math.abs(s.pullX) + Math.abs(s.pullY) < 1e-5) continue;
+    s.mesh.getWorldPosition(_pA);
+    _pB.copy(_pA).addScaledVector(_pR, s.pullX).addScaledVector(_pU, s.pullY);
+    parent.worldToLocal(_pA);
+    parent.worldToLocal(_pB);
+    s.mesh.position.add(_pB.sub(_pA));
+  }
 }
 
 export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_ITEMS, sleeve = {}, tagOnSleeve = true } = {}) {

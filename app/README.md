@@ -53,6 +53,10 @@ shop talks to it only through `window.cadence` (`electron/preload.cjs`).
   turns the camera part of the way toward it (`updateFocus` in `main.js`). Records are picked by where
   they rest, so a lifted record never blocks its neighbours; if the cursor is on none of those, the
   lifted record takes the click, so you click the song, not the rack behind it.
+  However a rack lifts, swings or zooms a record, it never leaves the cursor: after each rack poses the
+  hovered record, `keepUnderCursor` in `src/racks/common.js` slides it across the view just enough to
+  keep the cursor 15% inside its edges, at every moment of the animation, so you can press it without
+  moving (check with `CADENCE_GL=vulkan node scripts/cursor-check.mjs [out] [stations] [n]`).
   At the courtyard stall, hovering a crate makes all its records float up in front of you, spread
   out so every cover shows; the one under the cursor grows and comes forward with its tag.
 - **The suitcase** (`src/suitcase/`): the player, bottom left. A watercolour leather case with a
