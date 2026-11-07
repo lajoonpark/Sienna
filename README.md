@@ -38,6 +38,7 @@ web page and internal API, so a change on their side can break it.
 | `Space` | Play / pause |
 | `←` `→` | Back / skip |
 | `↑` `↓` or scroll | Volume |
+| Scroll sideways, or drag | Turn the spinner rack (plant room) |
 | `L` | Like |
 | `Tab` / `Shift+Tab` | Next / previous section |
 | `Esc` | Back to the home spot, or close the mini player |

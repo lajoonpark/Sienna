@@ -484,11 +484,41 @@ const currentRack = () => (nav.settled && nav.at !== AT_HOME ? racks[nav.at] : n
 // any click during the intro skips to home
 addEventListener('pointerdown', () => { if (nav.intro) nav.skipIntro(curT); });
 // a pick wakes the tucked suitcase straight away, so it is up with the lid open before the record arrives
-renderer.domElement.addEventListener('click', () => { if (!nav.intro) { shadowsBusy(1.5); if (currentRack()?.click()) suitcase.wake(); } });
+// (not when the press was a drag that turned the rack)
+renderer.domElement.addEventListener('click', () => {
+  if (grabbed) { grabbed = false; return; }
+  if (!nav.intro) { shadowsBusy(1.5); if (currentRack()?.click()) suitcase.wake(); }
+});
+// grab and turn a rack by hand (the spinner): press on it and drag; past a few px it is a drag, not a click
+const DRAG_PX = 4;
+let grab = null, grabbed = false;
+const ndcOf = (e) => new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  grabbed = false;
+  const rack = currentRack();
+  if (nav.intro || e.button !== 0 || !rack?.grab(ndcOf(e), camera)) return;
+  grab = { rack, x: e.clientX, y: e.clientY, moving: false, id: e.pointerId };
+  renderer.domElement.setPointerCapture(e.pointerId);
+});
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (!grab) return;
+  if (!grab.moving && Math.hypot(e.clientX - grab.x, e.clientY - grab.y) <= DRAG_PX) return;
+  if (!grab.moving) { grab.moving = true; renderer.domElement.style.cursor = 'grabbing'; }
+  grab.rack.dragTo(ndcOf(e), camera);
+});
+const letGo = () => {
+  if (!grab) return;
+  grab.rack.release();
+  grabbed = grab.moving;
+  renderer.domElement.style.cursor = '';
+  grab = null;
+};
+renderer.domElement.addEventListener('pointerup', letGo);
+renderer.domElement.addEventListener('pointercancel', letGo);
 
 // ---- keys ----
 // Space play/pause, arrows back/skip and volume, L like, Tab / Shift+Tab next / previous section,
-// Esc home. Scroll = volume. Nothing fires while typing (the search bar).
+// Esc home. Scroll = volume (a sideways scroll turns the spinner instead). Nothing fires while typing (the search bar).
 const typing = (e) => {
   const t = e.target;
   return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
@@ -520,6 +550,8 @@ addEventListener('keydown', (e) => {
 let wheelVol = null, wheelIdle = 0;
 addEventListener('wheel', (e) => {
   if (settingsPanel.isOpen() || search.isOpen()) return; // the wheel scrolls the search slips then, never the volume
+  // mostly sideways (trackpad swipe): a rack that turns by hand takes it, and the volume stays put
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { currentRack()?.wheel(e.deltaX); return; }
   wheelVol = Math.min(100, Math.max(0, (wheelVol ?? player.volume ?? 70) + e.deltaY * 0.05));
   music.command('volume', wheelVol);
   clearTimeout(wheelIdle);
@@ -574,8 +606,12 @@ function frame(t, dtOverride, draw = true) {
   // Matrix4.lookAt uses the camera convention (looks down -z); Object3D.lookAt on a group would face the other way.
   rig.quaternion.setFromRotationMatrix(lookM.lookAt(c.pos, c.target, UP));
   for (const { pivot, side } of street.leaves) pivot.rotation.y = side * -nav.doorOpen(t) * DOOR_OPEN;
-  tilt.x += (tilt.tx - tilt.x) * 0.06;
-  tilt.y += (tilt.ty - tilt.y) * 0.06;
+  // the tilt holds while a record is up: turning the camera under it would slide the record across the
+  // rack (keepUnderCursor keeps it on the spot where the hover began), as if the cursor were carrying it
+  if (!((currentRack()?.hovered ?? -1) >= 0)) {
+    tilt.x += (tilt.tx - tilt.x) * 0.06;
+    tilt.y += (tilt.ty - tilt.y) * 0.06;
+  }
   // gentle tilt at home, calmer at a rack so records stay put under the cursor
   const k = nav.tilt;
   updateFocus(dt);

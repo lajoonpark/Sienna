@@ -1,6 +1,8 @@
 // Station 6, the plant room spinner: a painted wooden tower on a turning foot, three tiers of
 // pockets on each of its four sides with covers faced out. It stands under the skylight; slide the
 // cursor out to the left or right of it and it turns that way, so you can browse right round it.
+// It also turns by hand: scroll sideways (trackpad swipe), or grab it and drag, and let go with a
+// flick to send it spinning.
 // Hover a cover and it lifts out of its pocket and turns toward you. Up to 12 records take one
 // pocket each (3 per side), 13..24 take two per pocket.
 import * as THREE from 'three';
@@ -14,6 +16,9 @@ const LEAN = 0.2;
 const OUT = 0.405;                    // where a cover's bottom edge stands (from the tower axis)
 const TOP = 1.88;
 const PULL = 0.36;                    // a hovered cover first comes this far straight out of its pocket
+const WHEEL_RAD = 0.005;               // turn per px of sideways scroll
+const HOLD = 0.25;                    // s after turning by hand before a record can lift again
+const FRICTION = 2.2, MAX_SPIN = 9;   // a flick's slow-down (1/s) and top speed (rad/s)
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(1, 1, 1), _p = new THREE.Vector3();
 
@@ -23,6 +28,16 @@ export function createSpinnerRack({ onPick }) {
   const rest = new THREE.Matrix4();
   let vel = 0;
   let ptr = null;
+  // by hand: spin = rad/s left over from a flick or a scroll (friction slows it); drag = the grab in
+  // progress (last pointer x, NDC radius of the tower, recent speed); hold = s left with no hovering
+  let spin = 0, wheelTurn = 0, drag = null, hold = 0;
+  const _rc = new THREE.Raycaster(), _cv = new THREE.Vector3();
+  // how wide the tower is on screen (NDC x per radian of turn at its front face)
+  const ndcRadius = (camera) => {
+    car.getWorldPosition(_cv);
+    _cv.applyMatrix4(camera.matrixWorldInverse);
+    return Math.max(0.05, (camera.projectionMatrix.elements[0] * (HALF + 0.08)) / Math.max(0.3, -_cv.z));
+  };
   const cam = new THREE.Vector3(), rp = new THREE.Vector3(), pp = new THREE.Vector3(), fw = new THREE.Vector3(), xp = new THREE.Vector3();
 
   return core.contract({
@@ -37,6 +52,7 @@ export function createSpinnerRack({ onPick }) {
       root.add(plate, drum);
       // the tower
       root.add(car);
+      c.car = car; // checks (scripts/spin-check.mjs)
       car.rotation.y = 0.4;
       const teal = paint('#4f817a'), wood = paint('#9a6a3c');
       addBox(car, [HALF * 2 - 0.02, TOP - 0.16, HALF * 2 - 0.02], teal, [0, (TOP + 0.16) / 2, 0]);
@@ -113,6 +129,38 @@ export function createSpinnerRack({ onPick }) {
       return c.picker.pick(pointer, camera, car);
     },
 
+    // records stay put while you turn the stand (and a moment after)
+    turning: () => !!drag?.moving || hold > 0,
+
+    // sideways scroll: macOS natural scrolling sends +dx as the fingers move left, the front face goes left
+    wheel(c, dx) {
+      wheelTurn -= dx * WHEEL_RAD;
+      hold = HOLD;
+      return true;
+    },
+    grab(c, pointer, camera) {
+      _rc.setFromCamera(pointer, camera);
+      if (!_rc.intersectObject(car, true).length) return false;
+      drag = { x: pointer.x, r: ndcRadius(camera), v: 0, t: performance.now(), moving: false };
+      spin = 0;
+      return true;
+    },
+    dragTo(c, pointer) {
+      if (!drag) return;
+      const now = performance.now(), dt = Math.max(1, now - drag.t) / 1000;
+      const d = (pointer.x - drag.x) / drag.r; // the face under the cursor follows it
+      car.rotation.y += d;
+      drag.v += (d / dt - drag.v) * Math.min(1, dt * 20);
+      drag.x = pointer.x; drag.t = now; drag.moving = true;
+      hold = HOLD;
+    },
+    release() {
+      if (!drag) return;
+      // a flick keeps it going; a drag that stopped before letting go does not
+      if (drag.moving && performance.now() - drag.t < 80) spin = Math.max(-MAX_SPIN, Math.min(MAX_SPIN, drag.v));
+      drag = null;
+    },
+
     layout(c, dt, camera, hovered) {
       // turn toward the cursor when it is out beside the tower and nothing is hovered
       let target = 0;
@@ -120,9 +168,16 @@ export function createSpinnerRack({ onPick }) {
         const ex = Math.abs(ptr.x) - 0.36;
         if (ex > 0) target = Math.sign(ptr.x) * Math.min(1, ex / 0.4) * 2.0;
       }
+      if (drag || hold > 0) target = 0;
       ptr = null;
       vel += (target - vel) * smooth(5, dt);
-      car.rotation.y += vel * dt;
+      // a scroll eases in over a few frames; a flick runs down with friction
+      const w = wheelTurn * smooth(14, dt);
+      wheelTurn -= w;
+      spin *= Math.exp(-FRICTION * dt);
+      if (Math.abs(spin) < 0.02) spin = 0;
+      if (!drag) car.rotation.y += vel * dt + w + spin * dt;
+      if (!drag && Math.abs(wheelTurn) < 1e-3 && !spin) hold = Math.max(0, hold - dt);
       car.updateWorldMatrix(true, false);
       camera.getWorldPosition(cam);
       car.worldToLocal(cam);

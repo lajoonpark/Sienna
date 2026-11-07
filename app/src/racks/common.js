@@ -18,6 +18,9 @@
 //                                        passes 0); place the rest-pose and fill core.picker.
 //          layout(core, dt, camera, hovered)   every frame: pose each sleeve from s.lift etc.
 //          pick?(core, pointer, camera)  override the hit test (default: core.picker boxes).
+//          wheel?(core, dx) / grab?(core, pointer, camera) / dragTo?(...) / release?(core)
+//                                        move the rack by hand (spinner): sideways scroll, press-drag;
+//          turning?(core)                true while it is being turned: no record is hovered.
 //        Returns the full contract (setShelf, update, click, hovered, forceHover, setPlaying,
 //        ready, root). The vinyl pick animation and "vinyl goes back" are handled here.
 //   rack.refreshArt(item)  (in every contract) the item's art changed after setShelf (a repaired
@@ -625,7 +628,8 @@ function heldUnder(core, pointer, camera) {
 const TAG_FLOOR = -0.82, RECORD_FLOOR = -0.9; // NDC y: painted edge + tucked suitcase; record's bottom
 const FIT_FROM = 0.9, FIT_RATE = 9, DECIDE_AT = 0.6, HOVER_DIST = 1.35; // lift; ease; lift; metres from the camera once zoomed (about)
 const _fUp = new THREE.Vector3(), _fA = new THREE.Vector3(), _fB = new THREE.Vector3(), _fV = new THREE.Vector3();
-function keepTagInFrame(core, camera, dt, pointer) {
+function keepTagInFrame(core, camera, dt, livePointer) {
+  const pointer = hoverAnchor(core, livePointer);
   camera.updateWorldMatrix(true, false);
   _fUp.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
   const k = 1 - Math.exp(-dt * FIT_RATE), hov = core.sleeves[core.hovered], t = core.tag, tag = t.mesh;
@@ -674,12 +678,23 @@ function keepTagInFrame(core, camera, dt, pointer) {
   hov.fitTo = Math.max(0, Math.min(Math.max(hov.fitTo, hov.fit + need), hov.fit + room));
 }
 
+// Where the cursor was when this hover began. The record is kept under THAT spot, not the live cursor:
+// following the live cursor let you carry a lifted record around the rack (Lajoon, msg 594). Moving the
+// cursor within the record leaves it still; moving off its rest spot ends the hover as usual.
+function hoverAnchor(core, pointer) {
+  const a = core.anchor;
+  if (core.hovered < 0 || !pointer) { a.i = -1; return null; }
+  if (a.i !== core.hovered) { a.i = core.hovered; a.x = pointer.x; a.y = pointer.y; }
+  return a;
+}
+
 // Lajoon: a hovered record must never lift, swing or zoom out from under the cursor, in any rack, at
 // any moment of its animation (otherwise the hover is lost or you have to chase it to press it). Each
 // rack's layout() poses the record as it likes; this runs after it and slides the hovered record across
 // the view (along the camera's right and up, at its own depth) just far enough that the cursor stays
-// CURSOR_INSET of its size inside its edges. Worked out afresh from the rack's pose every frame, so it is
-// exact mid-animation and lets go as soon as the pose itself comes back under the cursor; when the hover
+// CURSOR_INSET of its size inside its edges. "The cursor" is where it was when the hover began
+// (hoverAnchor), so the record never follows the cursor about. Worked out afresh from the rack's pose
+// every frame, so it is exact mid-animation and lets go as soon as the pose itself comes back under the cursor; when the hover
 // ends the slide eases back out (PULL_RATE) so the record goes home along its normal path.
 const CURSOR_INSET = 0.15, PULL_RATE = 10, EDGE_ON = 0.25; // share of size; per second; area / longest side² below which the inset fades (edge-on)
 const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]], _quad = CORNERS.map(() => [0, 0]);
@@ -751,6 +766,7 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
     hovered: -1,
     tagFlip: null,                 // is the tag above the record? null: not decided yet this hover
     tagBaseY: 0,
+    anchor: { i: -1, x: 0, y: 0 }, // the cursor when this hover began (hoverAnchor)
     control: -1,
     shelf: null,
     camLocal: new THREE.Vector3(), // the camera in the root's space, refreshed before layout()
@@ -809,7 +825,7 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
         const n = core.sleeves.length;
         let want = -1;
         if (forced !== null) want = forced < n ? forced : -1;
-        else if (active && pointer && n) {
+        else if (active && pointer && n && !def.turning?.(core)) { // nothing lifts while the rack is turned by hand
           const base = () => (def.pick ? def.pick(core, pointer, camera) : core.picker.pick(pointer, camera, root));
           // every record keeps its own patch of screen (its rest spot), so a lifted record that has
           // grown over a neighbour never hides it. The lifted one only catches the cursor where no
@@ -852,6 +868,13 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
         s.startPick((disc) => onPick?.(s.item, i, disc));
         return true;
       },
+      // optional, for racks you can move by hand (the spinner): a sideways scroll in px (true = used),
+      // and a press-drag: grab() on press (true = the rack is under the cursor), dragTo() once the
+      // drag really moves, release() on letting go
+      wheel(dx) { return def.wheel?.(core, dx) ?? false; },
+      grab(pointer, camera) { return def.grab?.(core, pointer, camera) ?? false; },
+      dragTo(pointer, camera) { def.dragTo?.(core, pointer, camera); },
+      release() { def.release?.(core); },
       get hovered() { return core.hovered; },
       // metres the view should make room by (records move right = camera moves left; up = camera down)
       // where the hovered record is now (world), for the camera to turn toward; false if none

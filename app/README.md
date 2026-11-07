@@ -56,7 +56,14 @@ shop talks to it only through `window.cadence` (`electron/preload.cjs`).
   However a rack lifts, swings or zooms a record, it never leaves the cursor: after each rack poses the
   hovered record, `keepUnderCursor` in `src/racks/common.js` slides it across the view just enough to
   keep the cursor 15% inside its edges, at every moment of the animation, so you can press it without
-  moving (check with `CADENCE_GL=vulkan node scripts/cursor-check.mjs [out] [stations] [n]`).
+  moving (check with `CADENCE_GL=vulkan node scripts/cursor-check.mjs [out] [stations] [n]`). It keeps
+  the record under where the cursor was when the hover began, not the live cursor, so a lifted record
+  never follows the cursor about (`hoverAnchor`); the cursor tilt of the camera also holds while a
+  record is up, since turning the camera would slide the record across the rack.
+  The plant-room spinner also turns by hand: scroll sideways (trackpad swipe), or press on the stand and
+  drag it round; let go with a flick and it keeps spinning, slowing down (`wheel` / `grab` / `dragTo` /
+  `release` in `src/racks/spinner.js`, wired in `main.js`). A press that drags is not a click, and
+  records don't lift while it turns. Check: `node scripts/spin-check.mjs [out]`.
   At the courtyard stall, hovering a crate makes all its records float up in front of you, spread
   out so every cover shows; the one under the cursor grows and comes forward with its tag.
 - **The suitcase** (`src/suitcase/`): the player, bottom left. A watercolour leather case with a
@@ -93,7 +100,7 @@ shop talks to it only through `window.cadence` (`electron/preload.cjs`).
   missing or fails to load is painted as a collage of the playlist's first songs (`src/cover.js`).
   `CADENCE_DUMP=1` saves the raw API responses to the app's userData (`dumps/`) and logs any item
   without art, for debugging.
-- **Keys**: Space play/pause, ← → back/skip, ↑ ↓ or scroll for volume, L like.
+- **Keys**: Space play/pause, ← → back/skip, ↑ ↓ or scroll for volume (a sideways scroll is never volume), L like.
 - Covers and tags are drawn sharp: they write alpha 0 into the scene buffer (`crisp()` / `keepSharp()` in
   `materials.js`, also the CADENCE sign) and the watercolour pass leaves those pixels alone. The covers
   themselves are repainted once when they load (`src/coverpaint.js`: a first wash, then real brush strokes on the
