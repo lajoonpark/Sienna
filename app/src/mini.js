@@ -8,7 +8,7 @@
 //   ?p=0.3  how far through the song     ?hover=playPause|knob|record|next|previous|like
 //   ?liked  show the song liked          ?paused  show it paused         ?idle  nothing playing
 import * as THREE from 'three';
-import '@fontsource/dancing-script/700.css';
+import './fonts.js';
 import { WATERCOLOUR } from './style.js';
 import { createWatercolour } from './watercolour.js';
 import { createMusic } from './music.js';
@@ -22,10 +22,13 @@ import { createSearch } from './search.js';
 import { getCover } from './racks/common.js';
 import { paintedCoverURL } from './coverpaint.js';
 import { maxFps } from './pacer.js';
+import { settings } from './settings.js';
 
 const params = new URLSearchParams(location.search);
 const shot = params.has('shot');
 const bridge = window.siennaMini;            // only inside Electron (electron/mini-preload.cjs)
+// Settings > Lettering changed (in the shop window): repaint everything in the new font
+settings.on('font', () => location.reload());
 const W = 540, H = 620;
 document.body.classList.toggle('preview', !bridge);
 document.documentElement.style.setProperty('--w', `${W}px`);

@@ -1,7 +1,7 @@
 // Dev page for the search bar on its own: a painted wall behind it, the fake record store, and
 // counters that show whether any key leaks through to the "shop" while the bar is open.
 //   npm run web, then /search-lab.html?search=lemon   (or SIENNA_PAGE=search-lab.html node scripts/shot.mjs ...)
-import '@fontsource/dancing-script/700.css';
+import './fonts.js';
 import { rng } from './rand.js';
 import { createMusic } from './music.js';
 import { createSearch } from './search.js';

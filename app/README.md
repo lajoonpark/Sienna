@@ -6,7 +6,7 @@ The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over
 
 **Look:** painted, through a screen pass (`src/watercolour.js`): brush strokes pinned to the world's surfaces by default (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Painting). Both have a ragged paper border. `?style=flat` shows the old flat toon look.
 
-**Lettering:** buttons, record tags and the shop sign use one handwritten cursive, Dancing Script Bold (`FONT` in `src/style.js`, bundled via `@fontsource/dancing-script`). Only the 700 weight is shipped.
+**Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots.
 
 **Name:** the app was called Cadence until 2026-11-08. On first launch, `electron/main.cjs` moves the old `cadence-app` data folder (YouTube Music sign-in, settings) to `sienna-app`, and `src/settings.js` carries over the old `cadence.settings` key. Env vars are `SIENNA_*` (were `CADENCE_*`).
 
@@ -106,8 +106,9 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   old single pass; the others flatten shading into washes and let colour bleed (`LEVELS` in
   `src/watercolour.js`). `?wc=0..4` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays
-  when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Frame rate*
-  shows an fps readout.
+  when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Lettering* picks the font
+  (each choice is written in itself); the shop reloads to repaint tags, sign and buttons (to home, card open), the mini window reloads too.
+  *Frame rate* shows an fps readout. The card lays rows in two columns when there is room.
 - **Heat / battery**: the shop is drawn at that cap only while something moves (camera, input, flights,
   lid); once still it drops to 12 fps (30 while a record spins on screen), and stops while the window is
   hidden, minimised or covered (`src/pacer.js`; `node scripts/idle-check.mjs [rack]` checks it). The

@@ -7,7 +7,7 @@
 //   const panel = createSettingsPanel();   panel.open() / close() / toggle() / isOpen()
 //
 // Shot hook: ?settings opens it.
-import { FONT } from './style.js';
+import { FONT, FONTS } from './style.js';
 import { INK, HOT, PAPER, brushStroke } from './controls.js';
 import { settings } from './settings.js';
 import { rng } from './rand.js';
@@ -32,12 +32,13 @@ const CSS = `
 .st-veil { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
   background: rgba(60,45,35,.18); opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s .3s; }
 .st-veil.show { opacity: 1; visibility: visible; transition: opacity .3s ease; }
-.st-card { position: relative; width: min(600px, 92vw); padding: 30px 40px 26px; color: #2b2436;
+.st-card { position: relative; width: min(920px, 94vw); max-height: 94vh; box-sizing: border-box; overflow-y: auto; padding: 30px 40px 26px; color: #2b2436;
   font-family: ${FONT}; filter: drop-shadow(0 6px 10px rgba(50,35,25,.25));
   transform: translateY(18px) rotate(-1.4deg) scale(.96); transition: transform .45s cubic-bezier(.2,1.5,.4,1); }
 .st-veil.show .st-card { transform: rotate(-.5deg); }
 .st-paper { position: absolute; inset: 0; background: #f4ead6; }
 .st-head { position: relative; font-size: 42px; margin: 0 0 12px; color: ${INK}; }
+.st-rows { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 0 36px; }
 .st-row { position: relative; margin: 0 0 16px; }
 .st-label { font-size: 30px; }
 .st-hint { font-size: 19px; color: #7a5a40; margin: 2px 0 10px; }
@@ -96,12 +97,13 @@ export function createSettingsPanel() {
     { key: 'covers', label: 'Cover art', hint: 'How strongly album covers are painted over.', opts: ['Off', 'Light', 'Medium', 'Heavy'].map((l, i) => [l, i]) },
     { key: 'playOnArm', label: 'Start of a song', hint: 'Play when the arm touches the record and it spins, or straight away.', opts: [['When the arm lands', true], ['At once', false]] },
     { key: 'maxFps', label: 'Smoothness', hint: 'Frames per second at most. 30 runs cooler and saves battery.', opts: [['60 fps', 60], ['30 fps', 30]] },
+    { key: 'font', label: 'Lettering', hint: 'The handwriting on tags, signs and buttons. The shop reloads.', opts: Object.entries(FONTS).map(([k, f]) => [f.label, k, f.family]) },
     { key: 'fps', label: 'Frame rate', hint: 'Show frames per second in the corner.', opts: [['Off', false], ['On', true]] },
   ];
   const veil = document.createElement('div');
   veil.className = 'st-veil';
   veil.innerHTML = `<div class="st-card"><div class="st-paper"></div><div class="st-head">Settings</div>
-    ${ROWS.map(() => '<div class="st-row"><div class="st-label"></div><div class="st-hint"></div><div class="st-opts"></div></div>').join('')}
+    <div class="st-rows">${ROWS.map(() => '<div class="st-row"><div class="st-label"></div><div class="st-hint"></div><div class="st-opts"></div></div>').join('')}</div>
     <div class="st-foot"></div></div>`;
   document.body.appendChild(veil);
   const card = veil.querySelector('.st-card');
@@ -115,8 +117,9 @@ export function createSettingsPanel() {
     rowEl.querySelector('.st-label').textContent = row.label;
     rowEl.querySelector('.st-hint').textContent = row.hint;
     const box = rowEl.querySelector('.st-opts');
-    const ws = row.opts.map(([label, value], i) => {
+    const ws = row.opts.map(([label, value, family], i) => {
       const w = word(label, 23 + r * 13 + i * 5, () => settings.set(row.key, value));
+      if (family) w.style.fontFamily = family; // each lettering choice is written in itself
       box.appendChild(w);
       optWords.push(w);
       return w;
@@ -132,6 +135,7 @@ export function createSettingsPanel() {
   const words = [btn, ...optWords, done];
   const paintAll = () => words.forEach((w) => w.paint());
   document.fonts?.ready.then(paintAll);
+  document.fonts?.addEventListener?.('loadingdone', paintAll); // the lettering choices load when first shown
   requestAnimationFrame(paintAll);
 
   let openNow = false;

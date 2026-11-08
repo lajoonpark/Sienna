@@ -19,7 +19,7 @@ import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
 import { createMusic } from './music.js';
 import { STATIONS } from './stations.js';
-import '@fontsource/dancing-script/700.css';
+import './fonts.js';
 
 const params = new URLSearchParams(location.search);
 

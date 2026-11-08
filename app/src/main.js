@@ -19,7 +19,7 @@ import { createMusic } from './music.js';
 import { createPlayer } from './suitcase/player.js';
 import { startSong } from './suitcase.js';
 import { createSpread } from './spread.js';
-import '@fontsource/dancing-script/700.css';
+import './fonts.js';
 
 const params = new URLSearchParams(location.search);
 const shotMode = params.has('shot');
@@ -590,6 +590,14 @@ document.body.appendChild(fpsBox);
 const fpsOn = () => params.get('fps') === '1' || !!settings.get('fps');
 fpsBox.style.display = fpsOn() ? 'block' : 'none';
 settings.on('fps', () => { fpsBox.style.display = fpsOn() ? 'block' : 'none'; });
+// Settings > Lettering: tags, the sign and buttons are painted with the font, so reload to repaint
+// them all. Back at home (no intro) with the settings card open, so the choice can be compared.
+settings.on('font', () => {
+  const url = new URL(location.href);
+  if (!url.searchParams.has('at')) url.searchParams.set('at', 'home');
+  url.searchParams.set('settings', '');
+  location.replace(url);
+});
 const fpsStat = { n: 0, since: performance.now(), last: performance.now(), worst: 0 };
 function tickFps() {
   if (fpsBox.style.display === 'none') return;

@@ -15,14 +15,14 @@
 import * as THREE from 'three';
 import { buildStreet } from './street.js';
 import { buildShop } from './shop.js';
-import { WATERCOLOUR } from './style.js';
+import { WATERCOLOUR, FONT } from './style.js';
 import { createWatercolour, renderOverlay } from './watercolour.js';
 import { createSky } from './sky.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createMusic } from './music.js';
 import { createPlayer } from './suitcase/player.js';
 import { coverFromUrl } from './suitcase.js';
-import '@fontsource/dancing-script/700.css';
+import './fonts.js';
 
 const params = new URLSearchParams(location.search);
 const shot = params.has('shot');
@@ -88,7 +88,7 @@ if (params.has('menu')) {
   for (const w of ['Quick picks', 'Listen again', 'Mixed for you', 'Playlists']) {
     const d = document.createElement('div');
     d.textContent = w;
-    d.style.cssText = 'font:700 40px "Dancing Script",cursive;color:#fbf5e8;background:#2d3158;opacity:.55;padding:4px 36px 2px 24px;width:max-content';
+    d.style.cssText = `font:40px ${FONT};color:#fbf5e8;background:#2d3158;opacity:.55;padding:4px 36px 2px 24px;width:max-content`;
     box.appendChild(d);
   }
   document.body.appendChild(box);
