@@ -84,6 +84,7 @@ uniform vec3 eye;
 uniform vec2 clipRange;      // camera near, far
 uniform float heightAt1m;    // metres of world filling the screen's height, 1 m from the camera
 uniform float lodShift;      // keeps stroke colours at the same scale at any window size
+uniform float aspect;        // width / height of the picture
 uniform vec2 window;         // stroke length on screen (fraction of its height) where it is fully shown
 uniform vec2 lods;           // fine, coarse colour levels
 uniform vec2 gate;           // detail difference that starts / fully shows a stroke (0 0: always)
@@ -126,8 +127,17 @@ void main() {
 
   // its colour comes from the part in view, not from what is covering its middle
   vec2 uc = clamp(ua + seenAt / max(seen * 4.0, 1.0), 0.0, 1.0);
-  vec3 fine = textureLod(tRef, uc, lods.x + lodShift).rgb;
-  vec3 coarse = textureLod(tRef, uc, lods.y + lodShift).rgb;
+  // Read over the mark's own patch, not at one point: a single texel of a mip level jumps as the
+  // picture slides under it, and the whole mark would flicker to a new colour with it.
+  vec2 spread = vec2(onScreen * 0.25 / aspect, onScreen * 0.25);
+  vec3 fine = vec3(0.0), coarse = vec3(0.0);
+  for (int i = 0; i < 5; i++) {
+    vec2 o = i == 0 ? vec2(0.0) : vec2(i == 1 ? -1.0 : i == 2 ? 1.0 : 0.0, i == 3 ? -1.0 : i == 4 ? 1.0 : 0.0) * spread;
+    vec2 at = clamp(uc + o, 0.0, 1.0);
+    float k = i == 0 ? 0.4 : 0.15;
+    fine += textureLod(tRef, at, lods.x + lodShift).rgb * k;
+    coarse += textureLod(tRef, at, lods.y + lodShift).rgb * k;
+  }
   // Album covers are not paint on this surface: a stroke beside one must not pick up its colours.
   // (Covers wrote alpha 0, which the blurred level still shows.)
   fade *= smoothstep(0.9, 0.99, textureLod(tRef, uc, lods.x + lodShift).a);
@@ -231,8 +241,9 @@ void main() {
   c = clamp(mix(vec3(lum(c)), c, 1.3), 0.0, 1.0);
   // Busy things (records in a bin, railings, leaves) are too small for the coat, which leaves them to
   // this wash: keep what they look like here, at full strength.
-  vec3 near = textureLod(tRef, vUv, 0.6 + lodShift).rgb;
-  float busy = smoothstep(0.05, 0.16, length(textureLod(tRef, vUv, 1.2 + lodShift).rgb - textureLod(tRef, vUv, 3.0 + lodShift).rgb));
+  // (Not finer than this: at full detail thin bars and leaves shimmer as the camera moves.)
+  vec3 near = textureLod(tRef, vUv, 1.4 + lodShift).rgb;
+  float busy = smoothstep(0.05, 0.16, length(textureLod(tRef, vUv, 1.8 + lodShift).rgb - textureLod(tRef, vUv, 3.4 + lodShift).rgb));
   // left bare in places: the paper shows through as light catches
   float thin = smoothstep(0.5, 0.74, fbm(q * 2.6 + 3.0));
   gl_FragColor = vec4(mix(mix(pow(c, vec3(power)), vec3(1.0), thin * 0.12), near, busy), 1.0);
