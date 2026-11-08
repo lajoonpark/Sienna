@@ -2,7 +2,8 @@
 // out of, so a little painted record-pressing machine pops into existence beside the suitcase: it
 // squashes in, whirs (crank turning, bulb blinking, a shiver), spits the record up out of the slot in
 // its top, the record flies onto the platter (flight.js, the same handoff as from a rack), and the
-// machine pops away again.
+// machine pops away again. Only the shop uses it; the mini window slides the record out of a drawer
+// in the case instead (tray.js).
 //
 //   const machine = createDiscMachine({ parent, camera, view, kit, onDisc })
 //     parent: where it is drawn, in camera space (the shop's overlay scene, or a group on the camera)

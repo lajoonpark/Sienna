@@ -24,8 +24,10 @@ web page and internal API, so a change on their side can break it.
   the record to scrub. By default the song starts when the needle lands.
 - **Mini player.** Press **⌃⌥Space** anywhere to open the suitcase at your cursor, without opening
   the shop.
-- **Search.** Press **⌥⌘S** to find a song. It has no sleeve, so a small record machine pops up and
-  spits the disc onto the platter.
+- **Search.** Press **⌥⌘S** to find a song. It has no sleeve: in the shop a small record machine
+  pops up and spits the disc onto the platter; in the mini player the bottom of the suitcase slides
+  out like a drawer and the record lifts out of it. Shut the mini player early and the song starts
+  at once.
 - **A painted look.** The world is repainted with brush strokes pinned to its surfaces, and album
   covers are painted to match. Settings can switch to a softer watercolour wash or turn cover
   painting off.

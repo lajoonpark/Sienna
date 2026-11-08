@@ -98,9 +98,15 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 - **Search**: **⌥⌘S** (Ctrl+Alt+S on Windows/Linux) opens a search bar (`src/search.js`). The bar is
   slapped on bristle by bristle, throwing droplets, and flicked off the right-hand end when it closes
   (`src/searchpaint.js`; the same in the shop and the mini window, no animation under the system's reduce-motion setting). Songs are
-  brushed in row by row, zigzagging, with the shop's brush (`src/brushpaint.js`), arrows + Enter or a click plays one. A song from search has no sleeve, so a
+  brushed in row by row, zigzagging, with the shop's brush (`src/brushpaint.js`), arrows + Enter or a click plays one. A song from search has no sleeve. In the shop a
   little painted record machine pops up by the suitcase, whirs, spits the record out of its top onto
-  the platter and pops away (`src/suitcase/machine.js`; `?machine=1.2` freezes it for screenshots).
+  the platter and pops away (`src/suitcase/machine.js`; `?machine=1.2` freezes it for screenshots). In
+  the mini window the bottom of the case slides out like a drawer, the record lifts out of it, tips
+  towards you and flies onto the platter, and the drawer slides home (`src/suitcase/tray.js`;
+  `SIENNA_PAGE=mini.html SIENNA_VIEWPORT=540x620 SIENNA_QUERY="tray=0.6" node scripts/shot.mjs out 2`).
+  Shutting the mini window before the record is down puts it straight on and starts the song as soon
+  as it has loaded (nothing is drawn while the window is hidden, so the arm would never land). Check:
+  `node scripts/mini-close-check.mjs`.
 - **Settings**: the SETTINGS word (top right) or **⌘,** (Ctrl+, elsewhere) opens a paper card
   (`src/settings-panel.js`, stored by `src/settings.js` in localStorage, shared with the mini window).
   *Painting* sets the look: Faint / Light / Medium / Heavy watercolour, or Brush strokes (default), which repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Faint is the

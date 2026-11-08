@@ -14,6 +14,7 @@
 //   sc.wheel(deltaY, deltaMode)   volume
 //   sc.lean(nx, ny)               leans the case toward the cursor (-1..1 each)
 //   sc.placeRecord/liftRecord     record handoff (see suitcase/flight.js)
+//   sc.cue(start, loading)        start a picked song once its record has landed and the arm is down; sc.startNow() starts it at once
 //
 // Controls: previous, playPause, next, like (buttons), knob, record (drag to seek).
 import * as THREE from 'three';
@@ -497,10 +498,22 @@ export function createSuitcase({ music = null, lidStop = DEFAULT_STOP, ground = 
     // start(): begin the song once the next record has landed and the arm is down on it (see cue above).
     // loading: promise that settles when the song is ready to start, however that turned out.
     cue(start, loading) {
-      const c = cue = { start, at: now(), ready: false };
+      const c = cue = { start, at: now(), ready: false, loading };
       const settled = () => { c.ready = true; };
       loading.then(settled, settled);
       playing = false; playingHold = now() + 1.5;
+    },
+    // start a cued song as soon as it has loaded, without waiting for the arm (the mini window closed before it got there:
+    // nothing is drawn while it is hidden, so the arm would never land)
+    startNow() {
+      if (!cue) return false;
+      const c = cue;
+      cue = null;
+      startHold = now() + 4; startFrom = videoId;
+      playing = true; playingHold = now() + 4;
+      if (c.ready) c.start();
+      else c.loading.then(c.start, c.start);   // still loading: as soon as it is ready (the load never hangs)
+      return true;
     },
     // is the pointer on the case itself, where it is right now (no hover feedback)
     touches(ndc, camera) { return !!ndc && pick(ndc, camera).over; },

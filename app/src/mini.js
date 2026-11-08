@@ -3,10 +3,12 @@
 // the margin, clicking outside the window (main process sends close) or the shortcut again shuts
 // the lid, then the window is hidden. In a plain browser it previews on a fake desktop with the
 // fake record store; ?shot + window.__seek(t) make deterministic frames (t = seconds since the
-// lid was released). Option+Cmd+S (Ctrl+Alt+S) searches; a pick pops out of the disc machine.
+// lid was released). Option+Cmd+S (Ctrl+Alt+S) searches; a pick slides out of the case's bottom drawer
+// (suitcase/tray.js). Closing the window before the record is down starts the song at once.
 //   shot times: seconds since the lid was released; -1 = the lid still shut
 //   ?p=0.3  how far through the song     ?hover=playPause|knob|record|next|previous|like
 //   ?liked  show the song liked          ?paused  show it paused         ?idle  nothing playing
+//   ?tray=0.5  a search pick, 0.5 s after it was pressed (drawer out, record lifting or flying)
 import * as THREE from 'three';
 import './fonts.js';
 import { WATERCOLOUR } from './style.js';
@@ -17,7 +19,7 @@ import { createCaption } from './controls.js';
 import { fitCamera } from './suitcase/fit.js';
 import { brushBackdrop } from './suitcase/paint.js';
 import { createFlights } from './suitcase/flight.js';
-import { createDiscMachine } from './suitcase/machine.js';
+import { createRecordTray } from './suitcase/tray.js';
 import { createSearch } from './search.js';
 import { getCover } from './racks/common.js';
 import { paintedCoverURL } from './coverpaint.js';
@@ -62,13 +64,13 @@ frameCamera();
 
 const caption = createCaption({ parent: stage, variant: 'mini', onSeek: (s) => music.command('seek', s) });
 
-// ---- search (Option+Cmd+S, as in the shop): a pick comes out of the disc machine onto the platter ----
-// Flights and the machine live in camera space: a group riding on the camera.
+// ---- search (Option+Cmd+S, as in the shop): a pick slides out of the drawer and flies onto the platter ----
+// Flights live in camera space (a group riding on the camera); the drawer is part of the case.
 scene.add(camera);
 const hud = new THREE.Group();
 camera.add(hud);
 const flights = createFlights({ scene: hud, suitcase, camera, view: camera, worldCase: true });
-const machine = createDiscMachine({ parent: hud, camera, view: camera, kit: suitcase.recordKit, onDisc: (d) => flights.receive(d) });
+const tray = createRecordTray({ suitcase, kit: suitcase.recordKit, onDisc: (d) => flights.receive(d) });
 // The empty box shows the Listen again shelf (only here, not in the shop: Lajoon). It is fetched and its
 // covers painted while the window is still hidden, so the slips are there the moment search opens. An old
 // copy is never waited for: it shows at once while a fresh one comes in for next time (at most every 5 min).
@@ -98,7 +100,7 @@ const search = createSearch({
   music,
   onPlay: (item) => {
     startSong(music, suitcase, item);
-    machine.run(getCover(item.art, 512).tex, { x: 0.58, y: 0.08, h: 0.22 });   // stands to the right of the case, clear of the card's edge
+    tray.run(getCover(item.art, 512).tex);
   },
   suggest: () => {
     const busy = refreshListenAgain();
@@ -144,15 +146,27 @@ function summon() {
   phase = 'open';
   suitcase.open();                              // from wherever it is: a summon while closing carries the lid back over the top
 }
+// Closed before a picked record is down: nothing is drawn while the window is hidden, so the drawer, the
+// flight and the arm would stall and the song never start. Put the record straight on and start it now.
+function finishPick() {
+  const left = tray.finish();
+  if (left) {
+    suitcase.liftRecord();
+    suitcase.placeRecord(left, { claimFor: { baseVideoId: suitcase.videoId } });
+  }
+  flights.finish();
+  suitcase.startNow();
+}
 function dismiss() {
   if (phase !== 'open') return;
+  finishPick();
   phase = 'closing';
   suitcase.close();
   bridge?.closing();
 }
 function stepFrame(dt) {
   suitcase.update(dt);
-  machine.update(dt);
+  tray.update(dt);
   flights.update(dt);
   if (phase === 'open') appear = Math.min(1, appear + dt / 0.22);
   else if (phase === 'closing' && !suitcase.lidMoving) appear = Math.max(0, appear - dt / 0.16);
@@ -225,6 +239,15 @@ if (shot) {
     appear = t < 0 ? 1 : 0;                                  // t < 0: the card with the lid still shut, just before the flick
     if (t >= 0) suitcase.open();
     for (let x = 0; x < t - 1e-9;) { const dt = Math.min(1 / 60, t - x); stepFrame(dt); x += dt; }
+    // ?tray=0.5: a search pick 0.5 s after it was pressed (drawer, then the record's flight)
+    if (params.has('tray')) {
+      const at = Number(params.get('tray'));
+      const item = (await music.shelves()).shelves[0].items[0];
+      const cover = getCover(item.art, 512);
+      await cover.loaded;
+      tray.run(cover.tex);
+      for (let x = 0; x < at - 1e-9;) { const dt = Math.min(1 / 60, at - x); stepFrame(dt); x += dt; }
+    }
     applyAppear();
     draw(t);
     await new Promise((r) => setTimeout(r, 100));
@@ -244,4 +267,4 @@ const screenOf = (name, dx = 0, dz = 0) => {
   const r = renderer.domElement.getBoundingClientRect();
   return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
 };
-window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, get phase() { return phase; }, get appear() { return appear; } };
+window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, tray, flights, get phase() { return phase; }, get appear() { return appear; } };

@@ -190,6 +190,8 @@ export function createFlights({ scene, suitcase, camera, view, worldCase = false
 
   return {
     receive, update,
+    // jump to the end: incoming records land now, outgoing ones are gone (the mini window closing mid-flight)
+    finish() { for (const f of [...flights]) (f.kind === 'in' ? land(f) : remove(f)); frozen = false; },
     get active() { return flights.length > 0; },
     duration: T_IN,
     get list() { return flights; },
