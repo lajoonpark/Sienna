@@ -8,8 +8,10 @@
 import * as THREE from 'three';
 
 export const AT_HOME = -1;
-// intro timeline (seconds): hold on the street, push to the door, door swings open, walk in to HOME
-export const T = { hold: 0.9, push: 4.4, doorStart: 3.0, doorEnd: 4.9, enter: 7.6 };
+// intro timeline (seconds): a low crane up under the arch, across the piazza to a pause under the
+// sign, the doors swing open, through them to HOME. enter = when the camera reaches HOME.
+export const T = { doorStart: 6.7, doorEnd: 8.4, enter: 10.0 };
+export const BASE_FOV = 58; // the camera's lens everywhere but the intro (main.js builds it with this)
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const clamp01 = (v) => clamp(v, 0, 1);
@@ -35,25 +37,98 @@ function targetOf(pos, yaw, pitch, out, dist = 6) {
 
 // ---- the intro --------------------------------------------------------------------------------
 
+// The shot, in two parts: WHERE the camera goes (SHOT: camera spots with their look-at point and
+// vertical fov, joined by one smooth curve) and HOW FAST (PACE: relative speed over time, scaled so
+// the whole path takes T.enter seconds). Starting and stopping are gentle because PACE starts and
+// ends at 0 with a flat slope. Shot notes:
+//   A-B  low (knee height) behind the fruit stall, long lens, looking up through the arch; barely moving
+//   C-D  rises as it drifts right past the stall, under the arch lantern (y 4.1 there)
+//   E-F  across the piazza, slowing to a beat under the sign while the doors open
+//   G-I  through the doorway, the lens widening to BASE_FOV, settling at HOME
+// Props it threads between: stall x -2.3 z 16.2, red scooter x 2.5 z 15.6, arch z 11..13.4,
+// door leaves z ~ -0.3 (1 m wide, swing inwards). pos/at null = HOME's.
+const SHOT = [
+  { pos: [-1.35, 0.55, 21.6], at: [0.6, 2.9, 4.0], fov: 38 },   // A
+  { pos: [-1.2, 0.65, 20.4], at: [0.5, 2.9, 4.0], fov: 38 },    // B
+  { pos: [-0.55, 1.45, 16.4], at: [0.2, 2.8, 2.0], fov: 41 },   // C
+  { pos: [0.35, 2.55, 12.2], at: [0.0, 3.0, 0.0], fov: 44 },    // D
+  { pos: [0.3, 2.15, 6.6], at: [0.0, 3.35, 0.0], fov: 47 },     // E
+  { pos: [0.1, 1.85, 4.5], at: [0.0, 3.55, -1.0], fov: 49 },    // F: the sign
+  { pos: [0.03, 1.8, 2.6], at: [0.0, 2.4, -6.0], fov: 51 },     // G
+  { pos: [0.0, 1.76, 0.5], at: [0.0, 1.8, -10.0], fov: 55 },    // H: the doorway
+  { pos: null, at: null, fov: BASE_FOV },                       // I: HOME
+];
+// [time s, relative speed]: creep, glide under the arch, slow beat at the sign, through the door, settle
+const PACE = [[0, 0], [1.2, 0.18], [2.8, 1], [4.4, 1.1], [5.7, 0.55], [6.6, 0.28], [7.7, 0.8], [8.8, 0.55], [T.enter, 0]];
+
+// cubic Hermite through [time, value] keys, Catmull-Rom slopes, flat at both ends
+function paceAt(t) {
+  const n = PACE.length;
+  if (t <= PACE[0][0]) return PACE[0][1];
+  if (t >= PACE[n - 1][0]) return PACE[n - 1][1];
+  let i = 0;
+  while (t > PACE[i + 1][0]) i++;
+  const slope = (k) => (k <= 0 || k >= n - 1 ? 0 : (PACE[k + 1][1] - PACE[k - 1][1]) / (PACE[k + 1][0] - PACE[k - 1][0]));
+  const dt = PACE[i + 1][0] - PACE[i][0], u = (t - PACE[i][0]) / dt, u2 = u * u, u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * PACE[i][1] + (u3 - 2 * u2 + u) * dt * slope(i) + (-2 * u3 + 3 * u2) * PACE[i + 1][1] + (u3 - u2) * dt * slope(i + 1);
+}
+// distance share covered by time t (0..1), from the integrated PACE
+const PACE_STEPS = 400;
+const paceTable = (() => {
+  const a = new Float32Array(PACE_STEPS + 1);
+  for (let i = 1; i <= PACE_STEPS; i++) {
+    const t0 = ((i - 1) / PACE_STEPS) * T.enter, t1 = (i / PACE_STEPS) * T.enter;
+    a[i] = a[i - 1] + (paceAt(t0) + 4 * paceAt((t0 + t1) / 2) + paceAt(t1)) / 6 * (t1 - t0);
+  }
+  for (let i = 1; i <= PACE_STEPS; i++) a[i] /= a[PACE_STEPS];
+  return a;
+})();
+function shareAt(t) {
+  const x = clamp01(t / T.enter) * PACE_STEPS, i = Math.min(PACE_STEPS - 1, Math.floor(x));
+  return lerp(paceTable[i], paceTable[i + 1], x - i);
+}
+
+const shotCache = new WeakMap();
+function shotCurves(home) {
+  let c = shotCache.get(home);
+  if (!c) {
+    const P = (a, h) => (a ? V(...a) : h.clone());
+    c = {
+      pos: new THREE.CatmullRomCurve3(SHOT.map((s) => P(s.pos, home.pos)), false, 'centripetal'),
+      at: new THREE.CatmullRomCurve3(SHOT.map((s) => P(s.at, home.target)), false, 'catmullrom', 0.5),
+    };
+    c.pos.arcLengthDivisions = 4000; // fine enough that speed has no steps at 120 fps
+    shotCache.set(home, c);
+  }
+  return c;
+}
+
 function introPose(t, home, out) {
-  const push = easeInOut(clamp01((t - T.hold) / (T.push - T.hold)));
-  const enter = easeInOut(clamp01((t - T.push) / (T.enter - T.push)));
-  const z = lerp(lerp(19.5, 2.6, push), home.pos.z, enter);
-  const y = lerp(lerp(2.3, 1.75, push), home.pos.y, enter);
-  // gentle sway while walking (fades in and out so it never pops)
-  const sway = Math.sin(t * 1.7) * 0.04 * smooth01(push * 8) * (1 - enter);
-  out.pos.set(lerp(sway, home.pos.x, enter), y, z);
-  out.target.set(lerp(0, home.target.x, enter), lerp(2.0, home.target.y, enter), lerp(z - 10, home.target.z, enter));
+  const c = shotCurves(home);
+  // even speed along the path (arc length), then the curve's own parameter for look-at and fov
+  const u = c.pos.getUtoTmapping(shareAt(t));
+  c.pos.getPoint(u, out.pos);
+  c.at.getPoint(u, out.target);
+  const x = u * (SHOT.length - 1), i = Math.min(SHOT.length - 2, Math.floor(x));
+  out.fov = lerp(SHOT[i].fov, SHOT[i + 1].fov, smooth01(x - i));
+  // a hand-held drift on the aim (a few cm at the look-at point), gone by the time we reach HOME
+  const hand = 1 - smooth01((t - 7.5) / 2.5);
+  out.target.x += (Math.sin(t * 0.9) * 0.05 + Math.sin(t * 2.3 + 1) * 0.02) * hand;
+  out.target.y += (Math.sin(t * 1.3 + 2) * 0.035 + Math.sin(t * 2.9) * 0.012) * hand;
   return out;
 }
+
+// 0..1: the cinema bars (painted letterbox) during the intro; they slide away as the camera arrives
+export function introBars(t) { return 1 - smooth01((t - 8.4) / 1.6); }
 
 // Where the camera will be: the spots brush strokes get placed from (brushstrokes.js).
 export function paintViews(home, stations) {
   const views = [];
-  const pose = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
-  for (const t of [0, 1.6, 2.4, 3.2, 4, T.push]) {
+  const pose = { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: BASE_FOV };
+  // the intro: a spot about every second, each a little wider than the lens there (cursor tilt, drift)
+  for (const t of [0, 1.5, 2.5, 3.3, 4.1, 4.9, 5.7, 6.5, 7.3, 8.1, 9]) {
     introPose(t, home, pose);
-    views.push({ pos: pose.pos.clone(), target: pose.target.clone() });
+    views.push({ pos: pose.pos.clone(), target: pose.target.clone(), fov: pose.fov + 12 });
   }
   views.push({ pos: home.pos, target: home.target });
   for (const s of stations) {
@@ -245,8 +320,8 @@ export function createNav({ home, stations, startAt = null }) {
   let curT = 0;
   let tiltK = startAt === null ? 0.25 : (startAt === AT_HOME ? 1 : 0.35);
   const listeners = [];
-  const pose = { pos: V(0, 1.7, 0), target: V(0, 1.7, -1), yaw: 0, pitch: 0 };
-  const tmp = { pos: V(0, 0, 0), target: V(0, 0, 0), yaw: 0, pitch: 0 };
+  const pose = { pos: V(0, 1.7, 0), target: V(0, 1.7, -1), yaw: 0, pitch: 0, fov: BASE_FOV };
+  const tmp = { pos: V(0, 0, 0), target: V(0, 0, 0), yaw: 0, pitch: 0, fov: BASE_FOV };
   const last = { pos: V(0, 0, 0), yaw: 0, pitch: 0, ok: false };
   const vel = V(0, 0, 0), scratch = V(0, 0, 0);
   let wYaw = 0, wPitch = 0;
@@ -266,7 +341,7 @@ export function createNav({ home, stations, startAt = null }) {
   const tiltFor = () => (phase === 'fly' || phase === 'frozen' ? 0.6 : at === AT_HOME ? 1 : 0.35);
 
   if (startAt !== null) setRest(startAt);
-  else introPose(0, home, tmp), setLook(tmp.pos, tmp.target);
+  else introPose(0, home, tmp), setLook(tmp.pos, tmp.target), pose.fov = tmp.fov;
 
   // the camera's own velocity, so a flight that is interrupted can carry on a moment before turning
   function track(dt) {
@@ -363,7 +438,7 @@ export function createNav({ home, stations, startAt = null }) {
     // a quick ease from the last frame's pose, carrying the walk's own momentum for a moment
     const plan = makePlan([pose.pos.clone(), home.pos.clone()], { yaw: pose.yaw, pitch: pose.pitch }, aimOf(home.pos, home.target));
     plan.dur = clamp(0.8 + 0.04 * plan.len, 0.9, 1.6);
-    flight = { plan, e: 0, mom: { v: vel.clone(), yaw: wYaw, pitch: wPitch }, toId: AT_HOME, backId: AT_HOME, backPts: [] };
+    flight = { plan, e: 0, mom: { v: vel.clone(), yaw: wYaw, pitch: wPitch }, toId: AT_HOME, backId: AT_HOME, backPts: [], fov0: pose.fov };
     phase = 'fly';
     skipFlight = true;
     at = AT_HOME;
@@ -414,9 +489,10 @@ export function createNav({ home, stations, startAt = null }) {
     if (phase === 'intro') {
       introPose(t, home, tmp);
       setLook(tmp.pos, tmp.target);
-      tiltK = 0.25 + 0.75 * clamp01((t - T.push) / (T.enter - T.push));
+      pose.fov = tmp.fov;
+      tiltK = 0.25 + 0.75 * clamp01((t - 8) / (T.enter - 8));
       if (t >= T.enter - 0.3) introDone = true;
-      if (t >= T.enter) { phase = 'rest'; at = AT_HOME; setRest(AT_HOME); tiltK = 1; }
+      if (t >= T.enter) { phase = 'rest'; at = AT_HOME; setRest(AT_HOME); pose.fov = BASE_FOV; tiltK = 1; }
     } else if (phase === 'fly') {
       flight.e += dt;
       const tau = clamp01(flight.e / flight.plan.dur);
@@ -430,12 +506,15 @@ export function createNav({ home, stations, startAt = null }) {
         tmp.pitch += flight.mom.pitch * m;
       }
       setAim(tmp.pos, tmp.yaw, tmp.pitch);
+      // a skipped intro eases its lens back to the normal one on the way home
+      pose.fov = flight.fov0 == null ? BASE_FOV : lerp(flight.fov0, BASE_FOV, smooth01(tau));
       if (skipFlight && tau > 0.6) introDone = true;
       if (tau >= 1) arrive();
       tiltK += (tiltFor() - tiltK) * (1 - Math.exp(-3 * Math.min(dt, 0.2)));
     } else if (phase === 'rest') {
       tiltK += (tiltFor() - tiltK) * (1 - Math.exp(-3 * Math.min(dt, 0.2)));
     }
+    if (phase === 'rest' || phase === 'frozen') pose.fov = BASE_FOV;
     track(dt);
     return pose;
   }

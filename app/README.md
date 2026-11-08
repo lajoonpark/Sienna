@@ -23,8 +23,8 @@ npm run web                 # just vite on http://127.0.0.1:5173 (open in a brow
                             # dev and web first run scripts/deps.mjs: npm install if a pull added packages
 npm run build && npm run electron
 SIENNA_DEV_URL=http://127.0.0.1:5173 npm run electron   # electron against the dev server
-node scripts/shot.mjs out_dir 0 3.6 5 8.5   # headless screenshots at given seconds
-SIENNA_QUERY=hour=21 node scripts/shot.mjs out_dir 0 8.5          # at 9 pm
+node scripts/shot.mjs out_dir 0 4 6.5 10   # headless screenshots at given seconds (intro reaches home at 10)
+SIENNA_QUERY=hour=21 node scripts/shot.mjs out_dir 0 10           # at 9 pm
 SIENNA_QUERY='cam=-4.4,4.65,-3.3,2,3.2,-9.5' node scripts/shot.mjs out_dir 9   # pinned camera (x,y,z,target)
 ```
 
@@ -40,8 +40,10 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 
 - **Sign in** once with the SIGN IN button (a Google window that shares the player's cookies, kept in
   the `persist:ytm` partition). Without signing in it works as a guest, with ads and generic shelves.
-- **Home**: the intro (street, door, walk in) ends at a home spot just inside the shop. Click or
-  press any key to skip it. Your YouTube Music shelves ("Quick picks", "Listen again"...) are the
+- **Home**: the intro is a 10 s shot (`src/nav.js` SHOT = where the camera goes, PACE = how fast):
+  low behind the fruit stall, rising under the arch, a slow beat under the Sienna sign while the doors
+  open, then through them to a home spot just inside the shop. Painted cinema bars (`setBars` in
+  `src/watercolour.js`) frame it and slide away on arrival. Click or press any key to skip it. Your YouTube Music shelves ("Quick picks", "Listen again"...) are the
   brush-stroke words down both sides of the screen (`src/menu.js`); click one and the camera walks
   there (`src/nav.js`: along the aisle, through the arches, over the gallery railing). **Tab** /
   **Shift+Tab** go to the next / previous section, **Esc** or HOME goes back. At a section the words

@@ -9,7 +9,7 @@ import { createRack } from './racks/index.js';
 import { getCover, setCoverUploader } from './racks/common.js';
 import { warmUp } from './warmup.js';
 import { STATIONS, HOME, assignShelves } from './stations.js';
-import { createNav, AT_HOME, paintViews } from './nav.js';
+import { createNav, AT_HOME, paintViews, introBars, BASE_FOV } from './nav.js';
 import { createMenu } from './menu.js';
 import { createSearch } from './search.js';
 import { createSettingsPanel } from './settings-panel.js';
@@ -46,7 +46,7 @@ const skyColor = new THREE.Color('#f4c98a');
 scene.background = skyColor;
 scene.fog = new THREE.Fog('#f1cf9b', 18, 52);
 
-const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 120);
+const camera = new THREE.PerspectiveCamera(BASE_FOV, innerWidth / innerHeight, 0.1, 120);
 const rig = new THREE.Group();
 rig.add(camera);
 scene.add(rig);
@@ -610,6 +610,7 @@ function tickFps() {
   fpsStat.n = 0; fpsStat.since = now; fpsStat.worst = 0;
 }
 
+let barsK = 1; // the bars' last value, so a skip mid-way never makes them jump back up
 function frame(t, dtOverride, draw = true) {
   // wall-clock time: a slow frame rate must not stretch flights, so allow a long step (nav and racks cope)
   const dt = dtOverride ?? Math.min(0.25, Math.max(0, t - lastT));
@@ -620,6 +621,9 @@ function frame(t, dtOverride, draw = true) {
   runFillJob();
   const c = pinnedPose ?? pose;
   rig.position.copy(c.pos);
+  // the intro's lens (nav.js SHOT) widens to BASE_FOV; a pinned ?cam keeps the normal one
+  const fov = pinnedPose ? BASE_FOV : pose.fov ?? BASE_FOV;
+  if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
   if (skylightBeam) {
     const d = Math.hypot(c.pos.x - skylightBeam.position.x, c.pos.z - skylightBeam.position.z);
     // metres beyond the plant room's z range (0 inside it)
@@ -679,6 +683,9 @@ function frame(t, dtOverride, draw = true) {
   if (painter) {
     // cheaper paint while the camera travels (?motion=1 pins it on, to compare in screenshots)
     painter.setMotion?.(params.get('motion') === '1' || ((nav.intro || nav.phase === 'fly') && !pinnedPose));
+    // painted cinema bars while the intro plays; a skip wipes them off with the flight home
+    painter.setBars?.(pinnedPose ? 0 : nav.intro ? introBars(t) : nav.phase === 'fly' && !nav.introDone ? Math.min(barsK, Math.max(0, 1 - nav.progress / 0.6)) : 0);
+    barsK = painter.bars ?? 0;
     painter.render(scene, camera, t, suitcase.overlay);
   } else { renderer.render(scene, camera); renderOverlay(renderer, suitcase.overlay); }
 }

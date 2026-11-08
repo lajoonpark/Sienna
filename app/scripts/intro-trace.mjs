@@ -1,5 +1,5 @@
 // Frame-by-frame trace of the intro push-in: frame time, shader programs compiled, textures,
-// shadow-map redraws, main-thread long tasks. SwiftShader is slow, so look at spikes and events, not ms.
+// shadow-map redraws, main-thread long tasks. Runs on the GPU; the virtual clock plays every frame however slow it is, so read spikes and events, not ms.
 //   node scripts/intro-trace.mjs [width] [height] [query]
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -7,7 +7,7 @@ const w = Number(process.argv[2] ?? 480), h = Number(process.argv[3] ?? 300), q 
 const port = Number(process.env.SIENNA_PORT) || 5244;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] }); // the Radeon (see work rules)
 const page = await b.newPage({ viewport: { width: w, height: h } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 page.on('console', (m) => { if (m.text().startsWith('[trace]')) console.log(m.text()); });
@@ -15,7 +15,7 @@ await page.addInitScript(() => {
   const log = (window.__trace = []);
   
   // virtual clock: every animation frame advances 1/FPS s, however long it really took, so the intro
-  // plays every frame even under SwiftShader. Real cost per frame is measured with the saved clock.
+  // plays every frame even on a slow renderer. Real cost per frame is measured with the saved clock.
   const realNow = performance.now.bind(performance), FPS = Number(new URLSearchParams(location.search).get('vfps')) || 15;
   let vnow = 0, frameReal = realNow();
   // inside a frame time runs at real speed (so per-frame budgets still work), between frames it jumps

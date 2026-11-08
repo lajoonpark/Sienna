@@ -163,6 +163,7 @@ uniform vec2 resolution;
 uniform vec2 paperOffset;
 uniform float seed;
 uniform float borderSeed; // keeps boiling in brush mode, where seed stays 0
+uniform float bars;       // 0..1: painted cinema bars (letterbox) top and bottom, during the intro
 uniform float near;
 uniform float far;
 uniform sampler2D tWash;   // the bled washes, only with WASH
@@ -320,6 +321,19 @@ void main() {
   clean *= 0.97 + 0.03 * h;
   col = mix(col, clean, crisp);
 
+  // 5b. cinema bars: dark ink pulled across the sheet in long horizontal strokes, cropping the
+  // picture to about 2.2:1. bars 0..1 slides them in from the top and bottom edges.
+  if (bars > 0.001) {
+    float barH = (max(0.0, 0.5 - aspect / (2.0 * 2.2)) + 0.02) * bars; // +0.02: the paper margin eats that much
+    float ey = min(vUv.y, 1.0 - vUv.y);
+    float ragged = (fbm(vec2(q.x * 7.0, vUv.y > 0.5 ? 3.0 : 9.0) + borderSeed * 0.2) - 0.5) * 0.03
+                 + (noise(vec2(q.x * 60.0, 1.0)) - 0.5) * 0.004;
+    float ink = smoothstep(0.0, 0.004, barH - ey + ragged);
+    float streak = fbm(vec2(q.x * 1.4, vUv.y * 22.0)); // the drag of a wide flat brush
+    vec3 inkCol = vec3(0.13, 0.105, 0.1) * (0.8 + 0.45 * streak) * (0.94 + 0.06 * h);
+    col = mix(col, inkCol, ink); // fully opaque: any of the picture left under it ghosts through
+  }
+
   // 6. unpainted ragged border, like a painting that stops short of the sheet edge
   vec2 e = min(vUv, 1.0 - vUv) * vec2(aspect, 1.0);
   float border = min(e.x, e.y) + (fbm(q * 9.0 + borderSeed * 0.3) - 0.5) * 0.05;
@@ -383,6 +397,7 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
       paperOffset: { value: new THREE.Vector2() },
       seed: { value: 0 },
       borderSeed: { value: 0 },
+      bars: { value: 0 },
       near: { value: 0.1 },
       far: { value: 100 },
       tWash: { value: null },
@@ -622,6 +637,9 @@ void main() {
     // Brush mode: views ([{ pos, target, fov }]) the camera will see, so strokes get placed there, now
     // (not during a frame). In the other modes they are only kept, for when brush mode is switched on.
     bakeStrokes,
+    // cinema bars (0 = none, 1 = full ~2.2:1 letterbox), painted on the sheet inside the ragged border
+    setBars(k) { material.uniforms.bars.value = Math.max(0, Math.min(1, k)); },
+    get bars() { return material.uniforms.bars.value; },
     // overlay = { scene, camera }: drawn into the same target after the world, depth cleared, so it is
     // painted by the same pass but never hidden by (or clipped into) the walls.
     // sync (profiling only): called after each step with its name, to time it (see __siennaDebug.profile)
