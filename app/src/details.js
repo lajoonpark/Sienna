@@ -177,6 +177,8 @@ export function balcony(kit, M, x, y, w, { seed = 1, plants = true } = {}) {
   }
 }
 
+const _up = new THREE.Vector3(0, 1, 0), _leafN = new THREE.Vector3(), _leafP = new THREE.Vector3(), _leafS = new THREE.Vector3();
+const _leafQ = new THREE.Quaternion(), _spin = new THREE.Quaternion(), _leafM = new THREE.Matrix4();
 const POT_COLORS = ['#c4673d', '#b85a33', '#d9a27a', '#a64b2a'];
 // Terracotta pot with a bushy plant; kind: 'bush' | 'geranium' | 'lemon'
 export function pottedPlant(kit, M, x, y, z, size, seed, kind) {
@@ -186,16 +188,46 @@ export function pottedPlant(kit, M, x, y, z, size, seed, kind) {
   kit.pot.add(mul(M, trs(x, y + ph / 2, z, 0, 0, 0, 0.36 * size, ph, 0.36 * size)), POT_COLORS[Math.floor(r() * POT_COLORS.length)]);
   kit.disc.add(mul(M, trs(x, y + ph, z, 0, 0, 0, 0.38 * size, 0.05, 0.38 * size)), '#b25a35');
   if (kind === 'lemon') {
-    rod(kit, M, [x, y + ph, z], [x, y + ph + 0.8 * size, z], 0.025 * size, '#6b4a2c');
-    for (let i = 0; i < 40; i++) {
-      const a = r() * Math.PI * 2, e = r() * Math.PI - Math.PI / 2;
-      const rad = 0.32 * size * (0.6 + r() * 0.5);
-      const p = [x + Math.cos(a) * Math.cos(e) * rad, y + ph + 1.0 * size + Math.sin(e) * rad * 0.8, z + Math.sin(a) * Math.cos(e) * rad];
-      kit.leaf.add(mul(M, trs(...p, r() * 3, r() * 6, r() * 3, 0.13 * size, 0.05 * size, 0.09 * size)), C.setHSL(0.3, 0.42, 0.26 + r() * 0.12).clone());
+    // A closed, lumpy crown that holds up close (the intro pushes right past the pair at the shop
+    // door): a few dark inner masses fill the volume so nothing shows through, a dense skin of
+    // leaves sits on their surface, branches fork into it and the lemons hang at the skin.
+    const cy = y + ph + 1.0 * size, RX = 0.36 * size, RY = 0.3 * size;
+    const top = [x, y + ph + 0.62 * size, z];
+    rod(kit, M, [x, y + ph, z], top, 0.03 * size, '#6b4a2c');
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + r() * 0.8;
+      rod(kit, M, top, [x + Math.cos(a) * RX * 0.55, cy - RY * 0.1 + r() * RY * 0.4, z + Math.sin(a) * RX * 0.55], 0.016 * size, '#6b4a2c');
     }
-    for (let i = 0; i < 7; i++) {
-      const a = r() * Math.PI * 2;
-      kit.ball.add(mul(M, trs(x + Math.cos(a) * 0.3 * size, y + ph + (0.85 + r() * 0.3) * size, z + Math.sin(a) * 0.3 * size, 0, 0, 0, 0.07 * size, 0.08 * size, 0.07 * size)), '#f2cc3a');
+    // inner masses: overlapping blobs; together they make the outline lumpy rather than a ball
+    const blobs = [[0, 0, 0, 1]];
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + r() * 0.6, e = (r() - 0.35) * 1.1;
+      const d = 0.5 + r() * 0.18;
+      blobs.push([Math.cos(a) * Math.cos(e) * d, Math.sin(e) * d, Math.sin(a) * Math.cos(e) * d, 0.5 + r() * 0.2]);
+    }
+    for (const [bx, by, bz, s] of blobs) {
+      kit.ball.add(mul(M, trs(x + bx * RX, cy + by * RY, z + bz * RX, r(), r() * 6, r(), 1.7 * RX * s, 1.7 * RY * s, 1.7 * RX * s)), C.setHSL(0.29, 0.42, 0.17 + r() * 0.04).clone());
+    }
+    // the leaf skin: points on the blob surfaces, each leaf lying roughly along the surface
+    const skin = (out = 0) => {
+      const [bx, by, bz, s] = blobs[Math.floor(r() * blobs.length)];
+      const u = r() * 2 - 1, a = r() * Math.PI * 2, k = Math.sqrt(1 - u * u);
+      const n = [k * Math.cos(a), u, k * Math.sin(a)];
+      const d = 0.85 * s * (0.95 + out + r() * 0.25);
+      return { n, p: [x + (bx + n[0] * d) * RX, cy + (by + n[1] * d) * RY, z + (bz + n[2] * d) * RX] };
+    };
+    for (let i = 0; i < 220; i++) {
+      const { n, p } = skin();
+      // flat side (local y) faces out along the surface, tipped a little at random
+      _leafN.set(n[0] + (r() - 0.5) * 1.6, n[1] + (r() - 0.5) * 1.6, n[2] + (r() - 0.5) * 1.6).normalize();
+      _leafQ.setFromUnitVectors(_up, _leafN).multiply(_spin.setFromAxisAngle(_up, r() * 6.3));
+      _leafM.compose(_leafP.set(...p), _leafQ, _leafS.set(0.15 * size, 0.04 * size, 0.09 * size));
+      kit.leaf.add(mul(M, _leafM), C.setHSL(0.27 + r() * 0.05, 0.45, 0.22 + r() * 0.2 + Math.max(0, n[1]) * 0.08).clone());
+    }
+    for (let i = 0; i < 12; i++) {
+      let s;
+      do s = skin(0.3); while (s.n[1] > 0.6); // lemons hang on the sides and underneath, just proud of the leaves
+      kit.ball.add(mul(M, trs(...s.p, r() * 0.4, r() * 6, 0.25, 0.085 * size, 0.1 * size, 0.085 * size)), r() > 0.25 ? '#f2cc3a' : '#e8b23a');
     }
     return;
   }
