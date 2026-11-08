@@ -70,6 +70,20 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   records don't lift while it turns. Check: `node scripts/spin-check.mjs [out]`.
   At the courtyard stall, hovering a crate makes all its records float up in front of you, spread
   out so every cover shows; the one under the cursor grows and comes forward with its tag.
+- **Albums** (`src/spread.js`, any rack): pressing an album's record fans its songs out of the sleeve
+  as bare vinyls in an arc in front of the camera (one or two rows), each with the album cover on its
+  label and its track number on a paper sticker, plus a red play-all record first. The one under the
+  cursor grows toward you along its sightline (so it stays under the cursor), spins up and shows a
+  tag (title, track, length). Pressing a song flies it to the suitcase and plays it inside the album's
+  playlist, so the album carries on from there; play-all plays the album from track 1. 15 songs a
+  page: a sideways scroll or the paper arrows turn it. Esc, a click on empty space or leaving the
+  rack sends them back into the sleeve. Songs come from `albumSongs` in `electron/ytm.cjs` (the
+  album playlist's `next` queue, browse `VL<id>` as fallback, cached), fetched as soon as an album
+  is hovered. No songs: it plays the whole album as before. Playlists and mixes still just play.
+  Fake store: `?albums=1` adds an albums shelf (counter easel, station 3). Screenshots:
+  `?at=3&hover=0&albums=1&open=2&spreadhover=4` (`spreadpage=1`, `spreadt=0.4` freezes the flight
+  out). Checks: `node scripts/spread-check.mjs [out]` (real mouse, fake store),
+  `xvfb-run -a node scripts/album-live-check.mjs [out]` (song lists from YouTube Music, as guest).
 - **The suitcase** (`src/suitcase/`): the player, bottom left. A watercolour leather case with a
   record player: the record spins with the cover on its label, the tonearm creeps in as the song
   plays, the knob is volume (drag it or scroll; scrolling down is quieter), the buttons are back / play / skip / like, and
@@ -115,13 +129,13 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   covers, so the shop can be worked on without Electron or an account.
 - Dev pages for screenshots: `lab.html?station=N` (one rack), `player-lab.html` (the suitcase in the shop),
   `mini.html`, `search-lab.html`, `cover-lab.html` (covers before / after painting). Shop URL options: `?at=home|N` start there, `?hover=N`, `?fly=from,to,p`,
-  `?search=lemon`, `?shelves=8` (fake store: fill every station).
+  `?search=lemon`, `?shelves=8` (fake store: fill every station), `?albums=1` (fake store: an albums shelf).
 
 ```
 npm test                                   # parser, suitcase (lid, knob, scrub, tonearm) tests
 npm run build && xvfb-run -a npm run e2e -- out_dir   # real app vs YouTube Music: shelves, hover, play, buttons
 ```
 
-Not yet: playlists/albums opening as a rack of their own songs (clicking one plays the whole thing
+Not yet: playlists opening into their songs like albums (clicking one plays the whole thing
 for now), media keys. Untested on a Mac: the mini player's focus/Dock behaviour and the real
 global shortcut.

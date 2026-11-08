@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('sienna', {
   home: (next) => ipcRenderer.invoke('ytm:home', next),
   search: (q) => ipcRenderer.invoke('ytm:search', q),
   playlistArt: (play) => ipcRenderer.invoke('ytm:playlistArt', play),
+  albumSongs: (play) => ipcRenderer.invoke('ytm:albumSongs', play),
   play: (endpoint) => ipcRenderer.invoke('ytm:play', endpoint),
   prepare: (endpoint) => ipcRenderer.invoke('ytm:prepare', endpoint),
   startPrepared: (endpoint) => ipcRenderer.invoke('ytm:startPrepared', endpoint),

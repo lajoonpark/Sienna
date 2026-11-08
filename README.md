@@ -16,6 +16,9 @@ web page and internal API, so a change on their side can break it.
   "Listen again"...) are brush-stroke words down the sides of the screen; click one and the camera
   walks there.
 - **Records.** Hover a record and it comes out toward you with a paper name tag. Click it to play.
+- **Albums.** Click an album and its songs come out of the sleeve as records, fanned out in front of
+  you with their track numbers, plus a red record that plays the whole album. Pick a song and the
+  album plays on from there.
 - **The suitcase player.** A record player in a leather case, bottom left. The record spins with the
   cover on its label and the tonearm creeps in as the song plays. Turn the knob for volume, or drag
   the record to scrub. By default the song starts when the needle lands.
@@ -38,10 +41,10 @@ web page and internal API, so a change on their side can break it.
 | `Space` | Play / pause |
 | `←` `→` | Back / skip |
 | `↑` `↓` or scroll | Volume |
-| Scroll sideways, or drag | Turn the spinner rack (plant room) |
+| Scroll sideways, or drag | Turn the spinner rack (plant room), or the page of an album's songs |
 | `L` | Like |
 | `Tab` / `Shift+Tab` | Next / previous section |
-| `Esc` | Back to the home spot, or close the mini player |
+| `Esc` | Put an album's records back, else back to the home spot, or close the mini player |
 | `⌘,` (`Ctrl+,` on Windows/Linux) | Settings |
 
 Click or press any key to skip the intro.
@@ -101,7 +104,7 @@ npm run build && xvfb-run -a npm run e2e -- out_dir   # real app against YouTube
 ## Not done yet
 
 - Packaged downloads
-- Playlists and albums opening as their own rack (clicking one plays all of it for now)
+- Playlists opening into their own songs like albums do (clicking one plays all of it for now)
 - Media keys
 - A configurable mini player shortcut
 

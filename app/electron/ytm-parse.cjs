@@ -253,16 +253,19 @@ function parseSearch(response, { onNoArt } = {}) {
   return items(rows, onNoArt).filter((i) => i.kind === 'song' && i.play.videoId);
 }
 
-// The first songs of a playlist (browse VL<id>: rows) or of a mix / radio (the `next` endpoint:
-// queue panel). Only { videoId, title, art } is needed, to build a cover from their covers.
+// The songs of a playlist or album (browse VL<id>: rows) or of a mix / radio / album queue (the `next`
+// endpoint: queue panel), in order: [{ videoId, title, subtitle (artist), duration (s)?, art }].
+// The playlist cover collage uses only videoId and art; the album spread (src/spread.js) all of it.
 function parsePlaylistSongs(response) {
   const out = [];
   for (const row of findAll(response, 'musicResponsiveListItemRenderer')) {
     const it = listRow(row);
-    if (it.play?.videoId) out.push({ videoId: it.play.videoId, title: it.title, art: it.art });
+    if (it.play?.videoId) out.push({ videoId: it.play.videoId, title: it.title, subtitle: it.subtitle, ...(it.duration ? { duration: it.duration } : {}), art: it.art });
   }
   for (const row of findAll(response, 'playlistPanelVideoRenderer')) {
-    if (row.videoId) out.push({ videoId: row.videoId, title: text(row.title), art: artOf(row.thumbnail).art });
+    if (!row.videoId) continue;
+    const duration = seconds(text(row.lengthText));
+    out.push({ videoId: row.videoId, title: text(row.title), subtitle: text(row.shortBylineText), ...(duration ? { duration } : {}), art: artOf(row.thumbnail).art });
   }
   return out;
 }

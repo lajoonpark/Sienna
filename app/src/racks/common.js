@@ -39,6 +39,7 @@
 //   core.camLocal  the camera in the root's space (valid inside layout()).
 //   WOOD  shared toon wood materials (dark, top, light, pale, paint colours via paint(hex)).
 //   fontReady  Promise (brush font loaded).  smooth(rate, dt), easeOut(t), clamp01.
+//   vinylParts() -> { geo, labelGeo, mat }, vinylMaterial(hex)   bare vinyl pieces (also the album spread).
 // ---------------------------------------------------------------------------------------------
 import * as THREE from 'three';
 import { paintCover, coverSeed } from '../coverpaint.js';
@@ -215,11 +216,13 @@ export function prewarmCovers(arts, upload) {
 // ---- vinyl --------------------------------------------------------------------------------------
 
 let vinyl = null;
-function vinylParts() {
-  if (vinyl) return vinyl;
-  // faint grooves and one soft sheen, so the disc reads as vinyl and not a black coin
+const grooveMats = new Map();
+// The record's face: faint grooves and one soft sheen on `base`, so the disc reads as vinyl and not a
+// coin. Shared per colour (the album spread's play-all record is red vinyl).
+export function vinylMaterial(base = '#25212a') {
+  if (grooveMats.has(base)) return grooveMats.get(base);
   const [c, g] = canvas(256, 256);
-  g.fillStyle = '#25212a';
+  g.fillStyle = base;
   g.fillRect(0, 0, 256, 256);
   for (let r = 40; r < 126; r += 3.2) {
     g.strokeStyle = `rgba(255,240,220,${0.03 + ((r * 7) % 5) * 0.012})`;
@@ -234,11 +237,18 @@ function vinylParts() {
   g.fillRect(0, 0, 256, 256);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = toon('#ffffff', { map: tex });
+  grooveMats.set(base, mat);
+  return mat;
+}
+// vinyl disc (radius 0.145, faces +z) and its label (radius 0.05): geometries + the black vinyl material
+export function vinylParts() {
+  if (vinyl) return vinyl;
   const geo = new THREE.CylinderGeometry(0.145, 0.145, 0.004, 40);
   geo.rotateX(Math.PI / 2);
   const labelGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.005, 24);
   labelGeo.rotateX(Math.PI / 2);
-  vinyl = { geo, labelGeo, mat: toon('#ffffff', { map: tex }) };
+  vinyl = { geo, labelGeo, mat: vinylMaterial() };
   return vinyl;
 }
 

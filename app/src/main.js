@@ -18,6 +18,7 @@ import { createPacer } from './pacer.js';
 import { createMusic } from './music.js';
 import { createPlayer } from './suitcase/player.js';
 import { startSong } from './suitcase.js';
+import { createSpread } from './spread.js';
 import '@fontsource/dancing-script/700.css';
 
 const params = new URLSearchParams(location.search);
@@ -135,7 +136,14 @@ const menu = createMenu({
 });
 // heading to a rack: make its hover covers while the camera flies (see prewarm in racks/common.js)
 function warm() { if (nav.at !== AT_HOME) racks[nav.at]?.prewarm((tex) => renderer.initTexture(tex)); }
-nav.onChange(() => { menu.setCurrent(nav.at); warm(); });
+// pressing an album's record fans its songs out in front of you (src/spread.js); a song or the red
+// play-all record flies from there to the suitcase like any picked record
+const spread = createSpread({
+  camera,
+  music,
+  onPlay: (item, disc) => { pick(item, -1, disc); if (disc) suitcase.wake(); },
+});
+nav.onChange(() => { menu.setCurrent(nav.at); warm(); spread.close(); });
 menu.setCurrent(nav.at);
 // the search bar (Option+Cmd+S / Ctrl+Alt+S) must exist before the key handlers below are registered
 // a search pick has no sleeve: the disc machine pops up by the suitcase and spits the record out
@@ -345,6 +353,7 @@ window.__siennaDebug = {
   get rack() { return racks[nav.at >= 0 ? nav.at : 0] ?? racks.find(Boolean); }, // the rack you are at
   racks,
   music,
+  spread,
   nav,
   menu,
   search,
@@ -487,7 +496,14 @@ addEventListener('pointerdown', () => { if (nav.intro) nav.skipIntro(curT); });
 // (not when the press was a drag that turned the rack)
 renderer.domElement.addEventListener('click', () => {
   if (grabbed) { grabbed = false; return; }
-  if (!nav.intro) { shadowsBusy(1.5); if (currentRack()?.click()) suitcase.wake(); }
+  if (nav.intro) return;
+  shadowsBusy(1.5);
+  // the album spread is out: a record or an arrow, else the click puts the records back
+  if (spread.isOpen) { spread.click(); return; }
+  const rack = currentRack();
+  const s = rack && rack.core.control < 0 ? rack.core.sleeves[rack.hovered] : null;
+  if (s?.item.kind === 'album' && !s.picking) { s.bump = 1; spread.open(s.item, s.mesh); return; }
+  if (rack?.click()) suitcase.wake();
 });
 // grab and turn a rack by hand (the spinner): press on it and drag; past a few px it is a drag, not a click
 const DRAG_PX = 4;
@@ -542,7 +558,7 @@ addEventListener('keydown', (e) => {
     e.preventDefault();
     nav.step(e.shiftKey ? -1 : 1);
   } else if (e.key === 'Escape') {
-    nav.go(AT_HOME);
+    if (spread.isOpen) spread.close(); else nav.go(AT_HOME);
   }
 });
 // scroll keeps its own running volume (player state lags a few hundred ms behind).
@@ -551,7 +567,7 @@ let wheelVol = null, wheelIdle = 0;
 addEventListener('wheel', (e) => {
   if (settingsPanel.isOpen() || search.isOpen()) return; // the wheel scrolls the search slips then, never the volume
   // mostly sideways (trackpad swipe): a rack that turns by hand takes it, and the volume stays put
-  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { currentRack()?.wheel(e.deltaX); return; }
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { if (spread.isOpen) spread.wheel(e.deltaX); else currentRack()?.wheel(e.deltaX); return; }
   wheelVol = Math.min(100, Math.max(0, (wheelVol ?? player.volume ?? 70) + e.deltaY * 0.05));
   music.command('volume', wheelVol);
   clearTimeout(wheelIdle);
@@ -608,7 +624,7 @@ function frame(t, dtOverride, draw = true) {
   for (const { pivot, side } of street.leaves) pivot.rotation.y = side * -nav.doorOpen(t) * DOOR_OPEN;
   // the tilt holds while a record is up: turning the camera under it would slide the record across the
   // rack (keepUnderCursor keeps it on the spot where the hover began), as if the cursor were carrying it
-  if (!((currentRack()?.hovered ?? -1) >= 0)) {
+  if (!((currentRack()?.hovered ?? -1) >= 0) && !spread.isOpen) {
     tilt.x += (tilt.tx - tilt.x) * 0.06;
     tilt.y += (tilt.ty - tilt.y) * 0.06;
   }
@@ -632,8 +648,12 @@ function frame(t, dtOverride, draw = true) {
     if (!rack || !rack.root.visible) return;
     const active = (nav.settled && nav.at === i) || (!!pinnedPose && i === hoverAt);
     // the cursor over the suitcase does not pick records through it
-    rack.update(dt, camera, active && !suitcase.over ? pointer : null, active);
+    rack.update(dt, camera, active && !suitcase.over && !spread.isOpen ? pointer : null, active);
   });
+  // an album under the cursor: fetch its songs now, so pressing it opens the spread at once
+  const hovItem = currentRack()?.core.sleeves[currentRack().hovered]?.item;
+  if (hovItem?.kind === 'album') spread.prefetch(hovItem);
+  spread.update(dt, !suitcase.over ? pointer : null);
 
   const ui = nav.introDone || !!pinnedPose;
   suitcase.tuck(!!currentRack() && !pinnedPose); // at a rack the case tucks down out of the records' way
@@ -700,6 +720,28 @@ if (shotMode) {
       suitcase.freezeFlight(Number(params.get('pick')));
       frame(t, 0.0001);
     }
+    // ?open=k: press album record k on the rack you are at (the album spread), then ?spreadpage=p turns
+    // to page p and ?spreadhover=j holds record j up (0 = play all); ?spreadt=0.4 freezes the flight out
+    if (params.has('open') && !spread.loaded) {
+      const rack = racks[hoverOn >= 0 ? hoverOn : nav.at];
+      const s = rack?.core.sleeves[Number(params.get('open'))];
+      if (s) {
+        spread.open(s.item, s.mesh);
+        await waitFor(() => spread.loaded, 5000);
+        if (params.has('spreadpage')) spread.turnPage(Number(params.get('spreadpage')));
+        if (params.has('spreadhover')) spread.forceHover = Number(params.get('spreadhover'));
+        const ft = params.has('spreadt') ? Number(params.get('spreadt')) : null;
+        for (let k = 0; k < 400; k++) {
+          frame(t, 0.02, false);
+          if (ft !== null && spread.state.recs.every((r) => !r.out || r.t >= ft || r.delay > 0)) break;
+        }
+        if (ft !== null) for (const r of spread.state.recs) if (r.out) { r.t = ft; r.delay = 0; }
+        frame(t, 0.0001);
+        await new Promise((r) => setTimeout(r, 120));
+        await Promise.all(racks.map((r) => r?.ready()));
+        frame(t, 0.0001);
+      }
+    }
     // ?machine=1.2: a search pick, frozen 1.2 s into the disc machine (after the hand-off, the record's flight too)
     if (params.has('machine') && !machineDone) {
       machineDone = true;
@@ -728,7 +770,7 @@ if (shotMode) {
     pacer = createPacer({
       renderer,
       step: (now) => { tickFps(); frame((now - start) / 1000); watchCamera(); },
-      busy: () => nav.intro || !nav.settled || suitcase.flying || suitcase.machine.active || suitcase.over || suitcase.suitcase.lidMoving,
+      busy: () => nav.intro || !nav.settled || spread.busy || suitcase.flying || suitcase.machine.active || suitcase.over || suitcase.suitcase.lidMoving,
       // a spinning record on screen wants a smooth turn; otherwise only lanterns and the boil move (Brush strokes: only the ragged border boils; the older looks: all of it)
       idleFps: () => (player?.playerState === 1 && suitcase.tucked < 0.5 ? 30 : 12),
     });

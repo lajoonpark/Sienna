@@ -135,6 +135,32 @@ function createYtm({ onState, onSignedIn }) {
     return songArts.get(id);
   }
 
+  // Every song of an album, in album order, for the album spread (src/spread.js): pressing an album
+  // record fans out one vinyl per song. [{ videoId, title, subtitle, duration?, art }]; [] if it fails.
+  // The `next` queue of the album's playlist is the album in order (browse VL<id> as a fallback).
+  // Cached per album; failures are not cached.
+  const albumCache = new Map();
+  async function albumSongs(play) {
+    const id = play?.playlistId;
+    if (!id) return [];
+    if (!albumCache.has(id)) {
+      const attempt = (async () => {
+        const ways = [() => api('next', { playlistId: id, isAudioOnly: true }), () => api('browse', { browseId: id.startsWith('VL') ? id : `VL${id}` })];
+        for (const get of ways) {
+          try {
+            const seen = new Set();
+            const songs = parsePlaylistSongs(await get()).filter((x) => !seen.has(x.videoId) && seen.add(x.videoId));
+            if (songs.length) return songs;
+          } catch (e) { console.warn('[sienna] albumSongs', id, e.message); }
+        }
+        return [];
+      })();
+      albumCache.set(id, attempt);
+      attempt.then((a) => { if (!a.length) albumCache.delete(id); });
+    }
+    return albumCache.get(id);
+  }
+
   async function play(endpoint) {
     await ready();
     const routed = await js(`window.__sienna.navigate(${JSON.stringify(endpoint)})`).catch(() => false);
@@ -226,8 +252,8 @@ function createYtm({ onState, onSignedIn }) {
   }
 
   // Request handlers main.cjs registers as ipc channels ytm:<name> (renderer: window.sienna.<name>).
-  const ipc = { search, playlistArt, prepare, startPrepared };
-  return { home, play, command, signIn, ipc, search, playlistArt, setActive, window: win };
+  const ipc = { search, playlistArt, albumSongs, prepare, startPrepared };
+  return { home, play, command, signIn, ipc, search, playlistArt, albumSongs, setActive, window: win };
 }
 
 module.exports = { createYtm };

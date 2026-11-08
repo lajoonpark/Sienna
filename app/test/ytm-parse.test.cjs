@@ -74,7 +74,8 @@ test('playlist browse rows and mix queue entries both give videoId + art', () =>
   for (const res of [playlistBrowse, mixNext]) {
     const songs = parsePlaylistSongs(res);
     assert.strictEqual(songs.length, 6);
-    for (const s of songs) { assert.ok(s.videoId); assert.ok(s.title); assert.match(s.art, /^https:\/\//); }
+    // the album spread shows artist and length too
+    for (const s of songs) { assert.ok(s.videoId); assert.ok(s.title); assert.ok(s.subtitle, 'artist'); assert.ok(s.duration > 60, 'duration'); assert.match(s.art, /^https:\/\//); }
   }
 });
 

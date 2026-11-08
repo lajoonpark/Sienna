@@ -25,6 +25,9 @@ function realMusic(c) {
     onArt: (cb) => artListeners.push(cb),
     // Songs matching a query -> [{ kind: 'song', title, subtitle (artist), album, duration (s), art, play }]
     search: (q) => c.search(q),
+    // An album's songs in order -> [{ kind: 'song', title, subtitle, duration?, art, play: { videoId, playlistId } }]:
+    // each plays from that song on through the rest of the album. [] if they could not be fetched.
+    albumSongs: async (album) => albumSongItems(album, await c.albumSongs(album.play).catch(() => [])),
     play: (item) => c.play(item.play),
     // Load a song without hearing it (resolves when it is ready), then start it from 0:00.
     prepare: (item) => c.prepare(item.play),
@@ -34,6 +37,20 @@ function realMusic(c) {
     onState: (cb) => c.onState(cb),
     onSignedIn: (cb) => c.onSignedIn(cb),
   };
+}
+
+// Raw album songs ({ videoId, title, subtitle, duration, art }) -> playable song items. Songs play inside
+// the album's playlist, so the album carries on in order after the one you picked.
+function albumSongItems(album, songs) {
+  return (songs ?? []).map((x, i) => ({
+    kind: 'song',
+    title: x.title,
+    subtitle: x.subtitle || album.subtitle || '',
+    ...(x.duration ? { duration: x.duration } : {}),
+    art: x.art || album.art,
+    track: i + 1,
+    play: { videoId: x.videoId, playlistId: album.play?.playlistId },
+  }));
 }
 
 // ---- fake store ------------------------------------------------------------
@@ -104,10 +121,35 @@ function fakePlaylists(songs) {
   };
 }
 
+// ?albums=1 puts a shelf of albums first (3 to 30 songs each), to try the album spread (src/spread.js).
+const ALBUM_SIZES = [9, 3, 22, 12, 6, 15, 30, 11];
+function fakeAlbums() {
+  const r = rng(91);
+  return {
+    title: 'Albums for you',
+    items: ALBUM_SIZES.map((n, i) => {
+      const title = `${WORDS[(i * 7 + 3) % WORDS.length]} ${NOUNS[(i * 5 + 1) % NOUNS.length]}`;
+      const artist = ARTISTS[i % ARTISTS.length];
+      const art = fakeCover(i * 101 + 7, title);
+      const songs = Array.from({ length: n }, (_, k) => ({
+        videoId: `fakealb${i}_${k}`,
+        title: k === 4 ? `${WORDS[(k + i) % WORDS.length]} ${NOUNS[(k * 3 + i) % NOUNS.length]} (Live at the Harbour Room, Extended Version)` : `${WORDS[(k * 3 + i) % WORDS.length]} ${NOUNS[(k + i * 2) % NOUNS.length]}`,
+        subtitle: artist,
+        duration: 140 + Math.floor(r() * 160),
+        art,
+      }));
+      return { kind: 'album', title, subtitle: `Album • ${artist}`, art, play: { playlistId: `fakealb${i}` }, songs };
+    }),
+  };
+}
+
 function fakeMusic() {
   const shelves = fakeShelves();
-  const all = shelves.flatMap((s) => s.items);
-  const withPlaylists = new URLSearchParams(location.search).has('playlists');
+  const qs = new URLSearchParams(location.search);
+  if (qs.has('albums')) shelves.unshift(fakeAlbums());
+  const all = shelves.flatMap((s) => s.items).filter((i) => i.kind === 'song');
+  const albums = new Map(shelves.flatMap((s) => s.items).filter((i) => i.kind === 'album').map((a) => [a.play.playlistId, a]));
+  const withPlaylists = qs.has('playlists');
   if (withPlaylists) shelves.push(fakePlaylists(all));
   const listeners = [];
   const st = { signedIn: true, ready: true, videoId: null, title: null, artist: null, art: null, playerState: -1, position: 0, duration: 0, volume: 70, muted: false, like: 'INDIFFERENT', adPlaying: false };
@@ -155,7 +197,19 @@ function fakeMusic() {
         return true;
       }).slice(0, 12);
     },
+    // ?albumms=N: pretend fetching an album's songs takes that long
+    albumSongs: async (album) => {
+      await new Promise((r) => setTimeout(r, Number(qs.get('albumms')) || 120));
+      return albumSongItems(album, albums.get(album.play?.playlistId)?.songs);
+    },
     play: async (item) => {
+      // an album (play all) or a song inside one: the album is the queue, from that song on
+      const album = albums.get(item.play?.playlistId);
+      if (album) {
+        queue = albumSongItems(album, album.songs);
+        load(Math.max(0, queue.findIndex((x) => x.play.videoId === item.play.videoId)));
+        return;
+      }
       const shelf = shelves.find((s) => s.items.includes(item));
       queue = shelf ? shelf.items : all;
       load(queue.indexOf(item));
