@@ -1,7 +1,7 @@
 // The only bridge between the shop (renderer) and YouTube Music (main process).
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('cadence', {
+contextBridge.exposeInMainWorld('sienna', {
   home: (next) => ipcRenderer.invoke('ytm:home', next),
   search: (q) => ipcRenderer.invoke('ytm:search', q),
   playlistArt: (play) => ipcRenderer.invoke('ytm:playlistArt', play),

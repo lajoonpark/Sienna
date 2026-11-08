@@ -8,7 +8,7 @@
 //   ?p=0.3  how far through the song     ?hover=playPause|knob|record|next|previous|like
 //   ?liked  show the song liked          ?paused  show it paused         ?idle  nothing playing
 import * as THREE from 'three';
-import '@fontsource/caveat-brush';
+import '@fontsource/dancing-script/700.css';
 import { WATERCOLOUR } from './style.js';
 import { createWatercolour } from './watercolour.js';
 import { createMusic } from './music.js';
@@ -25,7 +25,7 @@ import { maxFps } from './pacer.js';
 
 const params = new URLSearchParams(location.search);
 const shot = params.has('shot');
-const bridge = window.cadenceMini;            // only inside Electron (electron/mini-preload.cjs)
+const bridge = window.siennaMini;            // only inside Electron (electron/mini-preload.cjs)
 const W = 540, H = 620;
 document.body.classList.toggle('preview', !bridge);
 document.documentElement.style.setProperty('--w', `${W}px`);
@@ -84,7 +84,7 @@ function refreshListenAgain() {
     listenAgainAt = performance.now();
     listenAgain = { title: sh.title, items: sh.items };
     paintAhead(sh.items);
-  }).catch((e) => console.warn('[cadence] Listen again failed', e))   // tried again at the next summon or search
+  }).catch((e) => console.warn('[sienna] Listen again failed', e))   // tried again at the next summon or search
     .then(() => { listenAgainBusy = null; return listenAgain; });
   return listenAgainBusy;
 }

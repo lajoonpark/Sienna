@@ -1,10 +1,10 @@
 // Does the arm wait for the song? A record lands while a stub song takes N ms to load: prints when the record
 // landed, the arm's lift while it waits, and when the song was told to start.
-//   node scripts/arm-wait-check.mjs [load ms ...]   (default 0 3000 30000; 30000 shows the hover limit; CADENCE_PORT)
+//   node scripts/arm-wait-check.mjs [load ms ...]   (default 0 3000 30000; 30000 shows the hover limit; SIENNA_PORT)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 const loads = process.argv.slice(2).map(Number);
-const port = Number(process.env.CADENCE_PORT) || 5247;
+const port = Number(process.env.SIENNA_PORT) || 5247;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
 const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });

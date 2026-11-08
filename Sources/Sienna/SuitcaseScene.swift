@@ -1,6 +1,6 @@
 import AppKit
 import SceneKit
-import CadenceCore
+import SiennaCore
 
 /// The 3D suitcase: a tan leather case with a cream lining in the lid and a record player in the
 /// base. This type only builds the scene and exposes setters for what changes (lid angle, record

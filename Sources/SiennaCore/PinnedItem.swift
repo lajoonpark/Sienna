@@ -7,7 +7,7 @@ import Foundation
 ///
 /// ```json
 /// [
-///   { "title": "Focus",  "shortcut": "Cadence Focus" },
+///   { "title": "Focus",  "shortcut": "Sienna Focus" },
 ///   { "title": "Anthem", "videoIds": ["dQw4w9WgXcQ"] }
 /// ]
 /// ```

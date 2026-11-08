@@ -1,6 +1,6 @@
 // Is a hovered record's name tag inside the frame, with the record still under the cursor? Hovers the lowest records of each rack with
 // the mouse, waits for lift, zoom and rise to settle, prints where the tag's lowest corner lands.
-//   node scripts/tag-frame-check.mjs [out_dir] [stations=0,1,2,3,4,5,6,7] [records per rack=3]   (CADENCE_PORT)
+//   node scripts/tag-frame-check.mjs [out_dir] [stations=0,1,2,3,4,5,6,7] [records per rack=3]   (SIENNA_PORT)
 // pose-off-cursor = the rack's own hover pose leaves the cursor (not counted; the rise never should).
 // Window is 730 px; tag top-bottom in px, line = the frame's safe line; rise = metres raised.
 import { chromium } from 'playwright';
@@ -9,11 +9,11 @@ import { mkdirSync } from 'node:fs';
 const out = process.argv[2] ?? 'tag-frame-out';
 const stations = (process.argv[3] ?? '0,1,2,3,4,5,6,7').split(',').map(Number), n = Number(process.argv[4] ?? 3);
 mkdirSync(out, { recursive: true });
-const port = Number(process.env.CADENCE_PORT) || 5247;
+const port = Number(process.env.SIENNA_PORT) || 5247;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-// CADENCE_GL=vulkan renders on the real GPU (much faster; adding --enable-features=Vulkan garbles screenshots); the default is software, for machines without one
-const FAST = process.env.CADENCE_GL === 'vulkan';
+// SIENNA_GL=vulkan renders on the real GPU (much faster; adding --enable-features=Vulkan garbles screenshots); the default is software, for machines without one
+const FAST = process.env.SIENNA_GL === 'vulkan';
 const GL = FAST ? ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
 const b = await chromium.launch({ args: GL });
 const W = 1170, H = 730, LIMIT = Math.round(((1 + 0.82) / 2) * H);
@@ -21,16 +21,16 @@ let cut = 0;
 for (const at of stations) {
   const page = await b.newPage({ viewport: { width: W, height: H } });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-  await page.goto(`http://127.0.0.1:${port}/index.html?shelves=8&at=${at}&wc=${process.env.CADENCE_WC ?? 0}`, { timeout: 180000 });
-  await page.waitForFunction(() => window.__cadenceDebug?.state.settled, null, { timeout: 240000 });
+  await page.goto(`http://127.0.0.1:${port}/index.html?shelves=8&at=${at}&wc=${process.env.SIENNA_WC ?? 0}`, { timeout: 180000 });
+  await page.waitForFunction(() => window.__siennaDebug?.state.settled, null, { timeout: 240000 });
   // the rack is built after the walk-in (and may be rebuilt once while loading); its records drop in one by one
-  const dropped = () => page.waitForFunction(() => { const r = window.__cadenceDebug.rack; return r?.root.visible && r.core.sleeves.length && r.core.sleeves.every((s) => s.hidden || (s.mesh.visible && s.drop < 0.01)); }, null, { timeout: 240000, polling: 500 });
+  const dropped = () => page.waitForFunction(() => { const r = window.__siennaDebug.rack; return r?.root.visible && r.core.sleeves.length && r.core.sleeves.every((s) => s.hidden || (s.mesh.visible && s.drop < 0.01)); }, null, { timeout: 240000, polling: 500 });
   await dropped();
   await page.waitForTimeout(FAST ? 3000 : 10000);
   await dropped();
   // lowest records first, by where they stand on screen at rest; a real mouse hover, so the camera turns and zooms
   const spots = await page.evaluate((n) => {
-    const d = window.__cadenceDebug, cam = d.camera;
+    const d = window.__siennaDebug, cam = d.camera;
     cam.updateMatrixWorld();
     const ys = d.rack.core.sleeves.map((s, i) => {
       s.mesh.updateWorldMatrix(true, false);
@@ -49,11 +49,11 @@ for (const at of stations) {
     for (let t = 0; t < 12 && k === null; t++) {
       lastX = x + (t % 2 ? 6 : -6);
       await page.mouse.move(lastX, y);
-      k = await page.waitForFunction(() => { const c = window.__cadenceDebug.rack.core; return c.hovered >= 0 && c.sleeves[c.hovered].lift > 0.97 ? c.hovered : false; }, null, { timeout: 10000, polling: 200 }).then((h) => h.jsonValue()).catch(() => null);
+      k = await page.waitForFunction(() => { const c = window.__siennaDebug.rack.core; return c.hovered >= 0 && c.sleeves[c.hovered].lift > 0.97 ? c.hovered : false; }, null, { timeout: 10000, polling: 200 }).then((h) => h.jsonValue()).catch(() => null);
     }
-    if (k === null) { console.log(`st${at} at ${x | 0},${y | 0}: no hover`, await page.evaluate(() => { const c = window.__cadenceDebug.rack.core; return { hovered: c.hovered, lift: c.sleeves[c.hovered]?.lift }; })); continue; }
+    if (k === null) { console.log(`st${at} at ${x | 0},${y | 0}: no hover`, await page.evaluate(() => { const c = window.__siennaDebug.rack.core; return { hovered: c.hovered, lift: c.sleeves[c.hovered]?.lift }; })); continue; }
     const measure = () => page.evaluate(({ k, mx, my }) => {
-      const d = window.__cadenceDebug, cam = d.camera, core = d.rack.core, t = core.tag, tag = t.mesh, s = core.sleeves[k];
+      const d = window.__siennaDebug, cam = d.camera, core = d.rack.core, t = core.tag, tag = t.mesh, s = core.sleeves[k];
       cam.updateMatrixWorld();
       tag.updateWorldMatrix(true, false);
       const px = (obj, x, y) => { const v = cam.position.clone().set(x, y, 0).applyMatrix4(obj.matrixWorld).project(cam); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; };

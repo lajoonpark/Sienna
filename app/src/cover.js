@@ -6,7 +6,7 @@
 // What the repair does for an item (songs that have art are left alone):
 //   1. probe item.art, then item.artAlt[] (same way the racks load them: crossOrigin anonymous)
 //   2. else a collage of item.arts (parser found a multi-image renderer) or of the first songs
-//      of the playlist / mix (window.cadence.playlistArt(play), main process, via the API)
+//      of the playlist / mix (window.sienna.playlistArt(play), main process, via the API)
 //   3. else (songs) the video frame of play.videoId
 import { rng } from './rand.js';
 
@@ -91,7 +91,7 @@ async function repairOne(item, getSongArts) {
   let urls = item.arts;
   if (!urls?.length && item.play?.playlistId) urls = await getSongArts?.(item.play).catch(() => []);
   const art = urls?.length ? await paintCollage(urls, hash(item.play?.playlistId ?? item.title)) : null;
-  console.warn(`[cadence] cover for ${item.kind} "${item.title}" ${art ? 'painted from its songs' : 'could not be built'}`);
+  console.warn(`[sienna] cover for ${item.kind} "${item.title}" ${art ? 'painted from its songs' : 'could not be built'}`);
   if (art) item.art = art;
 }
 
@@ -106,7 +106,7 @@ export function repairArt(items, { getSongArts, onChange } = {}) {
       try {
         await repairOne(it, getSongArts);
         if (it.art !== before) onChange?.(it);
-      } catch (e) { console.warn('[cadence] cover repair', e); }
+      } catch (e) { console.warn('[sienna] cover repair', e); }
     }
   }));
 }

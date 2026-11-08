@@ -624,7 +624,7 @@ void main() {
     bakeStrokes,
     // overlay = { scene, camera }: drawn into the same target after the world, depth cleared, so it is
     // painted by the same pass but never hidden by (or clipped into) the walls.
-    // sync (profiling only): called after each step with its name, to time it (see __cadenceDebug.profile)
+    // sync (profiling only): called after each step with its name, to time it (see __siennaDebug.profile)
     render(scene, camera, t, overlay, sync) {
       const u = material.uniforms;
       u.borderSeed.value = (Math.floor(t * BOIL_FPS) % 64) * 1.37;

@@ -1,5 +1,5 @@
 import XCTest
-@testable import CadenceCore
+@testable import SiennaCore
 
 private final class FakeRunner: ScriptRunner, @unchecked Sendable {
     var scripts: [String] = []
@@ -106,13 +106,13 @@ final class KasetTests: XCTestCase {
         let backend = KasetBackend(runner: runner)
         await backend.send(.next)
         await backend.open(PinnedItem(title: "S", videoIds: ["abc"]))
-        await backend.open(PinnedItem(title: "Mix", shortcut: "Cadence Mix"))
+        await backend.open(PinnedItem(title: "Mix", shortcut: "Sienna Mix"))
         await backend.open(PinnedItem(title: "bad"))
         XCTAssertEqual(runner.scripts, [
             #"tell application "Kaset" to next track"#,
             #"tell application "Kaset" to play video "abc""#,
         ])
-        XCTAssertEqual(runner.shortcuts, ["Cadence Mix"])
+        XCTAssertEqual(runner.shortcuts, ["Sienna Mix"])
     }
 
     func testNowPlayingThroughBackend() async {

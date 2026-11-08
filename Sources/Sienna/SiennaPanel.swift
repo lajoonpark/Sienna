@@ -2,7 +2,7 @@ import AppKit
 
 /// Borderless overlay that can take key focus without activating the app, so the frontmost
 /// app stays frontmost and closing the record hands focus straight back.
-final class CadencePanel: NSPanel {
+final class SiennaPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }

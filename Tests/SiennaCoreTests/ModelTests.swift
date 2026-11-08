@@ -1,5 +1,5 @@
 import XCTest
-@testable import CadenceCore
+@testable import SiennaCore
 
 final class ModelTests: XCTestCase {
 

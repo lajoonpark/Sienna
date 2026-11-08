@@ -1,5 +1,5 @@
 // The outdoor scene: a narrow Tuscan alley of individual brick and stucco houses, an arch over the
-// street, opening into a little piazza in front of the Cadence record shop. Everything is real
+// street, opening into a little piazza in front of the Sienna record shop. Everything is real
 // geometry (bricks, tiles, shutter slats) through the instanced kit; no flat brick textures.
 import * as THREE from 'three';
 import { createKit, trs, mul, BRICK } from './kit.js';
@@ -8,6 +8,7 @@ import { windowUnit, doorUnit, balcony, wallLantern, eaves, drainpipe, pottedPla
 import { registerLamp, glowMesh } from './env.js';
 import { scooter, bicycle, cafeSet, crate, stall, chalkboard, bench, lampPost, stringLights, washingLine, bunting } from './props.js';
 import { stickerTexture } from './textures.js';
+import { FONT } from './style.js';
 import { toon, keepSharp } from './materials.js';
 import { rng } from './rand.js';
 
@@ -192,7 +193,7 @@ function row(kit, root, side, z0, z1, seed) {
   return houses;
 }
 
-// The Cadence shop: brick ground floor with two arched display windows and an arched door,
+// The Sienna shop: brick ground floor with two arched display windows and an arched door,
 // stucco above with a balcony. Faces +z at z = 0.
 function shopFront(kit, root) {
   const M = frame([-PIAZZA_HALF, 0, 0], [1, 0, 0], [0, 0, 1]);
@@ -255,9 +256,9 @@ function shopFront(kit, root) {
     }
   }
 
-  // sign board above the door, sticker lettering
+  // sign board above the door, sticker lettering in the app's cursive
   blk(kit, M, cx, top - 0.42, 0.04, 3.6, 0.62, 0.08, '#3f6e6a');
-  const signTex = stickerTexture('CADENCE', { w: 1024, h: 256, size: 190 });
+  const signTex = stickerTexture('Sienna', { w: 1024, h: 256, size: 200, font: FONT });
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 0.82), keepSharp(new THREE.MeshBasicMaterial({ map: signTex, alphaTest: 0.5 })) /* cut out, so it can flag itself sharp */);
   sign.applyMatrix4(mul(M, trs(cx, top - 0.4, 0.1, 0, 0, -0.03)));
   meshes.push(sign);

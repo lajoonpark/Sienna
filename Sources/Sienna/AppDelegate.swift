@@ -1,10 +1,10 @@
 import AppKit
-import CadenceCore
+import SiennaCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let hotkey = GlobalHotkey()
-    private let panel = CadencePanel()
+    private let panel = SiennaPanel()
     private let suitcase = SuitcaseView(frame: NSRect(origin: .zero, size: SuitcaseView.size))
     private var statusItem: NSStatusItem?
     private var outsideClickMonitor: Any?
@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let spec = HotkeySpec.default
         if !hotkey.register(spec, action: { [weak self] in self?.toggle() }) {
-            NSLog("Cadence: \(spec.displayName) is already taken by another app")
+            NSLog("Sienna: \(spec.displayName) is already taken by another app")
         }
     }
 
@@ -48,12 +48,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "opticaldisc", accessibilityDescription: "Cadence")
+        item.button?.image = NSImage(systemSymbolName: "opticaldisc", accessibilityDescription: "Sienna")
         let menu = NSMenu()
         let show = menu.addItem(withTitle: "Open Suitcase (\(HotkeySpec.default.displayName))", action: #selector(show), keyEquivalent: "")
         show.target = self
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Cadence", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Quit Sienna", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
         statusItem = item
     }

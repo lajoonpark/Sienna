@@ -1,4 +1,4 @@
-// The lid's hinge as a physical thing, not an easing curve. Port of Sources/CadenceCore/LidHinge.swift.
+// The lid's hinge as a physical thing, not an easing curve. Port of Sources/SiennaCore/LidHinge.swift.
 //
 // A real lid is flicked, goes over the top and falls onto its stop. Gravity pulls it shut until it
 // passes vertical and open after that, so the swing slows near the top and then drops; the stop is

@@ -1,5 +1,5 @@
 // The suitcase record player as painted 3D geometry (no behaviour here, see ../suitcase.js).
-// Proportions come from the old SceneKit scene (Sources/Cadence/SuitcaseScene.swift) via
+// Proportions come from the old SceneKit scene (Sources/Sienna/SuitcaseScene.swift) via
 // tonearm.js: case 4.6 x 3.2, base 0.95 high, lid 0.55 thick. Units: x right, y up, z towards
 // the viewer (the front of the case), the case centred over the origin.
 import * as THREE from 'three';

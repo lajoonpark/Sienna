@@ -1,6 +1,6 @@
 import Foundation
 
-/// Runs the two kinds of external commands Cadence needs. A protocol so the Kaset backend can
+/// Runs the two kinds of external commands Sienna needs. A protocol so the Kaset backend can
 /// be tested with a fake on any platform.
 public protocol ScriptRunner: Sendable {
     /// Runs AppleScript source and returns what it printed (trailing newline trimmed).

@@ -1,5 +1,5 @@
 // Where everything sits on the suitcase, in scene units, and the tonearm's geometry. Port of
-// Sources/CadenceCore/SuitcaseLayout.swift. The case sits with its centre over the origin: x runs
+// Sources/SiennaCore/SuitcaseLayout.swift. The case sits with its centre over the origin: x runs
 // left to right, z towards the viewer (the front of the case), y up. A deck point is {x, z}.
 // Shared by the 3D suitcase (which builds it) and the tests (which check it hangs together).
 

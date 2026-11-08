@@ -7,11 +7,11 @@ const electronPath = createRequire(import.meta.url)('electron'); // path to the 
 const server = await createServer();
 await server.listen();
 const url = server.resolvedUrls?.local?.[0] ?? 'http://127.0.0.1:5173/';
-console.log(`Cadence dev server: ${url}`);
+console.log(`Sienna dev server: ${url}`);
 
 const child = spawn(electronPath, ['.', ...process.argv.slice(2)], {
   stdio: 'inherit',
-  env: { ...process.env, CADENCE_DEV_URL: url },
+  env: { ...process.env, SIENNA_DEV_URL: url },
 });
 const stop = async (code = 0) => { await server.close(); process.exit(code); };
 child.on('exit', (code) => stop(code ?? 0));

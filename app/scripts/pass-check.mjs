@@ -5,11 +5,11 @@
 //   travel = worst extra overlaps of any moving sleeve (who, at which step, up or down)
 //   up     = overlaps of the vinyl sliding straight up out of the lifted sleeve (the old way), over the sweep
 //   chosen = the way clear.js picks for it, and its overlaps
-//   node scripts/pass-check.mjs [stations=0,...,7] [samples per rack=6]   (CADENCE_PORT)
+//   node scripts/pass-check.mjs [stations=0,...,7] [samples per rack=6]   (SIENNA_PORT)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 const stations = (process.argv[2] ?? '0,1,2,3,4,5,6,7').split(',').map(Number), n = Number(process.argv[3] ?? 6);
-const port = Number(process.env.CADENCE_PORT) || 5244;
+const port = Number(process.env.SIENNA_PORT) || 5244;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
 const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -18,11 +18,11 @@ for (const at of stations) {
   const page = await b.newPage({ viewport: { width: 1170, height: 730 } });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));
   await page.goto(`http://127.0.0.1:${port}/index.html?shelves=8&at=${at}&wc=0`);
-  await page.waitForFunction(() => window.__cadenceDebug?.state.settled, null, { timeout: 180000 });
+  await page.waitForFunction(() => window.__siennaDebug?.state.settled, null, { timeout: 180000 });
   await page.waitForTimeout(4000);
   const out = await page.evaluate(async (n) => {
     const { solidsOf, discHits, chooseDiscDir, sleeveHits } = await import('/src/racks/clear.js');
-    const d = window.__cadenceDebug, rack = d.rack, core = rack.core, cam = d.camera;
+    const d = window.__siennaDebug, rack = d.rack, core = rack.core, cam = d.camera;
     const step = (k) => { rack.forceHover = k; for (const s of core.sleeves) s.appear = 1; rack.update(1 / 60, cam, null, true); core.root.updateMatrixWorld(true); };
     for (let i = 0; i < 120; i++) step(null); // all down
     const vis = core.sleeves.map((s, i) => (s.mesh.visible ? i : -1)).filter((i) => i >= 0);

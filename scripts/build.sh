@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Builds Cadence.app.
+# Builds Sienna.app.
 #
-#   ./scripts/build.sh              # build into ./build/Cadence.app
+#   ./scripts/build.sh              # build into ./build/Sienna.app
 #   ./scripts/build.sh --install    # build and copy into /Applications
 #   ./scripts/build.sh --run        # build and launch
 #   ./scripts/build.sh --debug      # debug build
@@ -14,8 +14,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-APP_NAME="Cadence"
-BUNDLE_ID="com.local.cadence"
+APP_NAME="Sienna"
+BUNDLE_ID="com.local.sienna"
 VERSION="0.1.0"
 BUILD_NUMBER="1"
 MIN_MACOS="14.0"
@@ -65,7 +65,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>LSMinimumSystemVersion</key><string>$MIN_MACOS</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>LSUIElement</key><true/>
-    <key>NSAppleEventsUsageDescription</key><string>Cadence controls Kaset (play, pause, skip, like, now playing) through AppleScript.</string>
+    <key>NSAppleEventsUsageDescription</key><string>Sienna controls Kaset (play, pause, skip, like, now playing) through AppleScript.</string>
 </dict>
 </plist>
 PLIST

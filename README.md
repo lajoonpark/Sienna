@@ -1,4 +1,4 @@
-# Cadence
+# Sienna
 
 A free, open-source YouTube Music app where your music lives in a hand-painted 3D record shop.
 
@@ -6,7 +6,7 @@ You walk down a Tuscan alley and into the shop, where your YouTube Music shelves
 records. Pick one up and its vinyl flies out of the sleeve and lands on a little suitcase record
 player. The sky outside follows your real clock, and the lanterns come on one by one at dusk.
 
-Cadence is an unofficial app, not affiliated with YouTube or Google. It relies on YouTube Music's
+Sienna is an unofficial app, not affiliated with YouTube or Google. It relies on YouTube Music's
 web page and internal API, so a change on their side can break it.
 
 ## What it does
@@ -50,7 +50,7 @@ On macOS the volume controls set the Mac's own output volume. Elsewhere they set
 
 ## Run it
 
-There are no packaged releases yet, so Cadence runs from source. You need Node.js 22.12 or newer.
+There are no packaged releases yet, so Sienna runs from source. You need Node.js 22.12 or newer.
 
 ```sh
 cd app
@@ -67,10 +67,10 @@ macOS is the main target. Automated tests also run on Linux. Windows is untested
 
 ## How it works
 
-Cadence is an Electron app with a Three.js scene. All the scenery is built in code.
+Sienna is an Electron app with a Three.js scene. All the scenery is built in code.
 
 A hidden `music.youtube.com` window does the actual playing, so YouTube Music itself handles the
-queue, radio, ads, history and likes. Cadence drives that page with a small injected script and
+queue, radio, ads, history and likes. Sienna drives that page with a small injected script and
 reads your shelves and search results from the same internal API the page uses.
 
 ```

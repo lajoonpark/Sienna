@@ -4,7 +4,7 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 const w = Number(process.argv[2] ?? 480), h = Number(process.argv[3] ?? 300), q = process.argv[4] ?? '';
-const port = Number(process.env.CADENCE_PORT) || 5244;
+const port = Number(process.env.SIENNA_PORT) || 5244;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
 const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -33,7 +33,7 @@ await page.addInitScript(() => {
   window.requestAnimationFrame = (cb) => raf(() => {
     vnow += 1000 / FPS; frameReal = realNow();
     const ts = vnow;
-    const d = window.__cadenceDebug;
+    const d = window.__siennaDebug;
     const t0 = realNow();
     const info = d?.renderer.info;
     const g0 = { ...gl };
@@ -47,7 +47,7 @@ await page.addInitScript(() => {
   });
 });
 await page.goto(`http://127.0.0.1:${port}/index.html?shelves=8&${q}`, { waitUntil: 'commit', timeout: 0 });
-await page.waitForFunction(() => window.__cadenceDebug?.state.introDone && window.__cadenceDebug.state.settled, null, { timeout: 600000, polling: 1000 });
+await page.waitForFunction(() => window.__siennaDebug?.state.introDone && window.__siennaDebug.state.settled, null, { timeout: 600000, polling: 1000 });
 await page.waitForTimeout(3000);
 const tr = await page.evaluate(() => window.__trace);
 for (const e of tr) console.log(JSON.stringify(e));

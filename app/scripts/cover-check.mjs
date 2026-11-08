@@ -1,11 +1,11 @@
 // Does a lifted record cover its neighbours, and how far does it wander from its rest spot on screen?
 // For each station: rest rects of every sleeve, then each sampled record held up (debug setHover):
 //   shift = px its centre moved, grow = area ratio, cover = worst share of a neighbour's rest rect hidden.
-//   node scripts/cover-check.mjs [stations=0,1,2,3,4,5,6] [samples per rack=5]   (CADENCE_PORT)
+//   node scripts/cover-check.mjs [stations=0,1,2,3,4,5,6] [samples per rack=5]   (SIENNA_PORT)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 const stations = (process.argv[2] ?? '0,1,2,3,4,5,6').split(',').map(Number), n = Number(process.argv[3] ?? 5);
-const port = Number(process.env.CADENCE_PORT) || 5243;
+const port = Number(process.env.SIENNA_PORT) || 5243;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
 const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -14,10 +14,10 @@ for (const at of stations) {
   const page = await b.newPage({ viewport: { width: W, height: H } });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));
   await page.goto(`http://127.0.0.1:${port}/index.html?shelves=8&at=${at}&wc=0`);
-  await page.waitForFunction(() => window.__cadenceDebug?.state.settled, null, { timeout: 180000 });
+  await page.waitForFunction(() => window.__siennaDebug?.state.settled, null, { timeout: 180000 });
   await page.waitForTimeout(6000);
   const rectsJS = () => {
-    const d = window.__cadenceDebug, core = d.rack.core, cam = d.camera, tag = core.tag.mesh;
+    const d = window.__siennaDebug, core = d.rack.core, cam = d.camera, tag = core.tag.mesh;
     cam.updateMatrixWorld();
     return core.sleeves.map((s) => {
       if (!s.mesh.visible) return null;
@@ -48,9 +48,9 @@ for (const at of stations) {
   const lines = [];
   let worst = 0;
   for (const k of picks) {
-    await page.evaluate((k) => window.__cadenceDebug.setHover(k), k);
+    await page.evaluate((k) => window.__siennaDebug.setHover(k), k);
     // SwiftShader frames are slow: wait for the record to be fully up (and the last one back down)
-    await page.waitForFunction((k) => { const ss = window.__cadenceDebug.rack.core.sleeves; return ss[k].lift > 0.97 && ss.every((s, i) => i === k || s.lift < 0.03); }, k, { timeout: 60000, polling: 200 }).catch(() => console.log(`  #${k} never settled`));
+    await page.waitForFunction((k) => { const ss = window.__siennaDebug.rack.core.sleeves; return ss[k].lift > 0.97 && ss.every((s, i) => i === k || s.lift < 0.03); }, k, { timeout: 60000, polling: 200 }).catch(() => console.log(`  #${k} never settled`));
     const now = await page.evaluate(rectsJS);
     const L = now[k], R = rest[k];
     if (!L) continue;

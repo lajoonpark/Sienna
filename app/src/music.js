@@ -1,11 +1,11 @@
-// Music backend for the shop. In the Electron app this is YouTube Music (window.cadence, from
+// Music backend for the shop. In the Electron app this is YouTube Music (window.sienna, from
 // electron/preload.cjs). In a plain browser (`npm run web`, screenshots) it is a fake record
 // store with painted covers, so the rack and buttons can be worked on without an account.
 import { rng } from './rand.js';
 import { repairArt } from './cover.js';
 
 export function createMusic() {
-  return window.cadence ? realMusic(window.cadence) : fakeMusic();
+  return window.sienna ? realMusic(window.sienna) : fakeMusic();
 }
 
 // onArt listeners: called with an item after its art was replaced in place.

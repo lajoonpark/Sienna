@@ -1,5 +1,5 @@
 // Dev page: each cover as it arrives, then painted by coverpaint.js at Medium and at Heavy (the default).
-// ?url=a,b,c to try other covers. Shots: CADENCE_PAGE=cover-lab.html node scripts/shot.mjs dir 0
+// ?url=a,b,c to try other covers. Shots: SIENNA_PAGE=cover-lab.html node scripts/shot.mjs dir 0
 import { paintCover, coverSeed } from './coverpaint.js';
 
 const DEFAULTS = [

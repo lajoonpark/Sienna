@@ -8,7 +8,8 @@
 //   settings.set('paint', 2)
 //   const off = settings.on('paint', (v) => ...)   // also fires for changes made in the other window
 
-const KEY = 'cadence.settings';
+const KEY = 'sienna.settings';
+const OLD_KEY = 'cadence.settings';   // the app was called Cadence until 2026-11-08; read once, then dropped
 
 export const DEFAULTS = {
   paint: 4, // how it is painted, 0..3 watercolour strength, 4 brush strokes (LEVELS in watercolour.js)
@@ -21,7 +22,12 @@ export const DEFAULTS = {
 
 function load() {
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
+    let text = localStorage.getItem(KEY);
+    if (text == null && (text = localStorage.getItem(OLD_KEY)) != null) {
+      localStorage.setItem(KEY, text);
+      localStorage.removeItem(OLD_KEY);
+    }
+    const raw = JSON.parse(text || '{}');
     if (!raw || typeof raw !== 'object') return {};
     if (raw.paintV !== DEFAULTS.paintV) delete raw.paint;
     return raw;

@@ -1,5 +1,5 @@
 // YouTube Music, played by a hidden music.youtube.com window. That page does the real work
-// (audio, ads, queue, radio, history, likes); Cadence drives it through ytm-page.js and reads
+// (audio, ads, queue, radio, history, likes); Sienna drives it through ytm-page.js and reads
 // shelves from the same internal API the page uses.
 const { BrowserWindow, app } = require('electron');
 const fs = require('node:fs');
@@ -16,7 +16,7 @@ const PAGE_JS = fs.readFileSync(path.join(__dirname, 'ytm-page.js'), 'utf8');
 // Google refuses to sign in "embedded browsers"; a plain Chrome user agent (Electron's minus the
 // Electron and app tokens) avoids that and makes YouTube Music serve its normal desktop site.
 function chromeUserAgent() {
-  return app.userAgentFallback.replace(/\s(Electron|cadence-app|Cadence)\/\S+/gi, '');
+  return app.userAgentFallback.replace(/\s(Electron|sienna-app|Sienna)\/\S+/gi, '');
 }
 
 // Google blocks sign-in from embedded Chromium ("This browser or app may not be secure") but still
@@ -35,14 +35,14 @@ function createYtm({ onState, onSignedIn }) {
     show: false,
     width: 1200,
     height: 800,
-    title: 'YouTube Music (Cadence player)',
+    title: 'YouTube Music (Sienna player)',
     // Throttled like a background tab: audio plays on, but the hidden page stops painting and
     // Chromium drops the video track of what plays in it (no unseen video decoding, less heat).
     webPreferences: { partition: PARTITION, backgroundThrottling: true, autoplayPolicy: 'no-user-gesture-required' },
   });
   win.webContents.setUserAgent(ua);
   win.webContents.setAudioMuted(false);
-  // YouTube Music asks "leave site?" while playing; Cadence decides when to navigate.
+  // YouTube Music asks "leave site?" while playing; Sienna decides when to navigate.
   win.webContents.on('will-prevent-unload', (e) => e.preventDefault());
   win.webContents.on('dom-ready', () => { win.webContents.executeJavaScript(PAGE_JS).catch(() => {}); });
   // A cookie consent page (EU) needs the user once: show the window until it is accepted.
@@ -63,7 +63,7 @@ function createYtm({ onState, onSignedIn }) {
     for (;;) {
       const ok = await js(`!!(window.ytcfg && document.querySelector('ytmusic-app'))`).catch(() => false);
       if (ok) {
-        if (!(await js('!!window.__cadence'))) await js(PAGE_JS);
+        if (!(await js('!!window.__sienna'))) await js(PAGE_JS);
         return;
       }
       if (Date.now() - t0 > timeoutMs) throw new Error('YouTube Music did not load');
@@ -71,29 +71,29 @@ function createYtm({ onState, onSignedIn }) {
     }
   }
 
-  // CADENCE_DUMP=1 saves every raw response to <userData>/dumps/<endpoint>-<time>-<n>.json, so a
+  // SIENNA_DUMP=1 saves every raw response to <userData>/dumps/<endpoint>-<time>-<n>.json, so a
   // signed-in response can be copied into test/fixtures when something parses wrong.
   let dumped = 0;
   function dump(endpoint, body, res) {
-    if (!process.env.CADENCE_DUMP) return;
+    if (!process.env.SIENNA_DUMP) return;
     try {
       const dir = path.join(app.getPath('userData'), 'dumps');
       fs.mkdirSync(dir, { recursive: true });
       const file = path.join(dir, `${endpoint}-${new Date().toISOString().replace(/[:.]/g, '-')}-${dumped++}.json`);
       fs.writeFileSync(file, JSON.stringify({ request: body, response: res }));
-      console.warn('[cadence] dumped', file);
-    } catch (e) { console.warn('[cadence] dump failed', e.message); }
+      console.warn('[sienna] dumped', file);
+    } catch (e) { console.warn('[sienna] dump failed', e.message); }
   }
 
   const api = async (endpoint, body) => {
     await ready();
-    const res = await js(`window.__cadence.api(${JSON.stringify(endpoint)}, ${JSON.stringify(body)})`);
+    const res = await js(`window.__sienna.api(${JSON.stringify(endpoint)}, ${JSON.stringify(body)})`);
     dump(endpoint, body, res);
     return res;
   };
 
   // An item with no cover is a bug somewhere in parsing: say which renderer it came from.
-  const onNoArt = (item, renderer) => console.warn(`[cadence] no art for ${item.kind} "${item.title}"; renderer keys: ${Object.keys(renderer).join(',')}; image-ish paths: ${artDebug(renderer).join(' ') || 'none'}`);
+  const onNoArt = (item, renderer) => console.warn(`[sienna] no art for ${item.kind} "${item.title}"; renderer keys: ${Object.keys(renderer).join(',')}; image-ish paths: ${artDebug(renderer).join(' ') || 'none'}`);
 
   // Home shelves ("Listen again", "Quick picks", mixes...), one page at a time: call again with
   // `next` for more (later pages come from continuations).
@@ -125,7 +125,7 @@ function createYtm({ onState, onSignedIn }) {
           try {
             const arts = [...new Set(parsePlaylistSongs(await get()).map((x) => x.art).filter(Boolean))];
             if (arts.length) return arts.slice(0, 4).map((u) => u.replace('w544-h544', 'w256-h256'));
-          } catch (e) { console.warn('[cadence] playlistArt', id, e.message); }
+          } catch (e) { console.warn('[sienna] playlistArt', id, e.message); }
         }
         return [];
       })();
@@ -137,7 +137,7 @@ function createYtm({ onState, onSignedIn }) {
 
   async function play(endpoint) {
     await ready();
-    const routed = await js(`window.__cadence.navigate(${JSON.stringify(endpoint)})`).catch(() => false);
+    const routed = await js(`window.__sienna.navigate(${JSON.stringify(endpoint)})`).catch(() => false);
     if (routed) return;
     // Fallback: a full page load of the watch URL.
     const q = new URLSearchParams();
@@ -150,16 +150,16 @@ function createYtm({ onState, onSignedIn }) {
   // ready to start; false if it could not be held, which startPrepared copes with.
   async function prepare(endpoint) {
     await ready();
-    return js(`window.__cadence.prepare(${JSON.stringify(endpoint)})`).catch(() => false);
+    return js(`window.__sienna.prepare(${JSON.stringify(endpoint)})`).catch(() => false);
   }
   async function startPrepared(endpoint) {
     await ready();
-    const held = await js('window.__cadence.release()').catch(() => false);
+    const held = await js('window.__sienna.release()').catch(() => false);
     if (!held) await play(endpoint);
   }
 
   // On macOS the volume knob is the system volume; the player itself stays at full volume.
-  // It is read (one osascript run) only while a Cadence window is on screen, to catch the volume keys.
+  // It is read (one osascript run) only while a Sienna window is on screen, to catch the volume keys.
   const sysVol = createSystemVolume();
   sysVol?.refresh();
   setInterval(() => { if (active) sysVol?.refresh(); }, 3000);
@@ -167,10 +167,10 @@ function createYtm({ onState, onSignedIn }) {
   async function command(name, arg) {
     if (name === 'volume' && sysVol) { sysVol.set(arg); return true; }
     await ready();
-    return js(`window.__cadence.command(${JSON.stringify(name)}, ${JSON.stringify(arg ?? null)})`);
+    return js(`window.__sienna.command(${JSON.stringify(name)}, ${JSON.stringify(arg ?? null)})`);
   }
 
-  // Poll the page and pass state on: 4x a second while a Cadence window is on screen (smooth enough
+  // Poll the page and pass state on: 4x a second while a Sienna window is on screen (smooth enough
   // for a tonearm), every 3 s while only the menu-bar icon is left (keeps sign-in and volume in step).
   let active = true;
   let lastSignedIn = null;
@@ -188,10 +188,10 @@ function createYtm({ onState, onSignedIn }) {
   schedule();
   async function pollOnce() {
     if (win.isDestroyed()) return;
-    const s = await js('window.__cadence?.state()').catch(() => null);
+    const s = await js('window.__sienna?.state()').catch(() => null);
     if (!s) return;
     if (sysVol) {
-      if (s.volume !== 100 && s.videoId) js('window.__cadence.command("volume", 100)').catch(() => {});
+      if (s.volume !== 100 && s.videoId) js('window.__sienna.command("volume", 100)').catch(() => {});
       if (sysVol.get() !== null) s.volume = sysVol.get();
     }
     onState(s);
@@ -225,7 +225,7 @@ function createYtm({ onState, onSignedIn }) {
     });
   }
 
-  // Request handlers main.cjs registers as ipc channels ytm:<name> (renderer: window.cadence.<name>).
+  // Request handlers main.cjs registers as ipc channels ytm:<name> (renderer: window.sienna.<name>).
   const ipc = { search, playlistArt, prepare, startPrepared };
   return { home, play, command, signIn, ipc, search, playlistArt, setActive, window: win };
 }

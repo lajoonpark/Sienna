@@ -1,5 +1,5 @@
 // Scrubbing with the record: turn it clockwise to go forward, anticlockwise to go back, like
-// dragging a platter. Port of Sources/CadenceCore/RecordScrub.swift. Pure maths; the view feeds it
+// dragging a platter. Port of Sources/SiennaCore/RecordScrub.swift. Pure maths; the view feeds it
 // the pointer's angle about the record's centre (clockwise from 12 o'clock, see recordAngle).
 
 // Clockwise-from-12 angle of a point in [0, 2pi). y points DOWN the screen (towards the front of

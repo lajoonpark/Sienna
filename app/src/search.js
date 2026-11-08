@@ -231,7 +231,7 @@ export function createSearch({ music, onPlay, suggest = null }) {
       const s = await suggest();
       if (mine !== seq || input.value.trim() || !isOpen || !s?.items?.length) return;
       render(s.items, s.title);
-    } catch (e) { console.warn('[cadence] suggestions failed', e); }
+    } catch (e) { console.warn('[sienna] suggestions failed', e); }
   }
 
   async function run() {
@@ -247,7 +247,7 @@ export function createSearch({ music, onPlay, suggest = null }) {
       apply(items, q);
     } catch (e) {
       if (mine !== seq) return;
-      console.warn('[cadence] search failed', e);
+      console.warn('[sienna] search failed', e);
       pendingEnter = false;
       note('could not search');
     }

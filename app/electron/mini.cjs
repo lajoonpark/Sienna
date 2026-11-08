@@ -45,7 +45,7 @@ function createMini({ onVisible } = {}) {
     if (mac) win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
-    const dev = process.env.CADENCE_DEV_URL;
+    const dev = process.env.SIENNA_DEV_URL;
     if (dev) win.loadURL(new URL('mini.html', dev).href);
     else win.loadFile(path.join(__dirname, '..', 'dist', 'mini.html'));
     // clicking outside: the window loses focus, so shut the lid (not in the first moments, while focus is settling)
@@ -110,7 +110,7 @@ function createMini({ onVisible } = {}) {
     // Registers the shortcut. Returns false if the system refused it (another app owns it, or no X11 on Linux).
     register() {
       registered = globalShortcut.register(SHORTCUT, toggle);
-      if (!registered) console.warn(`Cadence: could not register ${SHORTCUT}`);
+      if (!registered) console.warn(`Sienna: could not register ${SHORTCUT}`);
       app.once('will-quit', () => this.dispose());
       return registered;
     },

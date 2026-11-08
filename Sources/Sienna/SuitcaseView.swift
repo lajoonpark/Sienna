@@ -1,6 +1,6 @@
 import AppKit
 import SceneKit
-import CadenceCore
+import SiennaCore
 
 /// The suitcase on screen: owns the animation (lid, record, tonearm, knob) and all input.
 ///

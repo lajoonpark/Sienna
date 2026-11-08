@@ -22,7 +22,7 @@ struct KasetPlayerInfo: Decodable {
     var likeStatus: String?
     var currentTrack: Track?
 
-    /// Maps to Cadence's model. Empty or unparseable text (Kaset closed, nothing queued)
+    /// Maps to Sienna's model. Empty or unparseable text (Kaset closed, nothing queued)
     /// means idle.
     static func nowPlaying(fromJSON text: String) -> NowPlaying {
         guard let data = text.data(using: .utf8), !text.isEmpty,

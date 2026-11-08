@@ -1,4 +1,4 @@
-// The Mac's own output volume (the one in the menu bar), via osascript. Cadence's knob and scroll
+// The Mac's own output volume (the one in the menu bar), via osascript. Sienna's knob and scroll
 // drive this rather than the YouTube player's volume, because the player's 100% is only as loud as
 // the system volume already is: you could turn the knob down but never past where the Mac was set.
 // Other platforms return null and the app keeps using the player's volume.

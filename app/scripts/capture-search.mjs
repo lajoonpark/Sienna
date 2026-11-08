@@ -3,7 +3,7 @@
 // Writes search.json (songs search) and a few probe files next to it.
 import { _electron as electron } from 'playwright';
 import { mkdirSync, writeFileSync } from 'node:fs';
-const S = process.argv[2] || '/tmp/cadence-capture';
+const S = process.argv[2] || '/tmp/sienna-capture';
 const query = process.argv[3] || 'lemon';
 mkdirSync(S, { recursive: true });
 const app = await electron.launch({
@@ -15,14 +15,14 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 let ytm;
 for (let i = 0; i < 120 && !ytm; i++) {
   for (const w of app.windows()) {
-    if (w.url().startsWith('https://music.youtube.com') && await w.evaluate('!!(window.__cadence && window.ytcfg && document.querySelector("ytmusic-app"))').catch(() => false)) ytm = w;
+    if (w.url().startsWith('https://music.youtube.com') && await w.evaluate('!!(window.__sienna && window.ytcfg && document.querySelector("ytmusic-app"))').catch(() => false)) ytm = w;
   }
   if (!ytm) await new Promise((r) => setTimeout(r, 500));
 }
 if (!ytm) throw new Error('no YouTube Music page');
 log('ytm page', ytm.url());
 const SONGS = 'EgWKAQIIAWoMEA4QChADEAQQCRAF';
-const call = (endpoint, body) => ytm.evaluate(([e, b]) => window.__cadence.api(e, b), [endpoint, body]);
+const call = (endpoint, body) => ytm.evaluate(([e, b]) => window.__sienna.api(e, b), [endpoint, body]);
 const save = (name, data) => { writeFileSync(`${S}/${name}.json`, JSON.stringify(data)); log('saved', name, JSON.stringify(data).length, 'bytes'); };
 save('search', await call('search', { query, params: SONGS }));
 save('search-nofilter', await call('search', { query }));

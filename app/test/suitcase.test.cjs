@@ -1,4 +1,4 @@
-// Ports of the Swift tests in Tests/CadenceCoreTests/SuitcaseTests.swift and RecordLayoutTests.swift
+// Ports of the Swift tests in Tests/SiennaCoreTests/SuitcaseTests.swift and RecordLayoutTests.swift
 // for the pure parts of the suitcase: lid hinge, volume knob, record scrub and tonearm layout.
 // The sources are ES modules, so they are loaded with import() from these CommonJS test files.
 const test = require('node:test');

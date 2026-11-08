@@ -2,12 +2,12 @@
 // stubbed Electron bridge and a slow home feed, the window still "hidden", and checks: fetched without
 // being asked, covers painted ahead, slips on the page in the same task as the hotkey, an old copy shown
 // at once while a fresh one loads, a failed fetch tried again, a sign-in fetching again.
-// Usage: node scripts/mini-suggest-check.mjs      (CADENCE_PORT=5241)
+// Usage: node scripts/mini-suggest-check.mjs      (SIENNA_PORT=5241)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import assert from 'node:assert';
 
-const port = Number(process.env.CADENCE_PORT) || 5241;
+const port = Number(process.env.SIENNA_PORT) || 5241;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
@@ -30,7 +30,7 @@ async function load({ failFirst = false, held = false } = {}) {
       set src(v) { if (String(v).includes('/cover/')) window.__art++; super.src = v; }
       get src() { return super.src; }
     };
-    window.cadence = {
+    window.sienna = {
       home: async () => {
         const n = ++window.__home;
         await (window.__gate ?? new Promise((r) => setTimeout(r, window.__delay)));
@@ -42,7 +42,7 @@ async function load({ failFirst = false, held = false } = {}) {
       onState: () => {},
       onSignedIn: (cb) => { window.__signedIn = cb; },
     };
-    window.cadenceMini = { onOpen: (cb) => { window.__open = cb; }, onClose: () => {}, closing: () => {}, closed: () => {} };
+    window.siennaMini = { onOpen: (cb) => { window.__open = cb; }, onClose: () => {}, closing: () => {}, closed: () => {} };
     // Press the hotkey and read the page in the same task plus microtasks: nothing has been painted yet.
     window.__pressSearch = async () => {
       dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS', altKey: true, ctrlKey: true, metaKey: true, bubbles: true }));

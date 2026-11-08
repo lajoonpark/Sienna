@@ -1,14 +1,14 @@
 // Drives the search bar (search-lab.html, fake store) like a user and checks the things that
 // went wrong before: keys leaking to the shop, stale results, Enter on a slow search, Esc.
-// Usage: node scripts/search-check.mjs out_dir      (CADENCE_PORT=5231, ports 5231-5239)
+// Usage: node scripts/search-check.mjs out_dir      (SIENNA_PORT=5231, ports 5231-5239)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { mkdirSync } from 'node:fs';
 import assert from 'node:assert';
 
-const out = process.argv[2] || '/tmp/cadence-search';
+const out = process.argv[2] || '/tmp/sienna-search';
 mkdirSync(out, { recursive: true });
-const port = Number(process.env.CADENCE_PORT) || 5231;
+const port = Number(process.env.SIENNA_PORT) || 5231;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });

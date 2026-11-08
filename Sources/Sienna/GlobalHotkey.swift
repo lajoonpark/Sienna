@@ -1,6 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
-import CadenceCore
+import SiennaCore
 
 /// System-wide hotkey via Carbon's `RegisterEventHotKey`: no Accessibility permission and no
 /// background CPU, so the app stays invisible until called.
@@ -42,7 +42,7 @@ final class GlobalHotkey {
         )
         guard status == noErr, let ref else {
             lastRegistrationFailed = true
-            NSLog("Cadence: could not register \(spec.displayName) (OSStatus \(status))")
+            NSLog("Sienna: could not register \(spec.displayName) (OSStatus \(status))")
             return false
         }
         hotKeyRef = ref

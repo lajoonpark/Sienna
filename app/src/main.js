@@ -18,7 +18,7 @@ import { createPacer } from './pacer.js';
 import { createMusic } from './music.js';
 import { createPlayer } from './suitcase/player.js';
 import { startSong } from './suitcase.js';
-import '@fontsource/caveat-brush';
+import '@fontsource/dancing-script/700.css';
 
 const params = new URLSearchParams(location.search);
 const shotMode = params.has('shot');
@@ -311,7 +311,7 @@ loadShelves();
 music.onSignedIn(loadShelves);
 
 // for tests and the devtools console
-window.__cadenceDebug = {
+window.__siennaDebug = {
   renderer,
   get pacer() { return pacer; },
   camera,

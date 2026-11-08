@@ -1,8 +1,8 @@
-// Injected into the hidden music.youtube.com page. Installs window.__cadence: a small, stable
+// Injected into the hidden music.youtube.com page. Installs window.__sienna: a small, stable
 // surface over YouTube Music's own player and internal API, so the Electron main process only
 // ever calls these few functions (and only this file has to change when YouTube changes).
 (() => {
-  if (window.__cadence) return;
+  if (window.__sienna) return;
 
   const cfg = (k) => window.ytcfg?.get?.(k);
   const player = () => document.getElementById('movie_player');
@@ -90,7 +90,7 @@
   let hold = null;
   const HOLD_MAX_MS = 30000;                                  // nobody released it (window hidden, ...): play
   const IGNORED_IN_HOLD = new Set(['toggle', 'play', 'next', 'previous', 'seek', 'like']);   // they would act on a song the suitcase does not show yet
-  const MUTE_FLAG = 'cadenceHoldMuted';                       // survives a crash mid-hold; YouTube remembers mute
+  const MUTE_FLAG = 'siennaHoldMuted';                       // survives a crash mid-hold; YouTube remembers mute
   const isAd = () => !!document.querySelector('#movie_player.ad-showing, .ytp-ad-player-overlay');
 
   function checkHold() {
@@ -174,7 +174,7 @@
     if (p) lowVideo(p, data.video_id);
     if (p && !hold) {
       let stuck = false;
-      try { stuck = !!localStorage.getItem(MUTE_FLAG); if (stuck) localStorage.removeItem(MUTE_FLAG); } catch { /* see endHold */ }
+      try { stuck = !!(localStorage.getItem(MUTE_FLAG) || localStorage.getItem('cadenceHoldMuted')); if (stuck) { localStorage.removeItem(MUTE_FLAG); localStorage.removeItem('cadenceHoldMuted'); } } catch { /* see endHold */ }   // cadenceHoldMuted: the flag's name before the Sienna rename
       if (stuck) p.unMute?.();                                // the app died during a hold
     }
     if (hold) return { ...hold.frozen, volume: p?.getVolume?.() ?? hold.frozen.volume };
@@ -201,7 +201,7 @@
     };
   }
 
-  window.__cadence = {
+  window.__sienna = {
     api, navigate, state, prepare, release,
     command: (name, arg) => { if (!(hold && IGNORED_IN_HOLD.has(name))) return commands[name]?.(arg); },
   };

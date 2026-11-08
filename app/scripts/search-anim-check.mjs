@@ -1,15 +1,15 @@
 // The search bar's paint-on / flick-off (src/searchpaint.js). Plays it in search-lab.html and checks that it
 // really paints in stages, rests on the same picture every time, survives a change of mind halfway, and
 // holds its frame rate on the GPU. Saves a film strip of each direction to out_dir.
-// Usage: node scripts/search-anim-check.mjs out_dir      (CADENCE_PORT=5251)
+// Usage: node scripts/search-anim-check.mjs out_dir      (SIENNA_PORT=5251)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert';
 
-const out = process.argv[2] || '/tmp/cadence-search-anim';
+const out = process.argv[2] || '/tmp/sienna-search-anim';
 mkdirSync(out, { recursive: true });
-const port = Number(process.env.CADENCE_PORT) || 5251;
+const port = Number(process.env.SIENNA_PORT) || 5251;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });

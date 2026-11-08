@@ -1,5 +1,5 @@
 // The volume knob's maths: how scrolling and dragging map to a volume, and where the pointer of
-// the knob sits for a volume. Port of Sources/CadenceCore/VolumeKnob.swift.
+// the knob sits for a volume. Port of Sources/SiennaCore/VolumeKnob.swift.
 //
 // Volume is 0..1. The knob sweeps 270 degrees centred on 12 o'clock like a hi-fi knob, with a dead
 // gap at the bottom. Angles are CLOCKWISE FROM 12 O'CLOCK, so a knob at minimum points at about

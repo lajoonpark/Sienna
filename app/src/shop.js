@@ -1,4 +1,4 @@
-// The Cadence record shop interior: an old Tuscan building of brick barrel vaults going back.
+// The Sienna record shop interior: an old Tuscan building of brick barrel vaults going back.
 //   1. the big hall (z -0.55 .. -10.5): crate-digging tables, a U-shaped wooden gallery with a
 //      spiral stair, a listening corner and the counter
 //   2. the listening lounge (z -11 .. -15): sofa, record wall, turntable and speakers

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The AppleScript Cadence sends to Kaset. Kept as pure strings so it is unit tested; the verbs
+/// The AppleScript Sienna sends to Kaset. Kept as pure strings so it is unit tested; the verbs
 /// come from Kaset's AppleScript docs (docs/applescript.md in sozercan/kaset).
 public enum KasetScripts {
 
