@@ -18,7 +18,7 @@
 //     spread.isOpen, spread.busy (something still moving), spread.hovered, spread.page, spread.pages
 //     spread.forceHover = k           hold record k up (screenshots: ?open=N&spreadhover=k)
 // The records hang in the camera's frame (a group parented to the camera), so they stay put on screen;
-// main.js holds the cursor tilt while the spread is open, like it does for a lifted record.
+// the cursor tilt in main.js keeps panning the shop behind them while the spread is open.
 import * as THREE from 'three';
 import { vinylParts, vinylMaterial, getCover, createTag, canvas, fontReady, springTo, clamp01 } from './racks/common.js';
 import { crisp } from './materials.js';

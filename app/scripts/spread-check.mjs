@@ -3,7 +3,8 @@
 // Hovers an album, presses it, checks the records fan out (play-all + one per song, 15 a page), that a
 // record under the cursor lifts and stays under it, that a sideways scroll turns the page, that Esc and a
 // click on empty space put them back, that a song plays from inside its album (the next song follows
-// in album order) and that the play-all record plays track 1. Saves a few screenshots.
+// in album order), that the play-all record plays track 1 and that the camera keeps panning with the
+// cursor while the spread is open. Saves a few screenshots.
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { mkdirSync } from 'node:fs';
@@ -92,6 +93,20 @@ await page.mouse.wheel(-120, 0);
 await page.waitForTimeout(1300);
 st = await state();
 if (st.page !== 0) fail('scroll back did not return to page 1');
+
+// 3b. the camera still pans with the cursor while the spread is out (it hangs in the camera's frame)
+const look = () => page.evaluate(() => { const d = window.__siennaDebug.camera.getWorldDirection(window.__siennaDebug.camera.position.clone()); return { x: d.x, y: d.y, z: d.z }; });
+await page.mouse.move(W * 0.04, H * 0.05, { steps: 8 });
+await page.waitForTimeout(1500);
+const lookL = await look();
+await page.mouse.move(W * 0.96, H * 0.05, { steps: 8 });
+await page.waitForTimeout(1500);
+const lookR = await look();
+const panDeg = Math.acos(Math.min(1, lookL.x * lookR.x + lookL.y * lookR.y + lookL.z * lookR.z)) * 180 / Math.PI;
+st = await state();
+console.log('pan across the top with the spread open:', panDeg.toFixed(2), 'deg, open', st.open);
+if (!st.open) fail('moving the cursor closed the spread');
+if (panDeg < 0.5) fail(`camera froze while the spread was open (turned ${panDeg.toFixed(2)} deg)`);
 
 // 4. Esc puts them back
 await page.keyboard.press('Escape');

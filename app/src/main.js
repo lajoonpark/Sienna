@@ -630,9 +630,10 @@ function frame(t, dtOverride, draw = true) {
   // Matrix4.lookAt uses the camera convention (looks down -z); Object3D.lookAt on a group would face the other way.
   rig.quaternion.setFromRotationMatrix(lookM.lookAt(c.pos, c.target, UP));
   for (const { pivot, side } of street.leaves) pivot.rotation.y = side * -nav.doorOpen(t) * DOOR_OPEN;
-  // the tilt holds while a record is up: turning the camera under it would slide the record across the
-  // rack (keepUnderCursor keeps it on the spot where the hover began), as if the cursor were carrying it
-  if (!((currentRack()?.hovered ?? -1) >= 0) && !spread.isOpen) {
+  // the tilt holds while a rack record is up: turning the camera under it would slide the record across
+  // the rack (keepUnderCursor keeps it on the spot where the hover began), as if the cursor were carrying
+  // it. The album spread hangs in the camera's frame, so its records ride along and the tilt keeps going.
+  if (spread.isOpen || !((currentRack()?.hovered ?? -1) >= 0)) {
     tilt.x += (tilt.tx - tilt.x) * 0.06;
     tilt.y += (tilt.ty - tilt.y) * 0.06;
   }
