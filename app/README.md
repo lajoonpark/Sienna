@@ -43,7 +43,11 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 - **Home**: the intro is a 10 s shot (`src/nav.js` SHOT = where the camera goes, PACE = how fast):
   low behind the fruit stall, rising under the arch, a slow beat under the Sienna sign while the doors
   open, then through them to a home spot just inside the shop. Painted cinema bars (`setBars` in
-  `src/watercolour.js`) frame it and slide away on arrival. Click or press any key to skip it. Your YouTube Music shelves ("Quick picks", "Listen again"...) are the
+  `src/watercolour.js`) frame it and slide away on arrival. Intro-only lighting (`src/introlight.js`,
+  on top of the real time of day): a cool street grade turning warm through the door, a vignette, warm
+  light spilling from the opening doors, hazy sun beams in the piazza while the sun is up, and after
+  dark the lamps wake one by one as the camera nears them (`lampWake` in `src/env.js`). Click or press
+  any key to skip it. Your YouTube Music shelves ("Quick picks", "Listen again"...) are the
   brush-stroke words down both sides of the screen (`src/menu.js`); click one and the camera walks
   there (`src/nav.js`: along the aisle, through the arches, over the gallery railing). **Tab** /
   **Shift+Tab** go to the next / previous section, **Esc** or HOME goes back. At a section the words

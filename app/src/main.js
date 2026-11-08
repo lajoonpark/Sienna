@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { buildStreet } from './street.js';
+import { createIntroLight } from './introlight.js';
+import { lampWake } from './env.js';
 import { buildShop } from './shop.js';
 import { WATERCOLOUR } from './style.js';
 import { createWatercolour, renderOverlay } from './watercolour.js';
@@ -69,6 +71,7 @@ const sky = createSky();
 scene.add(sky.dome);
 
 const street = buildStreet();
+const introLight = createIntroLight(street.root); // intro-only door spill, sun beams, grade (introlight.js)
 scene.add(street.root);
 const shop = buildShop();
 scene.add(shop);
@@ -615,7 +618,9 @@ function frame(t, dtOverride, draw = true) {
   // wall-clock time: a slow frame rate must not stretch flights, so allow a long step (nav and racks cope)
   const dt = dtOverride ?? Math.min(0.25, Math.max(0, t - lastT));
   lastT = curT = t;
-  timeOfDay.update(t);
+  // lamps wake one by one as the intro's camera nears them (env.js lampWake); last frame's camera z
+  lampWake.camZ = nav.intro && !pinnedPose ? nav.pose.pos.z : null;
+  const sunNow = timeOfDay.update(t);
   const pose = nav.update(t, dt);
   if (!everPlaced && nav.introDone) placeFirst(); // the camera reached home before the last page came in
   runFillJob();
@@ -686,6 +691,8 @@ function frame(t, dtOverride, draw = true) {
     // painted cinema bars while the intro plays; a skip wipes them off with the flight home
     painter.setBars?.(pinnedPose ? 0 : nav.intro ? introBars(t) : nav.phase === 'fly' && !nav.introDone ? Math.min(barsK, Math.max(0, 1 - nav.progress / 0.6)) : 0);
     barsK = painter.bars ?? 0;
+    const il = introLight.update({ cine: barsK, door: nav.doorOpen(t), camZ: c.pos.z, sunE: sunNow.e });
+    painter.setGrade?.(il.grade, il.vignette);
     painter.render(scene, camera, t, suitcase.overlay);
   } else { renderer.render(scene, camera); renderOverlay(renderer, suitcase.overlay); }
 }

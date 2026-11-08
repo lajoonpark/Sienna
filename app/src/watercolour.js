@@ -164,6 +164,8 @@ uniform vec2 paperOffset;
 uniform float seed;
 uniform float borderSeed; // keeps boiling in brush mode, where seed stays 0
 uniform float bars;       // 0..1: painted cinema bars (letterbox) top and bottom, during the intro
+uniform vec3 grade;       // colour grade multiplied in (intro: cool street, warm shop); 1,1,1 = none
+uniform float vignette;   // 0..1: darker corners (intro)
 uniform float near;
 uniform float far;
 uniform sampler2D tWash;   // the bled washes, only with WASH
@@ -321,6 +323,14 @@ void main() {
   clean *= 0.97 + 0.03 * h;
   col = mix(col, clean, crisp);
 
+  // 5a. intro grade and vignette (introlight.js), before the bars so the ink stays its own colour
+  col *= grade;
+  if (vignette > 0.001) {
+    vec2 vq = (vUv - 0.5) * vec2(aspect, 1.0);
+    float r = length(vq) / length(vec2(aspect, 1.0) * 0.5);
+    col *= 1.0 - vignette * smoothstep(0.45, 1.05, r) * 0.75;
+  }
+
   // 5b. cinema bars: dark ink pulled across the sheet in long horizontal strokes, cropping the
   // picture to about 2.2:1. bars 0..1 slides them in from the top and bottom edges.
   if (bars > 0.001) {
@@ -398,6 +408,8 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
       seed: { value: 0 },
       borderSeed: { value: 0 },
       bars: { value: 0 },
+      grade: { value: new THREE.Vector3(1, 1, 1) },
+      vignette: { value: 0 },
       near: { value: 0.1 },
       far: { value: 100 },
       tWash: { value: null },
@@ -640,6 +652,8 @@ void main() {
     // cinema bars (0 = none, 1 = full ~2.2:1 letterbox), painted on the sheet inside the ragged border
     setBars(k) { material.uniforms.bars.value = Math.max(0, Math.min(1, k)); },
     get bars() { return material.uniforms.bars.value; },
+    // intro grade ([r, g, b] multiplier) and vignette 0..1 (introlight.js)
+    setGrade(rgb, vig = 0) { material.uniforms.grade.value.set(rgb[0], rgb[1], rgb[2]); material.uniforms.vignette.value = vig; },
     // overlay = { scene, camera }: drawn into the same target after the world, depth cleared, so it is
     // painted by the same pass but never hidden by (or clipped into) the walls.
     // sync (profiling only): called after each step with its name, to time it (see __siennaDebug.profile)

@@ -51,6 +51,22 @@ export function registerWindow(material, { day = '#6e7a86', lit = '#ffcf84', ord
   windows.push({ material, day: new THREE.Color(day), lit: new THREE.Color(lit), order });
 }
 
+// The intro wakes lamps as the camera comes near: a lamp whose time-of-day level says "on" stays
+// dark until the camera is within WAKE_DIST metres (along z) of it, then warms up with a flicker
+// over the next WAKE_RAMP metres.
+// lampWake.camZ = camera z while the intro plays, null otherwise (every lamp awake).
+export const lampWake = { camZ: null };
+const WAKE_DIST = 9, WAKE_RAMP = 1.8; // metres: wake-up starts at WAKE_DIST, full on WAKE_RAMP closer
+const _p = new THREE.Vector3();
+function lampZ(l) {
+  if (l.z === undefined) {
+    const g = l.glows[0];
+    l.z = g ? g.getWorldPosition(_p).z : null; // lamps with no glow (none today) are never held back
+  }
+  return l.z;
+}
+const flicker = (t, o) => { const f = Math.sin(t * 37 + o * 50) * Math.sin(t * 13 + o * 9); return 0.55 + 0.45 * (f > -0.2 ? 1 : 0.15); };
+
 // Called every frame by the time-of-day system.
 // lampsOn: 0..1 how far through the switch-on wave we are; t: seconds (for flicker).
 export function updateLamps(lampsOn, t) {
@@ -59,8 +75,13 @@ export function updateLamps(lampsOn, t) {
     const local = THREE.MathUtils.clamp((lampsOn - l.order * 0.8) / 0.12, 0, 1);
     let k = local;
     if (local > 0 && local < 1) {
-      const f = Math.sin(t * 37 + l.order * 50) * Math.sin(t * 13 + l.order * 9);
-      k = local * (0.55 + 0.45 * (f > -0.2 ? 1 : 0.15));
+      k = local * flicker(t, l.order);
+    }
+    // intro wake-up (see lampWake)
+    if (lampWake.camZ !== null && lampZ(l) !== null && k > 0) {
+      // by distance, not by a clock, so a screenshot at any second shows the same thing
+      const w = THREE.MathUtils.clamp((WAKE_DIST - (lampWake.camZ - l.z)) / WAKE_RAMP, 0, 1);
+      k *= w < 1 ? w * flicker(t, l.order) : 1;
     }
     l.level = k;
     for (const g of l.glass) g.color.copy(LAMP_OFF).lerp(LAMP_ON, k);
