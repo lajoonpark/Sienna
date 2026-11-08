@@ -7,11 +7,12 @@ const SHELF_KEYS = ['musicCarouselShelfRenderer', 'musicImmersiveCarouselShelfRe
 const text = (t) => (t?.runs ?? []).map((r) => r.text).join('') || t?.simpleText || '';
 
 // Every object under `node` that has `key`, depth first, not descending into matches.
-function findAll(node, key, out = []) {
-  if (Array.isArray(node)) for (const v of node) findAll(v, key, out);
+// `skip`: keys whose subtrees are not searched.
+function findAll(node, key, out = [], skip = null) {
+  if (Array.isArray(node)) for (const v of node) findAll(v, key, out, skip);
   else if (node && typeof node === 'object') {
     if (key in node) out.push(node[key]);
-    else for (const v of Object.values(node)) findAll(v, key, out);
+    else for (const [k, v] of Object.entries(node)) if (!skip?.has(k)) findAll(v, key, out, skip);
   }
   return out;
 }
@@ -256,13 +257,17 @@ function parseSearch(response, { onNoArt } = {}) {
 // The songs of a playlist or album (browse VL<id>: rows) or of a mix / radio / album queue (the `next`
 // endpoint: queue panel), in order: [{ videoId, title, subtitle (artist), duration (s)?, art }].
 // The playlist cover collage uses only videoId and art; the album spread (src/spread.js) all of it.
+const NO_COUNTERPARTS = new Set(['counterpart']);
 function parsePlaylistSongs(response) {
   const out = [];
   for (const row of findAll(response, 'musicResponsiveListItemRenderer')) {
     const it = listRow(row);
     if (it.play?.videoId) out.push({ videoId: it.play.videoId, title: it.title, subtitle: it.subtitle, ...(it.duration ? { duration: it.duration } : {}), art: it.art });
   }
-  for (const row of findAll(response, 'playlistPanelVideoRenderer')) {
+  // Signed in, a queue entry with both an audio and a music-video version is a
+  // playlistPanelVideoWrapperRenderer: the primaryRenderer is the track, the `counterpart` is the same
+  // song as a video under another videoId. Reading both put every such song in the album twice.
+  for (const row of findAll(response, 'playlistPanelVideoRenderer', [], NO_COUNTERPARTS)) {
     if (!row.videoId) continue;
     const duration = seconds(text(row.lengthText));
     out.push({ videoId: row.videoId, title: text(row.title), subtitle: text(row.shortBylineText), ...(duration ? { duration } : {}), art: artOf(row.thumbnail).art });

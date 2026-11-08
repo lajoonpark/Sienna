@@ -79,6 +79,18 @@ test('playlist browse rows and mix queue entries both give videoId + art', () =>
   }
 });
 
+test('album queue: a song with an audio + video version counts once (counterpart skipped)', () => {
+  const pv = (videoId, title) => ({ videoId, title: { runs: [{ text: title }] }, shortBylineText: { runs: [{ text: 'Artist' }] }, lengthText: { runs: [{ text: '2:39' }] },
+    thumbnail: { thumbnails: [{ url: 'https://lh3.googleusercontent.com/x=w544-h544', width: 544, height: 544 }] } });
+  const res = { contents: { playlistPanelRenderer: { contents: [
+    { playlistPanelVideoRenderer: pv('aaaaaaaaaaa', 'One') },
+    { playlistPanelVideoWrapperRenderer: { primaryRenderer: { playlistPanelVideoRenderer: pv('bbbbbbbbbbb', 'Devilish') },
+      counterpart: [{ counterpartRenderer: { playlistPanelVideoRenderer: pv('vvvvvvvvvvv', 'Devilish') } }] } },
+    { playlistPanelVideoRenderer: pv('ccccccccccc', 'Three') },
+  ] } } };
+  assert.deepStrictEqual(parsePlaylistSongs(res).map((s) => s.videoId), ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc']);
+});
+
 // ---- artwork extraction ----------------------------------------------------
 
 const th = (...urls) => ({ thumbnails: urls.map(([url, width, height]) => ({ url, width, height })) });

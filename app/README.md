@@ -79,7 +79,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   playlist, so the album carries on from there; play-all plays the album from track 1. 15 songs a
   page: a sideways scroll or the paper arrows turn it. Esc, a click on empty space or leaving the
   rack sends them back into the sleeve. Songs come from `albumSongs` in `electron/ytm.cjs` (the
-  album playlist's `next` queue, browse `VL<id>` as fallback, cached), fetched as soon as an album
+  album playlist's `next` queue minus the music-video `counterpart` of each track, browse `VL<id>` as fallback, cached), fetched as soon as an album
   is hovered. No songs: it plays the whole album as before. Playlists and mixes still just play.
   Fake store: `?albums=1` adds an albums shelf (counter easel, station 3). Screenshots:
   `?at=3&hover=0&albums=1&open=2&spreadhover=4` (`spreadpage=1`, `spreadt=0.4` freezes the flight
