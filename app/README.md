@@ -69,6 +69,10 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   drag it round; let go with a flick and it keeps spinning, slowing down (`wheel` / `grab` / `dragTo` /
   `release` in `src/racks/spinner.js`, wired in `main.js`). A press that drags is not a click, and
   records don't lift while it turns. Check: `node scripts/spin-check.mjs [out]`.
+  A spinner record lifted from a side face comes forward along your line of sight until it is wholly
+  in front of the tower, shrinking just as much, so it looks the same size in the same spot but never
+  cuts into the tower's corner (`CLEAR` in `spinner.js`). Check:
+  `node scripts/spinner-clip-check.mjs [out] [tower angles]` (`SHOTS=1` saves every settled hover).
   At the courtyard stall, hovering a crate makes all its records float up in front of you, spread
   out so every cover shows; the one under the cursor grows and comes forward with its tag.
 - **Albums** (`src/spread.js`, any rack): pressing an album's record fans its songs out of the sleeve

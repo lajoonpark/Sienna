@@ -323,6 +323,7 @@ window.__siennaDebug = {
   renderer,
   get pacer() { return pacer; },
   camera,
+  THREE, // checks (scripts/spinner-clip-check.mjs)
   // ms per render step, GPU work included (each step waits for the GPU); shadows: also redraw the shadow map
   profile({ shadows = false, runs = 3 } = {}) {
     const gl = renderer.getContext(), px = new Uint8Array(4);

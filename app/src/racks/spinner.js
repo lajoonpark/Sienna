@@ -16,11 +16,12 @@ const LEAN = 0.2;
 const OUT = 0.405;                    // where a cover's bottom edge stands (from the tower axis)
 const TOP = 1.88;
 const PULL = 0.36;                    // a hovered cover first comes this far straight out of its pocket
+const CLEAR = 0.72, REACH_Y = 0.25;   // a lifted cover stays this far nearer you than the tower's axis (pocket corners reach 0.58, roof 0.64), over this much height
 const WHEEL_RAD = 0.005;               // turn per px of sideways scroll
 const HOLD = 0.25;                    // s after turning by hand before a record can lift again
 const FRICTION = 2.2, MAX_SPIN = 9;   // a flick's slow-down (1/s) and top speed (rad/s)
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(1, 1, 1), _p = new THREE.Vector3();
+const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(1, 1, 1), _p = new THREE.Vector3(), _u = new THREE.Vector3();
 
 export function createSpinnerRack({ onPick }) {
   const core = createRackCore({ onPick, sign: { w: 0.9, h: 0.115 } });
@@ -190,7 +191,22 @@ export function createSpinnerRack({ onPick }) {
         // above, so its vinyl has room to slide out), then toward you and turning
         xp.copy(rp).addScaledVector(s.d, PULL);
         popNear(pp, xp, cam, fw, 0.88);
+        // a record from a side face, turned to face you, would swing its far edge (and its tag) back into
+        // the tower's corner (Lajoon, msg 720). So it comes on along your line of sight until it is wholly in
+        // front of the tower, and shrinks just as much: on screen it is the same size in the same place
+        // (still under the cursor), in the room it is clear of the rack.
+        const deep = pp.x * fw.x + pp.y * fw.y + pp.z * fw.z - (cam.x * fw.x + cam.y * fw.y + cam.z * fw.z);
+        // the tower's axis, less its reach, at the nearest height the record spans (you look down or up at it)
+        const front = xp.y * fw.y - REACH_Y * Math.abs(fw.y) - (cam.x * fw.x + cam.y * fw.y + cam.z * fw.z) - CLEAR;
+        const near = deep > front && front > 0.3 ? front / deep : 1;
+        let shrink = 1;
+        if (near < 1) {
+          // where it would have been at this point of the lift, to keep its size on screen all the way
+          stagePath(_u, L, rp, xp, pp, { split: 0.75 });
+          pp.sub(cam).multiplyScalar(near).add(cam);
+        }
         const T = stagePath(_p, L, rp, xp, pp, { split: 0.75 }); // far out before the bend: the post is right behind
+        if (near < 1) shrink = _p.distanceTo(cam) / Math.max(1e-3, _u.distanceTo(cam));
         rp.copy(_p);
         const e2 = T;
         rp.y += s.drop * 0.7;
@@ -198,7 +214,7 @@ export function createSpinnerRack({ onPick }) {
         const tyaw = s.a + wrap(Math.atan2(dx, dz) - s.a);
         const tpitch = -Math.atan2(cam.y - rp.y, Math.hypot(dx, dz));
         s.mesh.position.copy(rp);
-        s.mesh.scale.setScalar(1 + 0.06 * e2);
+        s.mesh.scale.setScalar((1 + 0.06 * e2) * shrink);
         s.mesh.rotation.set(-LEAN + (tpitch + LEAN) * e2, s.a + (tyaw - s.a) * e2, s.roll * (1 - e2));
       });
     },
