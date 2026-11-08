@@ -61,6 +61,8 @@ npm install
 npm run dev
 ```
 
+After a `git pull`, `npm run dev` installs any new packages by itself before it starts.
+
 The first time, use the sign-in button to log in to your Google account. Without signing in, it
 works as a guest, with ads and generic shelves.
 

@@ -20,6 +20,7 @@ The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over
 npm install
 npm run dev                 # vite dev server + opens the Electron window; menu bar icon has "Open Sienna"
 npm run web                 # just vite on http://127.0.0.1:5173 (open in a browser)
+                            # dev and web first run scripts/deps.mjs: npm install if a pull added packages
 npm run build && npm run electron
 SIENNA_DEV_URL=http://127.0.0.1:5173 npm run electron   # electron against the dev server
 node scripts/shot.mjs out_dir 0 3.6 5 8.5   # headless screenshots at given seconds
