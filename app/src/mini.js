@@ -30,7 +30,7 @@ const params = new URLSearchParams(location.search);
 const shot = params.has('shot');
 const bridge = window.siennaMini;            // only inside Electron (electron/mini-preload.cjs)
 // Settings > Lettering changed (in the shop window): repaint everything in the new font
-settings.on('font', () => location.reload());
+settings.on('font', () => (bridge?.reload ? bridge.reload() : location.reload()));   // Electron blocks the page's own reload
 const W = 540, H = 620;
 document.body.classList.toggle('preview', !bridge);
 document.documentElement.style.setProperty('--w', `${W}px`);

@@ -146,7 +146,7 @@ const spread = createSpread({
 nav.onChange(() => { menu.setCurrent(nav.at); warm(); spread.close(); });
 menu.setCurrent(nav.at);
 // the search bar (Option+Cmd+S / Ctrl+Alt+S) must exist before the key handlers below are registered
-// a search pick has no sleeve: the disc machine pops up by the suitcase and spits the record out
+// a search pick has no sleeve: the drawer in the suitcase slides out with the record in it
 const search = createSearch({ music, onPlay: (item) => { startSong(music, suitcase.suitcase, item); suitcase.dispense(getCover(item.art, 512).tex); } });
 // Settings (Cmd+, or the SETTINGS word): swallows keys itself while open
 const settingsPanel = createSettingsPanel();
@@ -581,7 +581,7 @@ const DOOR_OPEN = THREE.MathUtils.degToRad(105);
 
 let lastT = 0;
 let hoverOn = -1;
-let machineDone = false;
+let trayDone = false;
 let pickDone = false;
 // ---- frame-rate readout (Settings > Frame rate, or ?fps=1): average fps and the slowest frame ----
 const fpsBox = document.createElement('div');
@@ -750,17 +750,18 @@ if (shotMode) {
         frame(t, 0.0001);
       }
     }
-    // ?machine=1.2: a search pick, frozen 1.2 s into the disc machine (after the hand-off, the record's flight too)
-    if (params.has('machine') && !machineDone) {
-      machineDone = true;
+    // ?tray=0.6: a search pick, frozen 0.6 s into the drawer (after the hand-off, the record's flight too)
+    if (params.has('tray') && !trayDone) {
+      trayDone = true;
       const { shelves } = await music.shelves();
       const item = shelves[0].items[1];
       const cover = getCover(item.art, 512);
       await cover.loaded;
       suitcase.dispense(cover.tex);
-      const at = Number(params.get('machine'));
-      suitcase.machine.seek(at);
-      if (at > suitcase.machine.handAt) suitcase.freezeFlight(Math.min(0.999, (at - suitcase.machine.handAt) / suitcase.flightDuration));
+      const at = Number(params.get('tray'));
+      suitcase.tray.seek(at);
+      if (at > suitcase.tray.handAt) suitcase.freezeFlight(Math.min(0.999, (at - suitcase.tray.handAt) / suitcase.flightDuration));
+      for (let i = 0; i < 30; i++) frame(t, 0.05);   // the case rises to make room for the drawer (frozen meanwhile)
       frame(t, 0.0001);
     }
     return true;
@@ -778,7 +779,7 @@ if (shotMode) {
     pacer = createPacer({
       renderer,
       step: (now) => { tickFps(); frame((now - start) / 1000); watchCamera(); },
-      busy: () => nav.intro || !nav.settled || spread.busy || suitcase.flying || suitcase.machine.active || suitcase.over || suitcase.suitcase.lidMoving,
+      busy: () => nav.intro || !nav.settled || spread.busy || suitcase.flying || suitcase.tray.active || suitcase.over || suitcase.suitcase.lidMoving,
       // a spinning record on screen wants a smooth turn; otherwise only lanterns and the boil move (Brush strokes: only the ragged border boils; the older looks: all of it)
       idleFps: () => (player?.playerState === 1 && suitcase.tucked < 0.5 ? 30 : 12),
     });

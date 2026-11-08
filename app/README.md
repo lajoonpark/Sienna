@@ -6,7 +6,7 @@ The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over
 
 **Look:** painted, through a screen pass (`src/watercolour.js`): brush strokes pinned to the world's surfaces by default (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Painting). Both have a ragged paper border. `?style=flat` shows the old flat toon look.
 
-**Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots.
+**Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots. A change reloads both windows; the mini window is reloaded by the main process (`mini:reload` in `electron/mini.cjs`, as its page cannot navigate itself) and opens its lid again if it was on screen. Check: `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out`.
 
 **Name:** the app was called Cadence until 2026-11-08. On first launch, `electron/main.cjs` moves the old `cadence-app` data folder (YouTube Music sign-in, settings) to `sienna-app`, and `src/settings.js` carries over the old `cadence.settings` key. Env vars are `SIENNA_*` (were `CADENCE_*`).
 
@@ -98,11 +98,11 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 - **Search**: **⌥⌘S** (Ctrl+Alt+S on Windows/Linux) opens a search bar (`src/search.js`). The bar is
   slapped on bristle by bristle, throwing droplets, and flicked off the right-hand end when it closes
   (`src/searchpaint.js`; the same in the shop and the mini window, no animation under the system's reduce-motion setting). Songs are
-  brushed in row by row, zigzagging, with the shop's brush (`src/brushpaint.js`), arrows + Enter or a click plays one. A song from search has no sleeve. In the shop a
-  little painted record machine pops up by the suitcase, whirs, spits the record out of its top onto
-  the platter and pops away (`src/suitcase/machine.js`; `?machine=1.2` freezes it for screenshots). In
-  the mini window the bottom of the case slides out like a drawer, the record lifts out of it, tips
-  towards you and flies onto the platter, and the drawer slides home (`src/suitcase/tray.js`;
+  brushed in row by row, zigzagging, with the shop's brush (`src/brushpaint.js`), arrows + Enter or a click plays one. A song from search has no sleeve, so
+  the bottom of the case slides out like a drawer, the record lifts out of it, tips towards you and
+  flies onto the platter, and the drawer slides home (`src/suitcase/tray.js`, in the shop and the mini
+  window; the shop's case rises a little meanwhile so the drawer stays in the picture). `?tray=0.6`
+  freezes it for screenshots (shop: `SIENNA_QUERY="tray=0.6" node scripts/shot.mjs out 8`; mini:
   `SIENNA_PAGE=mini.html SIENNA_VIEWPORT=540x620 SIENNA_QUERY="tray=0.6" node scripts/shot.mjs out 2`).
   Shutting the mini window before the record is down puts it straight on and starts the song as soon
   as it has loaded (nothing is drawn while the window is hidden, so the arm would never land). Check:

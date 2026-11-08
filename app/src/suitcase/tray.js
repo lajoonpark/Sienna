@@ -1,11 +1,13 @@
-// The record drawer (mini window only). A song picked in search has no rack and no sleeve, so the bottom
+// The record drawer. A song picked in search has no rack and no sleeve, so the bottom
 // of the suitcase slides out like a tray with the record lying in it; the record lifts up out of the tray,
 // tips towards you and flies onto the platter (flight.js, the same handoff as from a rack), and the
 // drawer slides home again. At rest only its front shows: a slim leather strip with a brass pull along
-// the foot of the case. The shop's case has no drawer (it still uses machine.js).
+// the foot of the case. Used by both the shop's case (suitcase/player.js) and the mini window.
 //
-//   const tray = createRecordTray({ suitcase, kit, onDisc })
+//   const tray = createRecordTray({ suitcase, kit, onDisc, camera })
 //     suitcase: createSuitcase(...) (the drawer is added to its case, so it leans with it)
+//     camera:   only when the case lives in camera space (the shop's overlay scene): the world camera,
+//               so the record is handed over as a world pose like a rack's
 //     kit:      suitcase.recordKit (to build the record in the tray)
 //     onDisc({ matrixWorld, cover }): the record left the tray; pass it to flights.receive
 //   tray.run(cover)     slide out with this cover's record in it
@@ -57,7 +59,7 @@ function build(mats) {
   return g;
 }
 
-export function createRecordTray({ suitcase, kit, onDisc }) {
+export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
   const { caseRoot, mats } = suitcase.parts;
   const drawer = build(mats);
   const front = L.caseDepth / 2 + 0.035;   // the closed front sits just proud of the leather
@@ -91,7 +93,9 @@ export function createRecordTray({ suitcase, kit, onDisc }) {
   function handOff() {
     handed = true;
     drawer.updateWorldMatrix(true, true);
-    disc.group.matrixWorld.decompose(_p, _q, _s);
+    const m = new THREE.Matrix4().copy(disc.group.matrixWorld);
+    if (camera) { camera.updateWorldMatrix(true, false); m.premultiply(camera.matrixWorld); }   // camera space -> world
+    m.decompose(_p, _q, _s);
     _q.multiply(Q_DISC_TO_FLAT);                                   // flight.js turns a rack disc (axis z) back to flat
     const k = (_s.x * L.recordRadius) / SHOP_RADIUS;               // so flight.js starts at this record's size
     const matrixWorld = new THREE.Matrix4().compose(_p, _q, new THREE.Vector3(k, k, k));

@@ -9,7 +9,7 @@
 //   player.update(dt, t)           every frame, before rendering
 //   player.show(on, instant)       fades the caption in and flicks the lid open the first time
 //   player.receive(disc)           a record was picked: { matrixWorld, cover } (see racks/)
-//   player.dispense(cover)         a song with no sleeve (search): the disc machine pops up and spits the record out
+//   player.dispense(cover)         a song with no sleeve (search): the drawer in the case slides out with the record (tray.js)
 //   player.tuck(on)                at a rack: tuck the case away (lid shuts, it sinks into the corner) so it never
 //                                  covers records; it comes back up while the cursor is on it or a record flies in
 //   player.wake(s)                 come up now and stay up s seconds (a pick: the record is about to fly in)
@@ -21,7 +21,7 @@ import { createCaption } from '../controls.js';
 import { renderOverlay } from '../watercolour.js';
 import { fitObject, ndcBounds } from './fit.js';
 import { createFlights } from './flight.js';
-import { createDiscMachine } from './machine.js';
+import { createRecordTray } from './tray.js';
 import { searchOpen } from '../search.js';
 
 // The case sits in the bottom-left corner, upright: the same three-quarter view as the small window
@@ -38,6 +38,9 @@ const GAP = 14;        // between the case and its caption
 // from the bottom edge (sink = share of the open case's height on screen). It wakes when the cursor
 // touches it (the strip, or the whole case while it is up) and whenever a record is on its way in.
 const TUCK = { delay: 0.35, shutFirst: 0.3, sink: 0.62, rate: 8, hold: 0.9 };
+// While the drawer is out (search pick) the case rises by this share of its height on screen, so the drawer
+// and its record clear the bottom edge of the picture.
+const DRAWER_RISE = 0.3;
 
 export function createPlayer({ renderer, painter, music, camera }) {
   const scene = new THREE.Scene();
@@ -50,7 +53,7 @@ export function createPlayer({ renderer, painter, music, camera }) {
   place.add(suitcase.root);
   scene.add(place);
   const flights = createFlights({ scene, suitcase, camera, view: ocam });
-  const machine = createDiscMachine({ parent: scene, camera, view: ocam, kit: suitcase.recordKit, onDisc: (d) => flights.receive(d) });
+  const tray = createRecordTray({ suitcase, kit: suitcase.recordKit, camera, onDisc: (d) => flights.receive(d) });
   const points = suitcase.fitPoints();
 
   const caption = createCaption({ variant: 'shop', onSeek: (s) => music.command('seek', s), onSignIn: () => music.signIn() });
@@ -63,7 +66,7 @@ export function createPlayer({ renderer, painter, music, camera }) {
   let aspect = 0, fov = 0, viewH = 0;
   let box = { x0: -1, x1: -0.6, y0: -0.9, y1: -0.4 };     // the case's wanted box, NDC
   let caseRect = null;                                     // where it ended up, CSS px
-  let baseY = 0, sinkWorld = 0;                            // the fitted height in camera space, and how far a full tuck lowers it
+  let baseY = 0, sinkWorld = 0, riseWorld = 0;                            // the fitted height in camera space, and how far a full tuck lowers it
   const centre = new THREE.Vector2();
   function layout() {
     const W = renderer.domElement.clientWidth || innerWidth, H = renderer.domElement.clientHeight || innerHeight;
@@ -78,7 +81,9 @@ export function createPlayer({ renderer, painter, music, camera }) {
     aspect = camera.aspect; fov = camera.fov; viewH = H;
     const b = ndcBounds(points, place, ocam);
     baseY = place.position.y;
-    sinkWorld = (b.y1 - b.y0) * TUCK.sink * Math.tan(THREE.MathUtils.degToRad(ocam.fov) / 2) * -place.position.z;
+    const perNdc = Math.tan(THREE.MathUtils.degToRad(ocam.fov) / 2) * -place.position.z;
+    sinkWorld = (b.y1 - b.y0) * TUCK.sink * perNdc;
+    riseWorld = (b.y1 - b.y0) * DRAWER_RISE * perNdc;
     caseRect = {
       left: ((b.x0 + 1) / 2) * W, right: ((b.x1 + 1) / 2) * W,
       top: ((1 - b.y1) / 2) * H, bottom: ((1 - b.y0) / 2) * H,
@@ -137,7 +142,7 @@ export function createPlayer({ renderer, painter, music, camera }) {
   }, { capture: true, passive: true });
 
   // ---- tucking away ----
-  let tuckWanted = false, away = 0, hold = 0, sunk = 0, lidShut = false;
+  let tuckWanted = false, away = 0, hold = 0, sunk = 0, lidShut = false, risen = 0;
   // Wakes only when the cursor is ON the case: the strip that peeks up while tucked, the whole case
   // while it is up (a ray against its real shape, not a box round it), so records in the corner just
   // above the strip stay reachable. Only on the canvas: menus and the caption do not count.
@@ -146,7 +151,7 @@ export function createPlayer({ renderer, painter, music, camera }) {
     return suitcase.touches(pointer, ocam);
   }
   function tuckStep(dt) {
-    if (flights.active || machine.active) hold = TUCK.hold; else hold = Math.max(0, hold - dt);
+    if (flights.active || tray.active) hold = TUCK.hold; else hold = Math.max(0, hold - dt);
     const wake = !tuckWanted || !shown || hold > 0 || suitcase.dragging || near();
     away = wake ? 0 : away + dt;
     const tucking = away > TUCK.delay;
@@ -156,8 +161,9 @@ export function createPlayer({ renderer, painter, music, camera }) {
     sunk += (target - sunk) * (1 - Math.exp(-dt * TUCK.rate));
     if (Math.abs(target - sunk) < 1e-3) sunk = target;
     if (!tucking && lidShut && sunk < 0.35 && opened) { lidShut = false; suitcase.open(); }
+    risen += ((tray.active ? 1 : 0) - risen) * (1 - Math.exp(-dt * TUCK.rate));
     const e = sunk * sunk * (3 - 2 * sunk);
-    place.position.y = baseY - sinkWorld * e;
+    place.position.y = baseY - sinkWorld * e + riseWorld * risen * risen * (3 - 2 * risen);
     caption.tuck(e > 0.05);
   }
 
@@ -175,7 +181,7 @@ export function createPlayer({ renderer, painter, music, camera }) {
     }
     tuckStep(dt);
     suitcase.update(dt);
-    machine.update(dt);
+    tray.update(dt);
     flights.update(dt);
     caption.setScrub(suitcase.scrubbing ? suitcase.progress : null);
   }
@@ -185,14 +191,8 @@ export function createPlayer({ renderer, painter, music, camera }) {
     suitcase,
     update,
     receive: (disc) => flights.receive(disc),
-    // stands just right of the case, above its caption, feet a third of the way down the case
-    dispense(cover) {
-      const W = renderer.domElement.clientWidth || innerWidth, H = renderer.domElement.clientHeight || innerHeight;
-      const x = ((caseRect.right + 0.07 * W) / W) * 2 - 1;
-      const y = 1 - ((caseRect.top + (caseRect.bottom - caseRect.top) * 0.4) / H) * 2;
-      machine.run(cover, { x, y, h: 0.26 });
-    },
-    machine,
+    dispense(cover) { hold = Math.max(hold, TUCK.hold); tray.run(cover); },
+    tray,
     // The caption and case appear together; the lid flicks open the first time (instant for screenshots).
     show(on, instant = false) {
       shown = on;
