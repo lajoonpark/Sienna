@@ -139,10 +139,34 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   *Frame rate* shows an fps readout. The card lays rows in two columns when there is room.
 - **Heat / battery**: the shop is drawn at that cap only while something moves (camera, input, flights,
   lid); once still it drops to 12 fps (30 while a record spins on screen), and stops while the window is
-  hidden, minimised or covered (`src/pacer.js`; `node scripts/idle-check.mjs [rack]` checks it). The
-  hidden YouTube Music window is throttled like a background tab (no painting, no video decoding, smallest
-  video stream) and is polled 4x a second only while a Sienna window is on screen, every 3 s otherwise;
-  the macOS volume is read only while a window is on screen.
+  hidden, minimised or covered (`src/pacer.js`; `node scripts/idle-check.mjs [rack]` checks it).
+  **Still frames**: a frame is painted again only as far as it differs from the one before. `src/still.js`
+  writes down everything a frame is made from (where each visible thing is, colours, textures, lights,
+  camera) and compares it with the last frame's; the painter (`Still frames` in `src/watercolour.js`) then
+  draws nothing if nothing changed, only four strips along the edges if just the ragged border boiled,
+  only the suitcase's corner if just its record turned (the world's pixels under it are kept and put
+  back), and the whole frame only when the world itself changed. So the shop's 3.8 million triangles,
+  its shadows and the stroke passes are drawn while something in the shop moves and not otherwise. The
+  screen keeps its picture between frames for this (`preserveDrawingBuffer` in `main.js`). The older
+  watercolour looks boil all over, so they repaint the bleed and the final pass per boil step, but not the
+  scene. A frame put together in parts is the same picture to the last bit as a whole repaint:
+  `node scripts/cache-check.mjs` compares them and counts what was painted (`__siennaDebug.painter.stats`).
+  Things that help the shop come to rest: the time of day is worked out every 5 s of the clock, not every
+  frame (`src/timeofday.js`); the cursor tilt snaps the last 1/30 px; under a shut lid (case tucked away)
+  the record and arm are not posed. Bricks, tiles and slats are instanced per 8 m square of ground
+  (`src/kit.js`), so what is outside the view is not sent to the GPU while the camera does move (43%
+  fewer of those triangles on average, for 15 more draw calls).
+  The hidden YouTube Music window is throttled like a background tab (no painting, no video decoding,
+  smallest video stream). While a Sienna window is on screen it is polled 4x a second while a song plays
+  or loads and for 6 s after anything was asked of it, twice a second while it sits paused; every 3 s
+  otherwise. The hidden mini window is sent the player's state only when something other than the
+  position changes (and the newest just before it opens). The macOS volume is read (an `osascript` run)
+  only while a window is on screen: every 3 s while Sienna has the keyboard, every 12 s while you are in
+  another app, and at once when you come back.
+- **Memory**: the sun's 4096 px shadow map (128 MB of video memory) is let go of while the sun is down
+  (`src/timeofday.js`). A resting cover's canvas is shrunk to a pixel once the picture is on the GPU
+  (`slim` in `src/racks/common.js`, about 50 MB for a full shop). The mini window makes no travelling
+  washes (it has no camera to travel).
 - **Covers**: playlist and mix covers are found in any of YouTube's thumbnail shapes; one that is
   missing or fails to load is painted as a collage of the playlist's first songs (`src/cover.js`).
   `SIENNA_DUMP=1` saves the raw API responses to the app's userData (`dumps/`) and logs any item

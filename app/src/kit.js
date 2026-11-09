@@ -1,11 +1,20 @@
 // Instanced building kit. Thousands of bricks, flagstones, tiles and slats are collected here as
-// (matrix, colour) pairs and turned into one InstancedMesh per part at the end, so a whole street
-// of real 3D masonry costs a handful of draw calls.
+// (matrix, colour) pairs and turned into InstancedMeshes at the end, so a whole street of real 3D
+// masonry costs a handful of draw calls. An InstancedMesh is drawn all or nothing, and as one mesh
+// per part every brick of the street was still sent to the GPU from deep inside the shop (3.8
+// million triangles a frame, many of them behind the camera). So a part with a lot of pieces is cut
+// into one mesh per CELL-metre square of ground, and a square outside the view is skipped. Only
+// squares worth a draw call of their own: a few pieces here and there stay together in one mesh,
+// since a draw call costs more than their triangles do. Measured from home and the eight stations:
+// 15 more draw calls a frame on average, 43% fewer of these triangles (smaller squares or none
+// left over: twice the draw calls for another 5%).
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { toon } from './materials.js';
 
 export const BRICK = { len: 0.5, row: 0.24, gap: 0.028, depth: 0.2 };
+const CELL = 8;       // metres
+const CELL_MIN = 150; // pieces a square needs to be a mesh of its own
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -34,17 +43,28 @@ class Part {
     this.matrices.push(matrix.clone());
     this.colors.push(_c.set(color).clone());
   }
+  // -> its InstancedMeshes: one per well-filled square, and one for everything else
   build() {
-    if (!this.matrices.length) return null;
-    const mesh = new THREE.InstancedMesh(this.geometry, this.material, this.matrices.length);
+    const cells = new Map();
     this.matrices.forEach((m, i) => {
-      mesh.setMatrixAt(i, m);
-      mesh.setColorAt(i, this.colors[i]);
+      const key = `${Math.floor(m.elements[12] / CELL)},${Math.floor(m.elements[14] / CELL)}`;
+      if (!cells.has(key)) cells.set(key, []);
+      cells.get(key).push(i);
     });
-    mesh.castShadow = this.castShadow;
-    mesh.receiveShadow = this.receiveShadow;
-    mesh.computeBoundingSphere();
-    return mesh;
+    const groups = [], rest = [];
+    for (const ids of cells.values()) { if (ids.length >= CELL_MIN) groups.push(ids); else rest.push(...ids); }
+    if (rest.length) groups.push(rest);
+    return groups.map((ids) => {
+      const mesh = new THREE.InstancedMesh(this.geometry, this.material, ids.length);
+      ids.forEach((id, i) => {
+        mesh.setMatrixAt(i, this.matrices[id]);
+        mesh.setColorAt(i, this.colors[id]);
+      });
+      mesh.castShadow = this.castShadow;
+      mesh.receiveShadow = this.receiveShadow;
+      mesh.computeBoundingSphere(); // of its instances: what the renderer culls it by
+      return mesh;
+    });
   }
 }
 
@@ -74,10 +94,7 @@ export function createKit() {
     ...parts,
     // Bake everything into the given group.
     flush(root) {
-      for (const p of Object.values(parts)) {
-        const mesh = p.build();
-        if (mesh) root.add(mesh);
-      }
+      for (const p of Object.values(parts)) for (const mesh of p.build()) root.add(mesh);
     },
   };
 }

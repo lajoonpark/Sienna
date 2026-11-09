@@ -116,6 +116,20 @@ function paintPump() {
   }
   if (paintQueue.length) requestAnimationFrame(paintPump); else paintPumping = false;
 }
+// ---- slim canvases ----
+// A cover's canvas is a second copy of its picture, kept for as long as the texture lives, though the GPU
+// has had its own since the first upload: 256 KB a sleeve, about 50 MB for a full shop. So once three has
+// uploaded a resting (256 px) cover, its canvas is shrunk to one pixel, and grown back if it is ever
+// painted on again (the cover arriving, Settings > Cover art). Not the 512 px ones: the LRU below lets go
+// of those while a record on the platter may still show one, and three then uploads it again from its canvas.
+const SLIM_UP_TO = 256;
+function slim(tex, c, size) {
+  if (size > SLIM_UP_TO) return;
+  tex.onUpdate = () => { if (c.width === size) c.width = c.height = 1; }; // three calls this after each upload
+}
+// before drawing on a cover's canvas: its full size again (a shrunk one comes back empty, so draw all of it)
+const unslim = (c, size) => { if (c.width !== size) c.width = c.height = size; };
+
 // main.js hands over the renderer, so freshly painted covers are uploaded ahead of time (warmup.js)
 let coverUploader = null;
 export function setCoverUploader(renderer) { coverUploader = renderer; }
@@ -130,17 +144,23 @@ export function getCover(url, size = 256) {
     return e;
   }
   const [c, g] = canvas(size, size);
-  g.fillStyle = '#d9cbb2';
-  g.fillRect(0, 0, size, size);
-  if (!url) { // no art: a blank paper sleeve with a pencilled circle
-    g.strokeStyle = 'rgba(120,90,60,.35)';
-    g.lineWidth = size / 40;
-    g.beginPath(); g.arc(size / 2, size / 2, size * 0.3, 0, Math.PI * 2); g.stroke();
-  }
+  const blank = () => {
+    g.fillStyle = '#d9cbb2';
+    g.fillRect(0, 0, size, size);
+    if (!url) { // no art: a blank paper sleeve with a pencilled circle
+      g.strokeStyle = 'rgba(120,90,60,.35)';
+      g.lineWidth = size / 40;
+      g.beginPath(); g.arc(size / 2, size / 2, size * 0.3, 0, Math.PI * 2); g.stroke();
+    }
+  };
+  blank();
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = size > 256 ? 8 : 4;
+  slim(tex, c, size);
   e = { tex, color: null, loaded: Promise.resolve() };
+  // the GPU lost everything (see restoreCovers): the paper again at full size, then the picture
+  e.restore = () => { tex.dispose(); unslim(c, size); blank(); tex.needsUpdate = true; e.repaint?.(); };
   covers.set(key, e);
   if (size > 256) {
     bigOrder.push(key);
@@ -154,6 +174,7 @@ export function getCover(url, size = 256) {
     // (again when Settings > Cover art changes: every cover already made is repainted in place)
     e.repaint = () => (e.loaded = paintOffThread(url, size).then((done) => {
       if (!done) return paintHere(url, size, g, tex, e); // no worker, or it could not fetch the picture
+      unslim(c, size);
       g.clearRect(0, 0, size, size);
       g.drawImage(done.bitmap, 0, 0);
       done.bitmap.close();
@@ -166,6 +187,8 @@ export function getCover(url, size = 256) {
   return e;
 }
 settings.on('covers', () => { for (const e of covers.values()) e.repaint?.(); });
+// After a lost GPU context three uploads every texture again from its image, and a shrunk canvas has none.
+export function restoreCovers() { for (const e of covers.values()) e.restore(); }
 
 // the old way: an <img>, painted on the main thread a few per frame
 function paintHere(url, size, g, tex, e) {
@@ -178,6 +201,7 @@ function paintHere(url, size, g, tex, e) {
       // during the intro push-in), so they are painted in small slices, a few per frame
       paintSoon(() => {
         const s = Math.min(img.width, img.height);
+        unslim(g.canvas, size);
         g.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
         paintCover(g, size, coverSeed(url));
         tex.needsUpdate = true;

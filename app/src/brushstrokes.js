@@ -554,6 +554,7 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     scene,
     bake,
     get counts() { return layers.map((l) => l.count); },
+    get caps() { return layers.map((l) => l.buffers.aPos.count); },
     setSize(w, h) {
       shared.aspect.value = w / h;
       shared.lodShift.value = Math.log2(Math.max(1, h) / 720);

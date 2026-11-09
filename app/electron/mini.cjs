@@ -34,6 +34,7 @@ function createMini({ onVisible } = {}) {
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
+        spellcheck: false,
         sandbox: false,                       // the preload loads the shop's preload (see mini-preload.cjs)
         preload: path.join(__dirname, 'mini-preload.cjs'),
       },
@@ -49,7 +50,22 @@ function createMini({ onVisible } = {}) {
     else win.loadFile(path.join(__dirname, '..', 'dist', 'mini.html'));
     // clicking outside: the window loses focus, so shut the lid (not in the first moments, while focus is settling)
     win.on('blur', () => { if (state === 'open' && Date.now() - shownAt > 400) close(); });
-    win.on('closed', () => { win = null; state = 'hidden'; onVisible?.(); });
+    win.on('closed', () => { win = null; state = 'hidden'; sentKey = null; onVisible?.(); });
+    // a page that has just loaded (first time, or a reload) has heard nothing yet
+    win.webContents.on('did-finish-load', () => { sentKey = null; if (lastState) playerState(lastState); });
+  }
+
+  // The player's state, 1 to 4 times a second (ytm.cjs). On screen the page gets every one. Hidden, it
+  // draws nothing, so it is told only when something other than the song's position changes (a new song,
+  // so its label is painted ahead; play / pause, like, volume): the hidden page then sleeps instead of
+  // waking four times a second. The newest state is sent just before it is asked to open.
+  let lastState = null, sentKey = null;
+  function playerState(s) {
+    lastState = s;
+    const key = JSON.stringify({ ...s, position: 0 });
+    if (state === 'hidden' && key === sentKey) return;
+    sentKey = key;
+    send('ytm:state', s);
   }
 
   function send(channel, ...args) {
@@ -75,7 +91,7 @@ function createMini({ onVisible } = {}) {
     state = 'open';
     onVisible?.();
     if (win.webContents.isLoading()) win.webContents.once('did-finish-load', () => send('mini:open'));
-    else send('mini:open');
+    else { if (lastState) send('ytm:state', lastState); send('mini:open'); }   // where the song is now, then the lid
   }
 
   function close() {
@@ -121,8 +137,9 @@ function createMini({ onVisible } = {}) {
     isOpen: () => state !== 'hidden',
     prewarm() { if (!win) create(); },         // load the page ahead of the first summon, so the lid does not stutter
     send,
+    state: playerState,
     toggle, open, close,
-    get state() { return state; },
+    get phase() { return state; },
     get window() { return win; },
   };
 }

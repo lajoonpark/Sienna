@@ -34,7 +34,7 @@ let mini = null;   // the small window (Control+Option+K by default), see mini.c
 
 function startPlayer() {
   ytm = createYtm({
-    onState: (s) => { win?.webContents.send('ytm:state', s); mini?.send('ytm:state', s); },   // both windows show the player
+    onState: (s) => { win?.webContents.send('ytm:state', s); mini?.state(s); },   // both windows show the player
     onSignedIn: () => { win?.webContents.send('ytm:signedIn'); mini?.send('ytm:signedIn'); },
   });
   ipcMain.handle('ytm:home', (_e, next) => ytm.home(next));
@@ -51,7 +51,7 @@ function createWindow() {
     height: 800,
     backgroundColor: '#1b1410',
     title: 'Sienna',
-    webPreferences: { contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, 'preload.cjs') },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, spellcheck: false, preload: path.join(__dirname, 'preload.cjs') },
   });
   const dev = process.env.SIENNA_DEV_URL;
   // SIENNA_QUERY='wc=3&hour=17' passes page options (look strength, time of day...) to the window
@@ -59,7 +59,7 @@ function createWindow() {
   if (dev) win.loadURL(query ? `${dev}${dev.includes('?') ? '&' : '?'}${query}` : dev);
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), query ? { search: query } : {});
   // The player polls fast only while a window is on screen (see ytm.setActive).
-  for (const ev of ['show', 'hide', 'minimize', 'restore', 'focus']) win.on(ev, updateActive);
+  for (const ev of ['show', 'hide', 'minimize', 'restore', 'focus', 'blur']) win.on(ev, updateActive);
   win.on('closed', () => {
     win = null;
     updateActive();
@@ -69,9 +69,11 @@ function createWindow() {
 }
 
 // Is any Sienna window on screen? Then the hidden player is polled 4x a second, else rarely.
+// And does one of them have the keyboard? Then the Mac's volume is read often (see ytm.setFocused).
 function updateActive() {
   const shop = !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized();
   ytm?.setActive(shop || !!mini?.isOpen());
+  ytm?.setFocused((shop && win.isFocused()) || !!mini?.isOpen());
 }
 
 // Show the window, creating it again if it was closed.

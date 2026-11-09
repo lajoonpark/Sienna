@@ -8,7 +8,7 @@ import { createWatercolour, renderOverlay } from './watercolour.js';
 import { createSky } from './sky.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
-import { getCover, setCoverUploader } from './racks/common.js';
+import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
 import { warmUp } from './warmup.js';
 import { STATIONS, HOME, assignShelves } from './stations.js';
 import { createNav, AT_HOME, paintViews, introBars, BASE_FOV } from './nav.js';
@@ -26,8 +26,10 @@ import './fonts.js';
 const params = new URLSearchParams(location.search);
 const shotMode = params.has('shot');
 
-// painted: the scene is antialiased in its own target, the screen only gets a full-screen quad
-const renderer = new THREE.WebGLRenderer({ antialias: !WATERCOLOUR, preserveDrawingBuffer: shotMode });
+// painted: the scene is antialiased in its own target, the screen only gets a full-screen quad.
+// The screen keeps its picture between frames (preserveDrawingBuffer), so the painter can repaint just the
+// part of it that changed: the suitcase's corner, the boiling border (watercolour.js, `Still frames`).
+const renderer = new THREE.WebGLRenderer({ antialias: !WATERCOLOUR, preserveDrawingBuffer: shotMode || WATERCOLOUR });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -324,6 +326,9 @@ music.onSignedIn(loadShelves);
 // for tests and the devtools console
 window.__siennaDebug = {
   renderer,
+  painter,
+  get scene() { return scene; },
+  get lastFrame() { return { t: curT }; }, // the moment last drawn (scripts/cache-check.mjs repaints it whole)
   get pacer() { return pacer; },
   camera,
   THREE, // checks (scripts/spinner-clip-check.mjs)
@@ -340,6 +345,7 @@ window.__siennaDebug = {
         last = now;
       };
       if (shadows) renderer.shadowMap.needsUpdate = true;
+      painter?.invalidate(); // time a whole frame, not what is left of one when nothing has changed
       sync('start');
       const t0 = last;
       if (painter) painter.render(scene, camera, curT, suitcase.overlay, sync);
@@ -646,6 +652,9 @@ function frame(t, dtOverride, draw = true) {
   if (spread.isOpen || !((currentRack()?.hovered ?? -1) >= 0)) {
     tilt.x += (tilt.tx - tilt.x) * 0.06;
     tilt.y += (tilt.ty - tilt.y) * 0.06;
+    // the last hair's breadth (a 30th of a pixel) at once: the view comes to rest, and a resting view is not painted again
+    if (Math.abs(tilt.tx - tilt.x) < 1e-4) tilt.x = tilt.tx;
+    if (Math.abs(tilt.ty - tilt.y) < 1e-4) tilt.y = tilt.ty;
   }
   // gentle tilt at home, calmer at a rack so records stay put under the cursor
   const k = nav.tilt;
@@ -716,6 +725,9 @@ function watchCamera() {
 for (const ev of ['pointermove', 'pointerdown', 'pointerup', 'wheel', 'keydown', 'keyup']) addEventListener(ev, () => pacer?.kick(), { passive: true, capture: true });
 document.addEventListener('pointerleave', () => pacer?.kick());
 for (const k of ['paint', 'covers', 'fps', 'maxFps']) settings.on(k, () => pacer?.kick());
+// back on screen, or the GPU context was lost and restored: paint the whole frame, whatever the painter remembers
+document.addEventListener('visibilitychange', () => painter?.invalidate());
+renderer.domElement.addEventListener('webglcontextrestored', () => { painter?.invalidate(); renderer.shadowMap.needsUpdate = true; restoreCovers(); });
 
 // Deterministic time for screenshots: ?shot, then window.__seek(seconds).
 // brush strokes get placed from every spot the camera visits (nothing in the old looks pays for this)

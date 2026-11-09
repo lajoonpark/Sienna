@@ -162,6 +162,7 @@ function createYtm({ onState, onSignedIn }) {
   }
 
   async function play(endpoint) {
+    stir();
     await ready();
     const routed = await js(`window.__sienna.navigate(${JSON.stringify(endpoint)})`).catch(() => false);
     if (routed) return;
@@ -175,46 +176,75 @@ function createYtm({ onState, onSignedIn }) {
   // Loads a song ahead of the tonearm, silent and stopped at 0:00 (see ytm-page.js). Resolves when it is
   // ready to start; false if it could not be held, which startPrepared copes with.
   async function prepare(endpoint) {
+    stir();
     await ready();
     return js(`window.__sienna.prepare(${JSON.stringify(endpoint)})`).catch(() => false);
   }
   async function startPrepared(endpoint) {
+    stir();
     await ready();
     const held = await js('window.__sienna.release()').catch(() => false);
     if (!held) await play(endpoint);
   }
 
   // On macOS the volume knob is the system volume; the player itself stays at full volume.
-  // It is read (one osascript run) only while a Sienna window is on screen, to catch the volume keys.
+  // It is read (one osascript run, a whole process each time) only while a Sienna window is on screen, to
+  // catch the volume keys: every 3 s while one of them has the keyboard, every 12 s while you are in
+  // another app (the knob still follows, just not as promptly), and at once when you come back.
   const sysVol = createSystemVolume();
   sysVol?.refresh();
-  setInterval(() => { if (active) sysVol?.refresh(); }, 3000);
+  const VOLUME_MS = { focused: 3000, unfocused: 12000 };
+  let focused = true, volumeReadAt = Date.now();
+  function readVolume() { volumeReadAt = Date.now(); sysVol?.refresh(); }
+  setInterval(() => {
+    if (active && Date.now() - volumeReadAt >= (focused ? VOLUME_MS.focused : VOLUME_MS.unfocused) - 50) readVolume();
+  }, VOLUME_MS.focused);
+  function setFocused(on) {
+    if (on === focused) return;
+    focused = on;
+    if (on && active) readVolume();
+  }
 
   async function command(name, arg) {
     if (name === 'volume' && sysVol) { sysVol.set(arg); return true; }
+    stir();
     await ready();
     return js(`window.__sienna.command(${JSON.stringify(name)}, ${JSON.stringify(arg ?? null)})`);
   }
 
-  // Poll the page and pass state on: 4x a second while a Sienna window is on screen (smooth enough
-  // for a tonearm), every 3 s while only the menu-bar icon is left (keeps sign-in and volume in step).
+  // Poll the page and pass state on. While a Sienna window is on screen: 4x a second while a song plays
+  // or loads and for a few seconds after anything was asked of the player (a press shows at once), twice
+  // a second while it just sits paused or empty (little changes by itself then, and each poll wakes this
+  // process, the player's and the window's). Every 3 s while only the menu-bar icon is left (keeps
+  // sign-in and volume in step).
   let active = true;
   let lastSignedIn = null;
   let pollTimer = null;
-  const POLL_MS = { active: 250, idle: 3000 };
-  const schedule = () => { clearTimeout(pollTimer); pollTimer = setTimeout(poll, active ? POLL_MS.active : POLL_MS.idle); };
+  let lively = true;                 // the last state read was playing or buffering (or none was read yet)
+  let stirredUntil = Date.now() + 15000;   // something was asked of the player: poll fast until then (start-up counts)
+  const POLL_MS = { active: 250, resting: 500, idle: 3000 };
+  const STIR_MS = 6000;
+  const pollGap = () => (!active ? POLL_MS.idle : lively || Date.now() < stirredUntil ? POLL_MS.active : POLL_MS.resting);
+  const schedule = () => { clearTimeout(pollTimer); pollTimer = setTimeout(poll, pollGap()); };
   async function poll() {
     try { await pollOnce(); } finally { if (!win.isDestroyed()) schedule(); }
+  }
+  // a command, a pick, a sign-in: the state is about to change, so look often for a while (and soon, if a slow wait is on)
+  function stir() {
+    const resting = pollGap() !== POLL_MS.active;
+    stirredUntil = Math.max(stirredUntil, Date.now() + STIR_MS);
+    if (resting && active) schedule();
   }
   function setActive(on) {
     if (on === active) return;
     active = on;
-    if (on) { sysVol?.refresh(); poll(); } else schedule();
+    if (on) { readVolume(); poll(); } else schedule();
   }
   schedule();
   async function pollOnce() {
     if (win.isDestroyed()) return;
     const s = await js('window.__sienna?.state()').catch(() => null);
+    lively = !s || s.playerState === 1 || s.playerState === 3;
     if (!s) return;
     if (sysVol) {
       if (s.volume !== 100 && s.videoId) js('window.__sienna.command("volume", 100)').catch(() => {});
@@ -234,6 +264,7 @@ function createYtm({ onState, onSignedIn }) {
     cb({ requestHeaders: d.requestHeaders });
   });
   function signIn(parent) {
+    stir();
     const w = new BrowserWindow({
       width: 480, height: 720, parent, modal: false, title: 'Sign in to YouTube Music',
       webPreferences: { partition: PARTITION, preload: path.join(__dirname, 'signin-preload.cjs') },
@@ -246,6 +277,8 @@ function createYtm({ onState, onSignedIn }) {
     w.webContents.on('did-navigate', (_e, url) => {
       if (url.startsWith(HOME)) {
         w.close();
+        stirredUntil = Date.now() + 30000; // the shop should hear of the sign-in promptly
+        stir();
         win.loadURL(HOME); // reload the player as the signed-in user
       }
     });
@@ -253,7 +286,7 @@ function createYtm({ onState, onSignedIn }) {
 
   // Request handlers main.cjs registers as ipc channels ytm:<name> (renderer: window.sienna.<name>).
   const ipc = { search, playlistArt, albumSongs, prepare, startPrepared };
-  return { home, play, command, signIn, ipc, search, playlistArt, albumSongs, setActive, window: win };
+  return { home, play, command, signIn, ipc, search, playlistArt, albumSongs, setActive, setFocused, window: win };
 }
 
 module.exports = { createYtm };

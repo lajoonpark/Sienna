@@ -62,6 +62,13 @@ export function createTimeOfDay({ scene, sun, hemi, sky }) {
   const t0 = performance.now();
   const startHour = fixed ?? (() => { const d = new Date(); return d.getHours() + d.getMinutes() / 60; })();
   const dir = new THREE.Vector3();
+  // The sun creeps: a quarter of a degree a minute at its fastest. The light is worked out again every
+  // STEP seconds of the clock (the sun has moved 0.02 degrees at most: well under one step of a colour
+  // channel), not every frame: the same picture, without blending a dozen colours through strings 60
+  // times a second, and between those moments a shop where nothing moves is exactly the same frame
+  // (which the painter then does not paint again, see still.js). ?speed runs the clock fast: every frame.
+  const STEP = 5 / 3600; // hours
+  let lastHour = null, lampsOn = 0, shown = { hour: 0, e: 0 };
 
   function hourNow() {
     if (speed) return (startHour + ((performance.now() - t0) / 3600000) * speed) % 24;
@@ -73,32 +80,41 @@ export function createTimeOfDay({ scene, sun, hemi, sky }) {
   return {
     update(t) {
       const hour = hourNow();
-      const { e, s } = sunAt(hour);
-      const m = moodAt(e);
-      sky.paint({ top: m.top, horizon: m.horizon, cloud: m.cloud, cloudAlpha: m.clouds, stars: m.stars });
-      scene.fog.color.set(m.fog);
-      scene.background.set(m.horizon);
-      hemi.color.set(m.hemiSky);
-      hemi.groundColor.set(m.hemiGround);
-      hemi.intensity = m.hemiI;
-      sun.color.set(m.sun);
-      sun.intensity = m.sunI;
-      sun.castShadow = e > -2; // moonlight stays soft; crisp moon shadows read as holes
-      // sun swings from the right (morning) to the left (evening), always a bit from behind the
-      // viewer so the alley is lit; at night the same light is a soft high moon
-      const el = THREE.MathUtils.degToRad(e > 2 ? Math.max(e, 9) : 50);
-      const az = e > 2 ? (s - 0.5) * Math.PI * 0.9 : 0.4;
-      dir.set(-Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el) * 0.9 + 0.35).normalize();
-      sun.position.copy(sun.target.position).addScaledVector(dir, 45);
-      // lamps: the switch-on wave runs while the sun drops from +4 to -5 degrees
-      updateLamps(THREE.MathUtils.clamp((4 - e) / 9, 0, 1), t);
-      const lit = THREE.MathUtils.clamp((7 - e) / 16, 0, 1);
-      let late = 0;
-      if (hour >= 23) late = (hour - 23) / 3;
-      else if (hour < 5) late = Math.min(1, (hour + 1) / 3);
-      else if (hour < 6.5) late = 1 - (hour - 5) / 1.5;
-      updateWindows(lit, THREE.MathUtils.clamp(late, 0, 1));
-      return { hour, e };
+      if (lastHour === null || speed || Math.abs(hour - lastHour) >= STEP) {
+        lastHour = hour;
+        const { e, s } = sunAt(hour);
+        shown = { hour, e };
+        const m = moodAt(e);
+        sky.paint({ top: m.top, horizon: m.horizon, cloud: m.cloud, cloudAlpha: m.clouds, stars: m.stars });
+        scene.fog.color.set(m.fog);
+        scene.background.set(m.horizon);
+        hemi.color.set(m.hemiSky);
+        hemi.groundColor.set(m.hemiGround);
+        hemi.intensity = m.hemiI;
+        sun.color.set(m.sun);
+        sun.intensity = m.sunI;
+        sun.castShadow = e > -2; // moonlight stays soft; crisp moon shadows read as holes
+        // No sun shadows, no shadow map: at 4096 px it is 128 MB of video memory (three keeps a colour and a
+        // depth layer). It is made again when the sun is back (main.js redraws shadows when castShadow flips).
+        if (!sun.castShadow && sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+        // sun swings from the right (morning) to the left (evening), always a bit from behind the
+        // viewer so the alley is lit; at night the same light is a soft high moon
+        const el = THREE.MathUtils.degToRad(e > 2 ? Math.max(e, 9) : 50);
+        const az = e > 2 ? (s - 0.5) * Math.PI * 0.9 : 0.4;
+        dir.set(-Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el) * 0.9 + 0.35).normalize();
+        sun.position.copy(sun.target.position).addScaledVector(dir, 45);
+        // lamps: the switch-on wave runs while the sun drops from +4 to -5 degrees
+        lampsOn = THREE.MathUtils.clamp((4 - e) / 9, 0, 1);
+        const lit = THREE.MathUtils.clamp((7 - e) / 16, 0, 1);
+        let late = 0;
+        if (hour >= 23) late = (hour - 23) / 3;
+        else if (hour < 5) late = Math.min(1, (hour + 1) / 3);
+        else if (hour < 6.5) late = 1 - (hour - 5) / 1.5;
+        updateWindows(lit, THREE.MathUtils.clamp(late, 0, 1));
+      }
+      // every frame: a lamp warming up flickers, and the intro wakes them as the camera comes near
+      updateLamps(lampsOn, t);
+      return shown;
     },
   };
 }

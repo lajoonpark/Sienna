@@ -30,7 +30,8 @@ web page and internal API, so a change on their side can break it.
 - **A painted look.** The world is repainted with brush strokes pinned to its surfaces, and album
   covers are painted to match. Settings can switch to a softer watercolour wash or turn cover
   painting off.
-- **Runs cool.** It only draws at full speed while something is moving, slows down when idle, and
+- **Runs cool.** It only draws at full speed while something is moving. Once the shop is still it is
+  not drawn again at all: only the turning record's corner and the paper border are repainted. It
   stops drawing while its window is hidden.
 
 ## Controls

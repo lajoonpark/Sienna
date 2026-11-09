@@ -5,8 +5,13 @@ import * as THREE from 'three';
 import { paperTexture } from './paint.js';
 import { settings } from './settings.js';
 import { createBrushStrokes } from './brushstrokes.js';
+import { createWatcher } from './still.js';
 
 const BOIL_FPS = 8; // edges re-wobble at a hand-drawn frame rate instead of every frame
+// The ragged paper border: how far its edge wanders, and how wide the paint fades out along it (shares
+// of the picture's height). Past BORDER_REACH from the sheet's edge the border never shows, so a frame in
+// which only the border has boiled is repainted in four strips that deep (see `Still frames` below).
+const BORDER_NOISE = 0.05, BORDER_FADE = 0.045, BORDER_REACH = BORDER_NOISE / 2 + BORDER_FADE;
 
 // How far the scene is pushed from "render" toward "painting" (Settings > Painting; ?wc=N overrides
 // for screenshots). 0 is the old single pass (grain, small blur); higher levels first flatten the
@@ -346,11 +351,11 @@ void main() {
 
   // 6. unpainted ragged border, like a painting that stops short of the sheet edge
   vec2 e = min(vUv, 1.0 - vUv) * vec2(aspect, 1.0);
-  float border = min(e.x, e.y) + (fbm(q * 9.0 + borderSeed * 0.3) - 0.5) * 0.05;
+  float border = min(e.x, e.y) + (fbm(q * 9.0 + borderSeed * 0.3) - 0.5) * ${BORDER_NOISE};
 #ifdef CARD
   border -= 0.05; // a wider paper margin: the sheet itself is the card
 #endif
-  float paint = smoothstep(0.0, 0.045, border);
+  float paint = smoothstep(0.0, ${BORDER_FADE}, border);
   vec3 paperShade = paper * (0.94 + 0.06 * h);
   col = mix(paperShade, col, paint);
 
@@ -465,8 +470,9 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
       scale,
       texture: bleedT.texture,
       steps: [[prepT, prepP], [washT, washP], [bleedT, bleedP]],
-      render(sync) {
-        for (const [t, p] of this.steps) { renderer.setRenderTarget(t); renderer.render(p.sc, postCam); sync?.(t === prepT ? 'prep' : t === washT ? 'wash' : 'bleed'); }
+      // from: 2 = only the bleed again (the one step the boil reaches)
+      render(sync, from = 0) {
+        for (const [t, p] of this.steps.slice(from)) { renderer.setRenderTarget(t); renderer.render(p.sc, postCam); sync?.(t === prepT ? 'prep' : t === washT ? 'wash' : 'bleed'); }
       },
       setSize(full) {
         const s = washSize(full, scale);
@@ -562,6 +568,7 @@ void main() {
     material.needsUpdate = true;
     wash?.dispose(); lite?.dispose(); brush?.dispose();
     wash = lite = brush = null;
+    invalidate();
     if (!L) return;
     wash = makeWash(1);
     if (L.strokes) {
@@ -571,11 +578,14 @@ void main() {
       material.uniforms.tOver.value = wash.texture;
       return;
     }
+    material.uniforms.tWash.value = wash.texture;
+    if (!card) makeLite(); // the card window has no camera to travel: it gets these only if it ever asks (setMotion)
+  }
+  function makeLite() {
     lite = makeWash(0.5);
     const s = washSize(renderer.getDrawingBufferSize(new THREE.Vector2()), wash.scale);
     mixT.setSize(s.x, s.y);
     renderer.initRenderTarget(mixT); // allocated now, not in the frame the intro ends
-    material.uniforms.tWash.value = wash.texture;
   }
   // While the camera travels the world is washed at half size, but the suitcase (an overlay that does
   // not move with the camera) keeps the full wash: the full pipeline runs only inside its box (scissored,
@@ -613,6 +623,7 @@ void main() {
     sawFrame = true;
     const u = material.uniforms;
     if (motionK <= 0) { wash.render(sync); u.tWash.value = wash.texture; return; }
+    if (!lite) makeLite();
     const keep = motionK >= 1 && hiRect && hiRect.right > hiRect.left;
     if (motionK >= 1 && !keep) { lite.render(sync); u.tWash.value = lite.texture; return; }
     if (keep) scissorFull(hiRect);
@@ -625,6 +636,148 @@ void main() {
     renderer.render(mixP.sc, postCam);
     u.tWash.value = mixT.texture;
   }
+  // ---- Still frames ----
+  // A frame is painted again only as far as it differs from the one before (still.js tells):
+  //   nothing changed                      nothing is drawn; the screen keeps its picture
+  //   only the border boiled               Brush strokes: the final pass again, in four strips along the edges
+  //                                        (older looks boil all over: the bleed and the final pass again)
+  //   only the suitcase overlay changed    Brush strokes: the world saved under it is put back, the overlay
+  //   (its record turning)                 drawn on that, and its wash and the final pass run inside its box
+  //   the world changed                    a whole frame, as ever
+  // So the shop's millions of triangles, its shadows and the stroke passes are drawn only while something in
+  // the shop moves. Parts of the screen can be repainted only if it keeps its picture between frames
+  // (preserveDrawingBuffer, see main.js); without that the last two cases paint the whole final pass or frame.
+  const watchWorld = createWatcher(), watchOver = createWatcher();
+  const canPatch = !card && !!renderer.getContextAttributes?.()?.preserveDrawingBuffer;
+  let valid = false;      // the passes hold a whole picture of the last frame
+  let lastBoil = -1;
+  let capBox = null;      // { x, y, w, h } in drawing-buffer px (y up): where worldT holds the world under the overlay
+  const stats = { full: 0, overlay: 0, border: 0, skipped: 0 }; // frames by how much was painted (for checks)
+  function invalidate() { valid = false; capBox = null; }
+  const last = { world: false, overlay: false, rest: false, shadows: false, valid: false }; // what the last frame found new (for checks)
+  // everything else a frame depends on: the same values as last frame?
+  const key = new Float64Array(14);
+  function keySame(vals) {
+    let same = true;
+    for (let i = 0; i < key.length; i++) { const v = vals[i] ?? 0; if (key[i] !== v) { key[i] = v; same = false; } }
+    return same;
+  }
+  const worldT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+  // pixel for pixel, between the scene target and worldT (origin = the box's corner in the scene target)
+  const copyP = pass(/* glsl */ `
+uniform sampler2D tFrom;
+uniform vec2 origin;
+void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy + origin), 0); }
+`, {}, { tFrom: { value: target.texture }, origin: { value: new THREE.Vector2() } });
+  const restoreP = pass(/* glsl */ `
+uniform sampler2D tFrom;
+uniform vec2 origin;
+void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 0); }
+`, {}, { tFrom: { value: worldT.texture }, origin: { value: new THREE.Vector2() } });
+  const full = new THREE.Vector2(), _nb = [0, 0, 0, 0];
+  const PAD = 24;         // CSS px kept round the overlay, so its small moves (lean, lid, tuck) stay inside the saved box
+  const REACH = 32;       // drawing-buffer px: how far a changed pixel reaches in the final pass (wobble, taps, wash radius and bleed)
+  // the overlay's meshes, boxed on screen in drawing-buffer px (clamped to it); null = no telling
+  function overlayBox(overlay) {
+    const b = watchOver.bounds(overlay.scene, overlay.camera, _nb);
+    if (!b) return null;
+    renderer.getDrawingBufferSize(full);
+    const x0 = Math.max(0, Math.floor((b[0] + 1) / 2 * full.x) - 2), x1 = Math.min(full.x, Math.ceil((b[2] + 1) / 2 * full.x) + 2);
+    const y0 = Math.max(0, Math.floor((b[1] + 1) / 2 * full.y) - 2), y1 = Math.min(full.y, Math.ceil((b[3] + 1) / 2 * full.y) + 2);
+    return { x0, y0, x1: Math.max(x0, x1), y1: Math.max(y0, y1) };
+  }
+  // A whole frame: keep the world's pixels under the overlay (target holds the world alone here).
+  function saveUnder(overlay, rect) {
+    capBox = null;
+    const b = canPatch && overlay && overlayBox(overlay);
+    if (!b) return;
+    const css = renderer.domElement.clientWidth || innerWidth, cssH = renderer.domElement.clientHeight || innerHeight;
+    const fx = full.x / css, fy = full.y / cssH, pad = Math.ceil(PAD * fx);
+    let { x0, y0, x1, y1 } = b;
+    if (rect && rect.right > rect.left) {
+      x0 = Math.min(x0, Math.floor(rect.left * fx)); x1 = Math.max(x1, Math.ceil(rect.right * fx));
+      y0 = Math.min(y0, Math.floor((cssH - rect.bottom) * fy)); y1 = Math.max(y1, Math.ceil((cssH - rect.top) * fy));
+    }
+    x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(full.x, x1 + pad); y1 = Math.min(full.y, y1 + pad);
+    const w = x1 - x0, h = y1 - y0;
+    if (w <= 0 || h <= 0 || w * h > 0.4 * full.x * full.y) return; // (records flying across the screen: whole frames)
+    // in steps, so a box that grows and shrinks a little does not reallocate
+    const tw = Math.ceil(w / 128) * 128, th = Math.ceil(h / 128) * 128;
+    if (worldT.width !== tw || worldT.height !== th) worldT.setSize(tw, th);
+    copyP.m.uniforms.origin.value.set(x0, y0);
+    worldT.scissor.set(0, 0, w, h);
+    worldT.scissorTest = true;
+    renderer.setRenderTarget(worldT);
+    renderer.render(copyP.sc, postCam);
+    capBox = { x: x0, y: y0, w, h };
+    putBack();
+  }
+  // The saved world, back into the scene target's box. Also right after saving it, in every whole frame:
+  // the overlay's soft edges then blend with the same (resolved) pixels there as in the frames that redraw
+  // the overlay alone, so a frame is the same picture to the last bit whichever way it was put together
+  // (scripts/cache-check.mjs compares them).
+  function putBack() {
+    const c = capBox;
+    target.scissor.set(c.x, c.y, c.w, c.h);
+    target.scissorTest = true;
+    restoreP.m.uniforms.origin.value.set(c.x, c.y);
+    renderer.setRenderTarget(target);
+    const auto = renderer.autoClear;
+    renderer.autoClear = false;
+    renderer.render(restoreP.sc, postCam);
+    renderer.autoClear = auto;
+  }
+  function wholeTarget() { target.scissorTest = false; target.scissor.set(0, 0, target.width, target.height); }
+  // the final pass, on one part of the screen (drawing-buffer px, y up)
+  function finalPart(x, y, w, h) {
+    const pr = renderer.getPixelRatio();
+    renderer.setRenderTarget(null);
+    renderer.setScissor(x / pr, y / pr, w / pr, h / pr);
+    renderer.setScissorTest(true);
+    renderer.render(post, postCam);
+    renderer.setScissorTest(false);
+  }
+  // Only the overlay changed. false = cannot be done in its box (then a whole frame is painted).
+  function repaintOverlay(overlay, rect, sync) {
+    if (!capBox) return false;
+    const b = overlayBox(overlay), c = capBox;
+    if (!b || b.x0 < c.x || b.y0 < c.y || b.x1 > c.x + c.w || b.y1 > c.y + c.h) return false;
+    // Everything inside the box is drawn afresh, the world from its saved pixels, and only the box is
+    // resolved (the scissor holds for the multisample resolve too), so nothing outside it is touched.
+    putBack();
+    renderOverlay(renderer, overlay);
+    wholeTarget();
+    sync?.('scene');
+    const u = material.uniforms;
+    u.overBox.value.set(2, 2, 2, 2);
+    if (rect && rect.right > rect.left) {
+      scissorFull(rect);
+      wash.render(sync);
+      u.overBox.value.copy(mixP.m.uniforms.hi.value);
+      unscissor();
+    }
+    renderer.getDrawingBufferSize(full);
+    const x0 = Math.max(0, c.x - REACH), y0 = Math.max(0, c.y - REACH);
+    finalPart(x0, y0, Math.min(full.x, c.x + c.w + REACH) - x0, Math.min(full.y, c.y + c.h + REACH) - y0);
+    sync?.('final');
+    return true;
+  }
+  // Only the ragged border boiled (Brush strokes): the final pass along the four edges.
+  function repaintBorder() {
+    renderer.getDrawingBufferSize(full);
+    const d = Math.ceil(BORDER_REACH * full.y) + 2;
+    // (the cinema bars have a boiling edge too, anywhere in the picture)
+    if (!canPatch || material.uniforms.bars.value > 0.001 || 2 * d >= Math.min(full.x, full.y)) {
+      renderer.setRenderTarget(null);
+      renderer.render(post, postCam);
+      return;
+    }
+    finalPart(0, 0, full.x, d);
+    finalPart(0, full.y - d, full.x, d);
+    finalPart(0, d, d, full.y - 2 * d);
+    finalPart(full.x - d, d, d, full.y - 2 * d);
+  }
+
   // drawing-buffer px per CSS px, inverted: 0.5 on a Retina screen, 1 elsewhere
   function washScale() { return Math.min(1, 1 / Math.max(1, renderer.getPixelRatio())); }
   function washSize(full, scale) { return new THREE.Vector2(Math.max(1, Math.round(full.x * scale)), Math.max(1, Math.round(full.y * scale))); }
@@ -643,6 +796,7 @@ void main() {
     strokeWorld = world;
     strokeViews.push(...views);
     if (brush) brush.strokes.bake(world, views);
+    invalidate(); // new strokes: the same world is painted differently now
   }
 
   return {
@@ -659,7 +813,28 @@ void main() {
     // sync (profiling only): called after each step with its name, to time it (see __siennaDebug.profile)
     render(scene, camera, t, overlay, sync) {
       const u = material.uniforms;
-      u.borderSeed.value = (Math.floor(t * BOIL_FPS) % 64) * 1.37;
+      // a page that named no views gets strokes for what it is looking at (Brush strokes)
+      if (brush && !strokeViews.length) {
+        camera.getWorldDirection(dir);
+        bakeStrokes(scene, [{ pos: camera.getWorldPosition(new THREE.Vector3()), target: camera.getWorldPosition(new THREE.Vector3()).add(dir), fov: Math.min(100, camera.fov * 1.2) }]);
+      }
+      // Matrices once, here: the watchers read them, and the renders below do not work them out again.
+      const autoWorld = scene.matrixWorldAutoUpdate;
+      if (autoWorld) scene.updateMatrixWorld();
+      if (camera.parent === null && camera.matrixWorldAutoUpdate) camera.updateMatrixWorld();
+      if (overlay) {
+        if (overlay.scene.matrixWorldAutoUpdate) overlay.scene.updateMatrixWorld();
+        if (overlay.camera.parent === null && overlay.camera.matrixWorldAutoUpdate) overlay.camera.updateMatrixWorld();
+      }
+      const drawWorld = () => {
+        scene.matrixWorldAutoUpdate = false;
+        renderer.setRenderTarget(target);
+        renderer.render(scene, camera);
+        scene.matrixWorldAutoUpdate = autoWorld;
+      };
+
+      const boil = Math.floor(t * BOIL_FPS) % 64;
+      u.borderSeed.value = boil * 1.37;
       u.seed.value = brush || L?.still ? 0 : u.borderSeed.value; // dry paint does not boil, but the sheet's ragged border does
       u.near.value = camera.near;
       u.far.value = camera.far;
@@ -672,22 +847,43 @@ void main() {
       const pxPerRad = u.resolution.value.y / fovY;
       u.paperOffset.value.set((yaw * pxPerRad) / 512, (pitch * pxPerRad) / 512);
 
+      // What is new in this frame (see `Still frames`). Both watchers look every frame, whatever is then drawn.
+      const rect = overlay?.hiRect?.() ?? null;
+      const worldNew = watchWorld.changed(scene, camera);
+      // a shadow map about to be redrawn is a new picture too (with no light to cast one, three never draws
+      // it and leaves its flag up: that is not a change)
+      const shadows = renderer.shadowMap.enabled && (renderer.shadowMap.autoUpdate || renderer.shadowMap.needsUpdate) && watchWorld.shadowLights > 0;
+      const worldSame = !worldNew && !shadows;
+      const overSame = !watchOver.changed(overlay?.scene ?? null, overlay?.camera ?? null);
+      const g = u.grade.value;
+      const restSame = keySame([u.bars.value, g.x, g.y, g.z, u.vignette.value, camera.near, camera.far, overlay ? 1 : 0,
+        rect?.left, rect?.right, rect?.top, rect?.bottom, motion ? 1 : 0]);
+      const same = valid && worldSame && restSame;
+      last.world = !worldSame; last.overlay = !overSame; last.rest = !restSame; last.shadows = shadows; last.valid = valid;
+      const boiled = boil !== lastBoil;
+      lastBoil = boil;
+      if (same && overSame && !boiled) { stats.skipped++; return; }
+
       if (brush) {
-        // a page that named no views gets strokes for what it is looking at
-        if (!strokeViews.length) {
-          bakeStrokes(scene, [{ pos: camera.getWorldPosition(new THREE.Vector3()), target: camera.getWorldPosition(new THREE.Vector3()).add(dir), fov: Math.min(100, camera.fov * 1.2) }]);
+        if (same) {
+          const done = overSame || repaintOverlay(overlay, rect, sync);
+          if (done) {
+            if (boiled) repaintBorder();
+            if (overSame) stats.border++; else stats.overlay++;
+            sync?.('final');
+            return;
+          }
         }
-      }
-      renderer.setRenderTarget(target);
-      renderer.render(scene, camera);
-      if (brush) {
+        drawWorld();
         sync?.('scene');
         pan.set((yaw * pxPerRad) / u.resolution.value.x, (pitch * pxPerRad) / u.resolution.value.y);
         brush.render(pan, camera, sync);
+        // keep what is under the overlay, so that frames in which only the overlay moves can redraw it alone
+        saveUnder(overlay, rect);
+        wholeTarget();
         renderer.setRenderTarget(target);
         renderOverlay(renderer, overlay);
         u.overlayOn.value = overlay ? 1 : 0;
-        const rect = overlay?.hiRect?.();
         u.overBox.value.set(2, 2, 2, 2);
         if (rect && rect.right > rect.left) {
           scissorFull(rect);
@@ -698,24 +894,41 @@ void main() {
         renderer.setRenderTarget(null);
         renderer.render(post, postCam);
         sync?.('final');
+        valid = true;
+        stats.full++;
         return;
       }
+      // The older looks, and the card. Nothing but the boil is new and the washes are at rest: the scene
+      // target and the flattened washes still hold, so only what the boil reaches is painted again.
+      if (same && overSame && motionK <= 0 && !motion) {
+        if (wash && !L.still) wash.render(sync, 2);
+        lastT = t;
+        renderer.setRenderTarget(null);
+        renderer.render(post, postCam);
+        sync?.('final');
+        stats.border++;
+        return;
+      }
+      drawWorld();
       renderOverlay(renderer, overlay);
       sync?.('scene');
-      renderWash(t, sync, overlay?.hiRect?.());
+      renderWash(t, sync, rect);
       renderer.setRenderTarget(null);
       renderer.render(post, postCam);
       sync?.('final');
+      valid = true;
+      stats.full++;
     },
     setSize() {
       const s = renderer.getDrawingBufferSize(new THREE.Vector2());
+      invalidate();
       target.setSize(s.x, s.y);
       material.uniforms.resolution.value.copy(s);
       // a new pixel ratio (window moved to another screen) changes the wash scale: rebuild
       if (wash && wash.scale !== washScale()) buildWash();
       else if (brush) { wash.setSize(s); brush.setSize(s); }
       else if (wash) {
-        wash.setSize(s); lite.setSize(s);
+        wash.setSize(s); lite?.setSize(s);
         const m = washSize(s, wash.scale);
         mixT.setSize(m.x, m.y);
       }
@@ -724,6 +937,15 @@ void main() {
     // the camera is travelling (intro, flights): paint with the cheap half-size washes until it stops
     setMotion(on) { motion = !!on; },
     get level() { return level; },
+    // the next frame is painted whole (something changed that the painter cannot see for itself)
+    invalidate,
+    // frames so far by how much of them was painted: { full, overlay, border, skipped }
+    stats,
+    // what the last frame found changed in the world (an object, or null), for checks
+    get why() { return watchWorld.why; },
+    get last() { return { ...last, saved: !!capBox }; },
+    // strokes placed so far, per layer (Brush strokes), and how many their buffers hold
+    get strokes() { return brush ? { counts: brush.strokes.counts, caps: brush.strokes.caps } : null; },
     // where the world is drawn: warm-up compiles must use it too (it picks the shader's output variant)
     get target() { return target; },
   };

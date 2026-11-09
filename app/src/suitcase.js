@@ -274,7 +274,11 @@ export function createSuitcase({ music = null, lidStop = DEFAULT_STOP, ground = 
     const target = playing && !adPlaying && seatHas ? SPIN : 0;   // it turns only while a song plays, not during an ad
     spinSpeed += (target - spinSpeed) * smooth(playing ? 5 : 3.5, dt);
     if (!scrub) spinAngle += spinSpeed * dt;
-    record.group.rotation.y = -spinAngle;
+    // Under a shut lid (the case tucked away at a rack) nobody sees the record turn or the arm creep: they
+    // keep going, but the parts are left as they are, so the frame stays the same and is not painted again
+    // (still.js). They are posed afresh the moment the lid moves.
+    const shut = hinge.mode === 'resting' && hinge.angle === 0;
+    if (!shut) record.group.rotation.y = -spinAngle;
     if (dropT < 1) {
       dropT = Math.min(1, dropT + dt / 0.38);
       const e = easeOut(dropT);
@@ -296,10 +300,10 @@ export function createSuitcase({ music = null, lidStop = DEFAULT_STOP, ground = 
     const onRecord = (hasTrack || leadIn) && seatHas && !held;
     const armTarget = onRecord ? armAngleForProgress(leadIn ? 0 : progressNow()) : parkedArmAngle();
     armAngle += (armTarget - armAngle) * smooth(6, dt);
-    armPivot.rotation.y = armAngle;
+    if (!shut) armPivot.rotation.y = armAngle;
     const travelling = Math.abs(armTarget - armAngle) > 0.04;
     armLiftAmt += ((!onRecord || travelling || hovering ? 1 : 0) - armLiftAmt) * smooth(8, dt);
-    armLift.rotation.z = -0.1 * armLiftAmt;
+    if (!shut) armLift.rotation.z = -0.1 * armLiftAmt;
     // the needle is down on the lead-in: the record spins up and the song starts
     if (cue && (cueing ? cue.ready && !travelling && armLiftAmt < 0.12 : now() - cue.at > CUE_GIVE_UP)) {
       const start = cue.start;
