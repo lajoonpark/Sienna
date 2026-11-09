@@ -29,7 +29,7 @@ SIENNA_QUERY='cam=-4.4,4.65,-3.3,2,3.2,-9.5' node scripts/shot.mjs out_dir 9   #
 node scripts/make-icons.mjs  # re-render the icons after editing icons/*.svg
 ```
 
-**Icons** are drawn as SVG in `icons/`: `app-icon.svg` (a record with a lemon-slice label on painted green; macOS grid, 824 px body in 1024) and `menubar.svg` (record + tonearm). `scripts/make-icons.mjs` renders them to `electron/icon.png` (set as the Dock icon on macOS and the window icon elsewhere) and `electron/trayTemplate.png` / `@2x` (black on transparent; macOS tints it for light and dark menu bars). There is no packaged build yet, so there is no `.icns`; a packager can take `icon.png`.
+**Icons** are drawn as SVG in `icons/`: `app-icon.svg` (a cream sleeve with a painted lemon branch, record sliding out, on painted sienna; macOS grid, 824 px body in 1024) and `menubar.svg` (record peeking out of a sleeve). `scripts/make-icons.mjs` renders them to `electron/icon.png` (set as the Dock icon on macOS and the window icon elsewhere) and `electron/trayTemplate.png` / `@2x` (black on transparent; macOS tints it for light and dark menu bars). There is no packaged build yet, so there is no `.icns`; a packager can take `icon.png`.
 
 URL options: `?hour=20.5` freezes the clock, `?speed=600` runs it faster, `?cam=x,y,z,tx,ty,tz` pins the camera, and `?style=flat` shows the old look.
 
