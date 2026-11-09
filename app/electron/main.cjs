@@ -45,6 +45,7 @@ function startPlayer() {
 
 function createWindow() {
   win = new BrowserWindow({
+    icon: path.join(__dirname, 'icon.png'),   // taskbar/window icon on Windows and Linux
     width: 1280,
     height: 800,
     backgroundColor: '#1b1410',
@@ -100,6 +101,8 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', openSienna);
   app.whenReady().then(() => {
+    // Unpackaged runs show Electron's own Dock icon; swap in Sienna's (icons/app-icon.svg, see scripts/make-icons.mjs).
+    if (process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, 'icon.png'));
     startPlayer();
     createWindow();   // open on start
     createTray();
