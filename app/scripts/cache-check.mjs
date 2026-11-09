@@ -5,11 +5,12 @@
 //      painted whole (painter.stats), and say what kept changing if they are;
 //   2. it shows nothing different: a frame put together that way is, pixel for pixel, the frame a whole
 //      repaint gives at the same moment.
-//   node scripts/cache-check.mjs [at=home] [query]   (SIENNA_PORT, SIENNA_VIEWPORT=480x300, SIENNA_DPR; e.g. home "hour=14")
-// Pin the hour: under software rendering a frame takes seconds, and the light is worked out again every 5 s.
+//   node scripts/cache-check.mjs [at=home] [query=shelves=8]   (SIENNA_PORT, SIENNA_VIEWPORT=480x300, SIENNA_DPR)
+// Without a GPU use  node scripts/cache-check.mjs home "hour=14" : a frame takes seconds there, so pin the
+// hour (the light is worked out again every 5 s) and leave the store at its few shelves (fewer covers to wait for).
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-const at = process.argv[2] ?? 'home', q = process.argv[3] ?? '';
+const at = process.argv[2] ?? 'home', q = process.argv[3] ?? 'shelves=8';
 const port = Number(process.env.SIENNA_PORT) || 5246;
 const [vw, vh] = (process.env.SIENNA_VIEWPORT || '480x300').split('x').map(Number);
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
@@ -17,25 +18,45 @@ await server.listen();
 const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await b.newPage({ viewport: { width: vw, height: vh }, deviceScaleFactor: Number(process.env.SIENNA_DPR) || 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.goto(`http://127.0.0.1:${port}/index.html?shelves=8&at=${at}&${q}`, { waitUntil: 'commit', timeout: 0 });
+await page.goto(`http://127.0.0.1:${port}/index.html?at=${at}&${q}`, { waitUntil: 'commit', timeout: 0 });
 await page.waitForFunction(() => window.__siennaDebug?.state.settled && window.__siennaDebug.pacer, null, { timeout: 400000 });
 // a song on, so the record turns (the fake store plays at once)
 await page.evaluate(async () => { const d = window.__siennaDebug; const { shelves } = await d.music.shelves(); d.music.play(shelves[0].items[1]); });
-await page.waitForTimeout(Number(process.env.SETTLE || 25000));
+// settled = every rack is out with its records dropped in, and every cover is painted and on the GPU (a
+// resting cover's canvas is shrunk once it is uploaded, see slim in src/racks/common.js). Each of those is
+// a real change to the picture. Under software rendering they take minutes: in a plain browser the fake
+// store's covers are painted on the main thread, one a frame, and a frame takes seconds.
+const SETTLE = Number(process.env.SETTLE || 900000);
+const late = () => console.log('  (racks or covers were still arriving when the wait ran out)');
+const racksOut = (slim) => page.waitForFunction((slim) => {
+  const d = window.__siennaDebug;
+  return d.stations.every((st, i) => !st.shelf || (d.racks[i]?.root.visible && d.racks[i].core.sleeves.every((s) => s.appear >= 1 && (!slim || s.small.tex.image.width === 1))));
+}, slim, { timeout: SETTLE, polling: 1000 }).catch(late);
+await racksOut(false);   // racks are built one a frame: only then are all their covers known
+await page.evaluate((ms) => Promise.race([Promise.all(window.__siennaDebug.racks.map((r) => r?.ready())), new Promise((res) => setTimeout(res, ms))]), SETTLE);
+await racksOut(true);
+await page.waitForTimeout(8000);
 
 let bad = 0;
 const stats = () => page.evaluate(() => ({ ...window.__siennaDebug.painter.stats }));
 // the next dozen frames (however long they take: software rendering can be seconds a frame)
-const sample = async (n = 12, ms = 120000) => {
-  const a = await stats(), t0 = Date.now();
-  let d;
+// (and what changed in the world in the frames that were painted whole)
+const sample = (n = 12, ms = 120000) => page.evaluate(async ({ n, ms }) => {
+  const p = window.__siennaDebug.painter, a = { ...p.stats }, t0 = performance.now(), why = {};
+  let d, fulls = a.full;
   do {
-    await page.waitForTimeout(1000);
-    const z = await stats();
-    d = Object.fromEntries(Object.keys(a).map((k) => [k, z[k] - a[k]]));
-  } while (d.full + d.overlay + d.border + d.skipped < n && Date.now() - t0 < ms);
+    await new Promise((res) => requestAnimationFrame(res));
+    if (p.stats.full !== fulls) {
+      fulls = p.stats.full;
+      const o = p.why, l = p.last;
+      const k = o ? `${o.type}#${o.id} in ${o.parent?.type}#${o.parent?.id}` : l.shadows ? 'shadows' : l.rest ? 'painter settings' : !l.valid ? 'invalidated' : l.overlay ? 'overlay outside its saved box' : 'camera / fog';
+      why[k] = (why[k] || 0) + 1;
+    }
+    d = Object.fromEntries(Object.keys(a).map((k) => [k, p.stats[k] - a[k]]));
+  } while (d.full + d.overlay + d.border + d.skipped < n && performance.now() - t0 < ms);
+  if (d.full) d.why = why;
   return d;
-};
+}, { n, ms });
 const home = at === 'home'; // at a rack the case is tucked away with its lid shut: nothing in it moves
 const d = await sample();
 console.log('frames at rest, record turning:', JSON.stringify(d));
@@ -90,19 +111,6 @@ report(await compare('border', 4));
 const d2 = await sample(8, 60000);
 console.log('frames at rest, paused:', JSON.stringify(d2));
 if (d2.full > 2 || d2.overlay > 2) { bad++; console.log('  FAIL: more than the border is being painted while nothing moves'); }
-// what moves when the world is painted whole at rest (helps find an animation that never comes to rest)
-if (d.full > 3) {
-  const why = await page.evaluate(async () => {
-    const d = window.__siennaDebug, seen = {};
-    for (let i = 0; i < 200; i++) {
-      await new Promise((res) => requestAnimationFrame(res));
-      const o = d.painter.why;
-      if (o) { const k = `${o.type}#${o.id} ${o.name || ''} parent ${o.parent?.type}#${o.parent?.id}`; seen[k] = (seen[k] || 0) + 1; }
-    }
-    return seen;
-  });
-  console.log('  changing:', JSON.stringify(why, null, 1));
-}
 console.log(bad ? `FAILED (${bad})` : 'ok');
 await b.close(); await server.close();
 process.exit(bad ? 1 : 0);
