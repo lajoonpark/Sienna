@@ -7,7 +7,7 @@
 //   const panel = createSettingsPanel();   panel.open() / close() / toggle() / isOpen()
 //
 // Shot hook: ?settings opens it.
-import { FONT, FONTS, LETTERING } from './style.js';
+import { FONT, FONTS } from './style.js';
 import { INK, HOT, PAPER, brushStroke } from './controls.js';
 import { settings } from './settings.js';
 import { shortcuts, fromEvent } from './shortcuts.js';
@@ -16,13 +16,9 @@ import { rng } from './rand.js';
 // Settings > Painting: watercolour strength (LEVELS in watercolour.js), lightest first
 const PAINT = ['Faint', 'Light', 'Medium', 'Heavy', 'Brush strokes'];
 
-// Font sizes are for Amatic; other letterings are scaled to take about the same room (style.js).
-// Line heights are fixed at Amatic's natural 1.27 so taller fonts don't spread the rows apart.
-const px = (n) => `${+(n * LETTERING.scale).toFixed(2)}px`;
-
 const CSS = `
 .st-btn { position: fixed; top: 3.4vh; right: 2.6vw; z-index: 6; border: 0; padding: 0; background: none; cursor: pointer;
-  font-family: ${FONT}; color: ${PAPER}; font-size: ${px(26)}; line-height: 1; user-select: none; opacity: 0; transition: opacity .6s ease, transform .18s cubic-bezier(.3,1.6,.5,1); }
+  font-family: ${FONT}; color: ${PAPER}; font-size: 26px; line-height: 1; user-select: none; opacity: 0; transition: opacity .6s ease, transform .18s cubic-bezier(.3,1.6,.5,1); }
 .st-btn.show { opacity: .9; }
 .st-btn:hover { opacity: 1; transform: translateX(-4px) rotate(1deg); }
 .st-w { position: relative; display: inline-block; border: 0; padding: 0; background: none; cursor: pointer; font-family: ${FONT};
@@ -31,7 +27,7 @@ const CSS = `
 .st-w .plate.hot { opacity: 0; }
 .st-w:hover .plate.hot, .st-w.on .plate.hot { opacity: 1; }
 .st-w:hover { transform: translateY(-2px) rotate(-1deg); }
-.st-w span { position: relative; top: ${LETTERING.dy}em; display: block; padding: .16em 1em .1em .7em; white-space: nowrap; text-shadow: 0 0 1px rgba(251,245,232,.7); }
+.st-w span { position: relative; display: block; padding: .16em 1em .1em .7em; white-space: nowrap; text-shadow: 0 0 1px rgba(251,245,232,.7); }
 .st-btn .st-w span { padding: .16em .7em .1em 1em; }
 .st-btn .plate { transform: scaleX(-1); }
 .st-veil { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
@@ -42,18 +38,18 @@ const CSS = `
   transform: translateY(18px) rotate(-1.4deg) scale(.96); transition: transform .45s cubic-bezier(.2,1.5,.4,1); }
 .st-veil.show .st-card { transform: rotate(-.5deg); }
 .st-paper { position: absolute; inset: 0; background: #f4ead6; }
-.st-head { position: relative; line-height: 1.27; font-size: ${px(42)}; margin: 0 0 12px; color: ${INK}; }
+.st-head { position: relative; font-size: 42px; margin: 0 0 12px; color: ${INK}; }
 .st-rows { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 0 36px; }
 .st-row { position: relative; margin: 0 0 16px; }
-.st-label { line-height: 1.27; font-size: ${px(30)}; }
-.st-hint { line-height: 1.27; font-size: ${px(19)}; color: #7a5a40; margin: 2px 0 10px; }
-.st-opts { display: flex; flex-wrap: wrap; gap: 6px 4px; font-size: ${px(27)}; }
+.st-label { font-size: 30px; }
+.st-hint { font-size: 19px; color: #7a5a40; margin: 2px 0 10px; }
+.st-opts { display: flex; flex-wrap: wrap; gap: 6px 4px; font-size: 27px; }
 .st-keys { grid-column: 1 / -1; }
 .st-keys .st-opts { align-items: center; gap: 6px 4px; }
-.st-kname { font-size: ${px(24)}; color: #5a4636; margin: 0 2px 0 14px; }
+.st-kname { font-size: 24px; color: #5a4636; margin: 0 2px 0 14px; }
 .st-kname:first-child { margin-left: 0; }
 .st-keys .st-msg { min-height: 1.2em; color: #a0442c; }
-.st-foot { position: relative; display: flex; justify-content: flex-end; font-size: ${px(28)}; }
+.st-foot { position: relative; display: flex; justify-content: flex-end; font-size: 28px; }
 `;
 
 // A hand-torn outline as a CSS polygon (same idea as the search slips).
@@ -129,11 +125,7 @@ export function createSettingsPanel() {
     const box = rowEl.querySelector('.st-opts');
     const ws = row.opts.map(([label, value, font], i) => {
       const w = word(label, 23 + r * 13 + i * 5, () => settings.set(row.key, value));
-      if (font) { // each lettering choice is written in itself, at its own size and height
-        w.style.fontFamily = font.family;
-        w.style.fontSize = `${+(font.scale / LETTERING.scale).toFixed(3)}em`;
-        w.querySelector('span').style.top = `${font.dy}em`;
-      }
+      if (font) w.style.fontFamily = font.family; // each lettering choice is written in itself
       box.appendChild(w);
       optWords.push(w);
       return w;
