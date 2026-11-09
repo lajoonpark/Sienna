@@ -148,7 +148,7 @@ const spread = createSpread({
 });
 nav.onChange(() => { menu.setCurrent(nav.at); warm(); spread.close(); });
 menu.setCurrent(nav.at);
-// the search bar (Option+Cmd+S / Ctrl+Alt+S) must exist before the key handlers below are registered
+// the search bar (Control+Option+J by default, Settings > Shortcuts) must exist before the key handlers below are registered
 // a search pick has no sleeve: the drawer in the suitcase slides out with the record in it
 const search = createSearch({ music, onPlay: (item) => { startSong(music, suitcase.suitcase, item); suitcase.dispense(getCover(item.art, 512).tex); } });
 // Settings (Cmd+, or the SETTINGS word): swallows keys itself while open

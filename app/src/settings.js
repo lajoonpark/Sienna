@@ -1,5 +1,5 @@
 // User settings, kept in localStorage so they survive restarts. The shop window and the
-// Ctrl+Option+Space mini window share one origin, so a change in one reaches the other through the
+// mini window share one origin, so a change in one reaches the other through the
 // 'storage' event. Storage can be unavailable (private mode, blocked): everything still works with
 // the defaults, it just does not remember.
 //

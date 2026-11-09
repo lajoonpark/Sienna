@@ -1,18 +1,17 @@
-// The small window: Ctrl+Alt+Space anywhere (Control+Option+Space on macOS) pops up a frameless,
+// The small window: its global shortcut (Control+Option+K by default, set in Settings > Shortcuts, see
+// shortcuts.cjs) pops up a frameless,
 // transparent, always-on-top window at the cursor with the suitcase on a paper card (mini.html).
 // The lid is flicked open by the page; Esc, a click outside (the window losing focus) or the
 // shortcut again shuts the lid, and only then is the window hidden (the page tells us, 'mini:closed').
-const { BrowserWindow, globalShortcut, screen, ipcMain, app } = require('electron');
+const { BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('node:path');
 
-const SHORTCUT = 'Control+Alt+Space';
 const SIZE = { width: 540, height: 620 };    // matches W x H in src/mini.js
 
 function createMini({ onVisible } = {}) {
   let win = null;
   let state = 'hidden';                       // hidden | open | closing
   let shownAt = 0;
-  let registered = false;
 
   function create() {
     const mac = process.platform === 'darwin';
@@ -119,25 +118,13 @@ function createMini({ onVisible } = {}) {
   });
 
   return {
-    // Registers the shortcut. Returns false if the system refused it (another app owns it, or no X11 on Linux).
-    register() {
-      registered = globalShortcut.register(SHORTCUT, toggle);
-      if (!registered) console.warn(`Sienna: could not register ${SHORTCUT}`);
-      app.once('will-quit', () => this.dispose());
-      return registered;
-    },
-    dispose() {
-      if (registered) globalShortcut.unregister(SHORTCUT);
-      registered = false;
-    },
     isOpen: () => state !== 'hidden',
     prewarm() { if (!win) create(); },         // load the page ahead of the first summon, so the lid does not stutter
     send,
     toggle, open, close,
     get state() { return state; },
     get window() { return win; },
-    get registered() { return registered; },
   };
 }
 
-module.exports = { createMini, SHORTCUT };
+module.exports = { createMini };

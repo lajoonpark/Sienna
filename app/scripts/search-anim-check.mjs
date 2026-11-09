@@ -56,7 +56,7 @@ await page.evaluate(() => {
     requestAnimationFrame(step);
   });
 });
-const hotkey = () => page.keyboard.press('Control+Alt+KeyS');
+const hotkey = () => page.keyboard.press('Control+Alt+KeyJ');
 const classes = () => page.evaluate(() => document.querySelector('.cs').className);
 
 async function film(p, name, act, ms, width = 900, clipH = 0.5) {
@@ -152,7 +152,7 @@ mini.on('pageerror', (e) => errors.push(e.message));
 await mini.addInitScript(slowClock);
 await mini.goto(`http://127.0.0.1:${port}/mini.html`);
 await wait(2500);
-const miniKey = () => mini.keyboard.press('Control+Alt+KeyS');
+const miniKey = () => mini.keyboard.press('Control+Alt+KeyJ');
 await film(mini, 'mini-open', miniKey, 900, 540, 1);
 assert.ok(await mini.evaluate(() => document.querySelector('.cs').classList.contains('show')));
 await wait(600);

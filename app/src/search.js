@@ -1,4 +1,4 @@
-// Search bar. Opens with Option+Cmd+S (macOS) or Ctrl+Alt+S: a swipe of cream paint on a swipe of indigo,
+// Search bar. Opens with the search shortcut (Control+Option+J by default, see shortcuts.js): a swipe of cream paint on a swipe of indigo,
 // top centre, with the results brushed in under it row by row, the chosen one painted over in terracotta.
 // All of it is laid with the shop's brush (brushpaint.js). The bar is slapped on and flicked off as paint
 // (searchpaint.js); the results follow in zigzag, one row each way, as a painter's arm goes.
@@ -16,6 +16,7 @@
 // handlers check search.isOpen().
 //
 // Shot hooks (location.search): ?search=lemon opens it with that query, ?searchhl=N highlights slip N.
+import { shortcuts } from './shortcuts.js';
 import { rng } from './rand.js';
 import { FONT } from './style.js';
 import { INK, PAPER } from './controls.js';
@@ -285,9 +286,9 @@ export function createSearch({ music, onPlay, suggest = null }) {
   input.addEventListener('blur', () => { if (isOpen) setTimeout(() => isOpen && document.hasFocus() && input.focus({ preventScroll: true }), 0); }); // not when the whole window lost focus (switching apps)
 
   // ---- open / close ------------------------------------------------------------
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  // the search shortcut (Control+Option+J by default, Settings > Shortcuts); not while Settings is recording one
   function isToggle(e) {
-    return e.code === 'KeyS' && e.altKey && (isMac ? e.metaKey : e.ctrlKey); // Option changes e.key on a Mac, so e.code
+    return !shortcuts.recording && shortcuts.matches('search', e);
   }
 
   function open() {

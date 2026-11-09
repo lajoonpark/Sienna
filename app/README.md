@@ -102,13 +102,13 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   record player: the record spins with the cover on its label, the tonearm creeps in as the song
   plays, the knob is volume (drag it or scroll; scrolling down is quieter), the buttons are back / play / skip / like, and
   dragging the record scrubs. A paper tag beside it shows the song with a seekable progress line.
-- **Mini player**: **⌃⌥Space** anywhere opens the same suitcase at the cursor on a torn-paper card
+- **Mini player**: **⌃⌥K** anywhere opens the same suitcase at the cursor on a torn-paper card
   (`mini.html`, `electron/mini.cjs`); the lid flicks open on a physical hinge (`src/lid.js`). Esc,
-  clicking away or ⌃⌥Space again shuts it. ⌥⌘S searches there too.
+  clicking away or ⌃⌥K again shuts it. The search shortcut works there too.
 - **Volume**: on macOS the knob, scroll and ↑ ↓ set the Mac's own output volume (`electron/sysvolume.cjs`,
   osascript) and the player stays at 100%, so you can turn it up past where the Mac was. Elsewhere it
   is the player's volume.
-- **Search**: **⌥⌘S** (Ctrl+Alt+S on Windows/Linux) opens a search bar (`src/search.js`). The bar is
+- **Search**: **⌃⌥J** (Ctrl+Alt+J on Windows/Linux) opens a search bar (`src/search.js`). The bar is
   slapped on bristle by bristle, throwing droplets, and flicked off the right-hand end when it closes
   (`src/searchpaint.js`; the same in the shop and the mini window, no animation under the system's reduce-motion setting). Songs are
   brushed in row by row, zigzagging, with the shop's brush (`src/brushpaint.js`), arrows + Enter or a click plays one. A song from search has no sleeve, so
@@ -120,6 +120,14 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   Shutting the mini window before the record is down puts it straight on and starts the song as soon
   as it has loaded (nothing is drawn while the window is hidden, so the arm would never land). Check:
   `node scripts/mini-close-check.mjs`.
+- **Shortcuts**: search **⌃⌥J**, full app **⌃⌥L**, mini player **⌃⌥K** by default, changed in Settings >
+  Shortcuts (click one, press the new keys, Esc cancels; Reset puts the defaults back). The main process
+  owns them (`electron/shortcuts.cjs`, saved in userData `shortcuts.json`, so they are known before a page loads)
+  and registers the full-app and mini ones as global shortcuts; search is matched in each window
+  (`src/shortcuts.js`). While one is being recorded the global ones are let go, so pressing the current
+  combination reaches the card. A combination already used by another of the three is refused, and so is a
+  global one the system will not give (another app owns it). Check:
+  `npm run build && xvfb-run -a node scripts/shortcuts-check.mjs out`.
 - **Settings**: the SETTINGS word (top right) or **⌘,** (Ctrl+, elsewhere) opens a paper card
   (`src/settings-panel.js`, stored by `src/settings.js` in localStorage, shared with the mini window).
   *Painting* sets the look: Faint / Light / Medium / Heavy watercolour, or Brush strokes (default), which repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the
@@ -159,4 +167,4 @@ npm run build && xvfb-run -a npm run e2e -- out_dir   # real app vs YouTube Musi
 
 Not yet: playlists opening into their songs like albums (clicking one plays the whole thing
 for now), media keys. Untested on a Mac: the mini player's focus/Dock behaviour and the real
-global shortcut.
+global shortcuts.

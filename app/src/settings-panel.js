@@ -10,6 +10,7 @@
 import { FONT, FONTS } from './style.js';
 import { INK, HOT, PAPER, brushStroke } from './controls.js';
 import { settings } from './settings.js';
+import { shortcuts, fromEvent } from './shortcuts.js';
 import { rng } from './rand.js';
 
 // Settings > Painting: watercolour strength (LEVELS in watercolour.js), lightest first
@@ -43,6 +44,11 @@ const CSS = `
 .st-label { font-size: 30px; }
 .st-hint { font-size: 19px; color: #7a5a40; margin: 2px 0 10px; }
 .st-opts { display: flex; flex-wrap: wrap; gap: 6px 4px; font-size: 27px; }
+.st-keys { grid-column: 1 / -1; }
+.st-keys .st-opts { align-items: center; gap: 6px 4px; }
+.st-kname { font-size: 24px; color: #5a4636; margin: 0 2px 0 14px; }
+.st-kname:first-child { margin-left: 0; }
+.st-keys .st-msg { min-height: 1.2em; color: #a0442c; }
 .st-foot { position: relative; display: flex; justify-content: flex-end; font-size: 28px; }
 `;
 
@@ -129,6 +135,78 @@ export function createSettingsPanel() {
     settings.on(row.key, mark);
   });
 
+  // Shortcuts: click one, then press the new keys (Esc cancels). The global ones are let go meanwhile
+  // (shortcuts.pause), so pressing the current combination reaches this page instead of firing.
+  const KEYS = [['search', 'Search'], ['app', 'Full app'], ['mini', 'Mini player']];
+  const NAMES = Object.fromEntries(KEYS);
+  const keysRow = document.createElement('div');
+  keysRow.className = 'st-row st-keys';
+  keysRow.innerHTML = '<div class="st-label">Shortcuts</div><div class="st-hint">Click one, then press the keys you want. Search works in the shop and the mini player; the other two work from any app.</div><div class="st-opts"></div><div class="st-hint st-msg"></div>';
+  card.querySelector('.st-rows').appendChild(keysRow);
+  const keysBox = keysRow.querySelector('.st-opts');
+  const msg = keysRow.querySelector('.st-msg');
+  let recording = null;   // name of the shortcut being recorded
+  const keyWords = {};
+  KEYS.forEach(([name, label], i) => {
+    const n = document.createElement('span');
+    n.className = 'st-kname';
+    n.textContent = label;
+    keysBox.appendChild(n);
+    const w = word('', 91 + i * 7, () => (recording === name ? stopRecording() : startRecording(name)));
+    keysBox.appendChild(w);
+    keyWords[name] = w;
+    optWords.push(w);
+  });
+  const resetWord = word('Reset', 117, () => { stopRecording(); shortcuts.reset().then(() => { msg.textContent = ''; }); });
+  resetWord.style.marginLeft = '14px';
+  keysBox.appendChild(resetWord);
+  optWords.push(resetWord);
+  function showKeys() {
+    for (const [name] of KEYS) {
+      const w = keyWords[name];
+      w.querySelector('span').textContent = recording === name ? 'Press keys…' : shortcuts.label(name);
+      w.classList.toggle('on', recording === name);
+      requestAnimationFrame(() => w.paint());
+    }
+    const refused = KEYS.filter(([n]) => shortcuts.failed(n)).map(([, l]) => l);
+    if (!recording && refused.length && !msg.dataset.sticky) msg.textContent = `${refused.join(' and ')}: another app already uses that shortcut. Pick another.`;
+  }
+  function startRecording(name) {
+    recording = name;
+    shortcuts.recording = true;
+    shortcuts.pause(true);
+    msg.textContent = ''; delete msg.dataset.sticky;
+    showKeys();
+  }
+  function stopRecording() {
+    if (!recording) return;
+    recording = null;
+    shortcuts.recording = false;
+    shortcuts.pause(false);
+    showKeys();
+  }
+  function record(e) {
+    if (e.key === 'Escape') { stopRecording(); return; }
+    const accel = fromEvent(e);
+    if (!accel) return;   // only modifiers so far, or a bare key: keep listening
+    const name = recording;
+    recording = null;
+    shortcuts.recording = false;
+    shortcuts.set(name, accel).then((r) => {
+      if (r?.ok) { msg.textContent = ''; delete msg.dataset.sticky; }
+      else {
+        msg.dataset.sticky = '1';
+        msg.textContent = r?.error === 'clash' ? `That is already the ${NAMES[r.with]} shortcut.`
+          : r?.error === 'taken' ? 'Another app already uses that, or the system keeps it. Try another.'
+          : 'That cannot be used as a shortcut.';
+      }
+      showKeys();
+    });
+    showKeys();
+  }
+  showKeys();
+  shortcuts.on(showKeys);
+
   const done = word('Done', 31, () => close());
   card.querySelector('.st-foot').appendChild(done);
 
@@ -145,6 +223,7 @@ export function createSettingsPanel() {
     requestAnimationFrame(paintAll);
   }
   function close() {
+    stopRecording();
     openNow = false;
     veil.classList.remove('show');
   }
@@ -154,6 +233,7 @@ export function createSettingsPanel() {
   // runs before the shop's own key handler and can swallow keys while the card is up.
   const mac = /Mac/.test(navigator.platform);
   addEventListener('keydown', (e) => {
+    if (openNow && recording) { e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) record(e); return; }
     if (e.key === ',' && (mac ? e.metaKey : e.ctrlKey) && !e.altKey) {
       e.preventDefault(); e.stopImmediatePropagation(); toggle(); return;
     }

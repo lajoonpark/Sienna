@@ -4,6 +4,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain } = require('electr
 const path = require('node:path');
 const { createYtm } = require('./ytm.cjs');
 const { createMini } = require('./mini.cjs');
+const { createShortcuts } = require('./shortcuts.cjs');
 const fs = require('node:fs');
 
 // The app was called Cadence until 2026-11-08 (package name cadence-app). Its data folder holds the
@@ -29,7 +30,7 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 let win = null;
 let tray = null;
 let ytm = null;
-let mini = null;   // the small window (Ctrl+Alt+Space), see mini.cjs
+let mini = null;   // the small window (Control+Option+K by default), see mini.cjs
 
 function startPlayer() {
   ytm = createYtm({
@@ -107,7 +108,8 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();   // open on start
     createTray();
     mini = createMini({ onVisible: updateActive });
-    mini.register();
+    // global shortcuts (Settings > Shortcuts): mini player, and the full app (also closes the mini player)
+    createShortcuts({ mini: () => mini.toggle(), app: () => { mini.close(); openSienna(); } }).register();
     setTimeout(() => mini.prewarm(), 4000);
     if (process.env.SIENNA_TEST) global.__siennaMini = mini;   // lets scripts/e2e drive it without pressing keys
     app.on('activate', openSienna);

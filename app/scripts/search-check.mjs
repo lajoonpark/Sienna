@@ -33,8 +33,8 @@ await page.keyboard.press('Space');
 assert.deepStrictEqual(await page.evaluate('window.__leaks'), [' ']);
 ok('closed bar lets keys through');
 
-// open with Ctrl+Alt+S
-await page.keyboard.press('Control+Alt+KeyS');
+// open with Ctrl+Alt+J (the default search shortcut)
+await page.keyboard.press('Control+Alt+KeyJ');
 await wait(500);
 assert.ok(await page.evaluate('window.__search.isOpen()'));
 await page.evaluate('window.__leaks.length = 0');
@@ -44,9 +44,9 @@ await page.screenshot({ path: `${out}/open-empty.png` });
 await page.keyboard.type('le mo', { delay: 30 });
 await page.keyboard.press('Tab');
 await page.keyboard.press('ArrowLeft');
-await page.keyboard.press('Control+Alt+KeyS'); // toggles shut...
+await page.keyboard.press('Control+Alt+KeyJ'); // toggles shut...
 assert.ok(!(await page.evaluate('window.__search.isOpen()')));
-await page.keyboard.press('Control+Alt+KeyS'); // ...and open again
+await page.keyboard.press('Control+Alt+KeyJ'); // ...and open again
 assert.ok(await page.evaluate('window.__search.isOpen()'));
 // (the modifier presses of the hotkey itself arrive while it is closed; shop keys ignore bare modifiers)
 assert.deepStrictEqual((await page.evaluate('window.__leaks')).filter((k) => !/^(Control|Alt|Meta|Shift)$/.test(k)), [], 'no key reaches the shop while the bar is open');
@@ -75,7 +75,7 @@ assert.ok(!(await page.evaluate('window.__search.isOpen()')));
 ok('ArrowDown x2 + Enter plays the second slip: ' + second);
 
 // Enter with no highlight plays the top result
-await page.keyboard.press('Control+Alt+KeyS');
+await page.keyboard.press('Control+Alt+KeyJ');
 await wait(300);
 await page.fill('.cs-input', 'moon');
 await page.keyboard.press('Enter'); // before the debounce fired: waits for the answer, then plays the top one
@@ -86,7 +86,7 @@ assert.match(played[1], /moon/i);
 ok('Enter before the answer arrived plays the top result: ' + played[1]);
 
 // stale: "su" answers late (and would list Slow Sunday...), "sunday" quickly; the late answer must not replace the newer one
-await page.keyboard.press('Control+Alt+KeyS');
+await page.keyboard.press('Control+Alt+KeyJ');
 await wait(300);
 await page.evaluate(() => { window.__delays = { s: 1500, su: 1500, sunday: 0 }; window.__calls.length = 0; });
 await page.fill('.cs-input', '');

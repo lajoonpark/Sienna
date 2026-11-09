@@ -1,9 +1,9 @@
 // The small window (mini.html): the same suitcase on a torn-paper watercolour card, summoned with
-// Ctrl+Alt+Space anywhere. The lid is flicked open by the physical hinge (lid.js). Esc, a click on
+// its shortcut anywhere (Control+Option+K by default, Settings > Shortcuts in the shop). The lid is flicked open by the physical hinge (lid.js). Esc, a click on
 // the margin, clicking outside the window (main process sends close) or the shortcut again shuts
 // the lid, then the window is hidden. In a plain browser it previews on a fake desktop with the
 // fake record store; ?shot + window.__seek(t) make deterministic frames (t = seconds since the
-// lid was released). Option+Cmd+S (Ctrl+Alt+S) searches; a pick slides out of the case's bottom drawer
+// lid was released). The search shortcut (Control+Option+J by default) searches; a pick slides out of the case's bottom drawer
 // (suitcase/tray.js). Closing the window before the record is down starts the song at once.
 //   shot times: seconds since the lid was released; -1 = the lid still shut
 //   ?p=0.3  how far through the song     ?hover=playPause|knob|record|next|previous|like
@@ -64,7 +64,7 @@ frameCamera();
 
 const caption = createCaption({ parent: stage, variant: 'mini', onSeek: (s) => music.command('seek', s) });
 
-// ---- search (Option+Cmd+S, as in the shop): a pick slides out of the drawer and flies onto the platter ----
+// ---- search (the search shortcut, as in the shop): a pick slides out of the drawer and flies onto the platter ----
 // Flights live in camera space (a group riding on the camera); the drawer is part of the case.
 scene.add(camera);
 const hud = new THREE.Group();

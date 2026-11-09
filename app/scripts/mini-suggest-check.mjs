@@ -45,7 +45,7 @@ async function load({ failFirst = false, held = false } = {}) {
     window.siennaMini = { onOpen: (cb) => { window.__open = cb; }, onClose: () => {}, closing: () => {}, closed: () => {} };
     // Press the hotkey and read the page in the same task plus microtasks: nothing has been painted yet.
     window.__pressSearch = async () => {
-      dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS', altKey: true, ctrlKey: true, metaKey: true, bubbles: true }));
+      dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyJ', altKey: true, ctrlKey: true, bubbles: true }));
       for (let i = 0; i < 5; i++) await null;
       return { head: document.querySelector('.cs-head').textContent, slips: [...document.querySelectorAll('.cs-t')].map((e) => e.textContent) };
     };

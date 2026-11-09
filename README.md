@@ -22,9 +22,9 @@ web page and internal API, so a change on their side can break it.
 - **The suitcase player.** A record player in a leather case, bottom left. The record spins with the
   cover on its label and the tonearm creeps in as the song plays. Turn the knob for volume, or drag
   the record to scrub. By default the song starts when the needle lands.
-- **Mini player.** Press **⌃⌥Space** anywhere to open the suitcase at your cursor, without opening
+- **Mini player.** Press **⌃⌥K** anywhere to open the suitcase at your cursor, without opening
   the shop.
-- **Search.** Press **⌥⌘S** to find a song. It has no sleeve, so the bottom of the suitcase slides
+- **Search.** Press **⌃⌥J** to find a song. It has no sleeve, so the bottom of the suitcase slides
   out like a drawer and the record lifts out of it onto the platter. Shut the mini player early and the song starts
   at once.
 - **A painted look.** The world is repainted with brush strokes pinned to its surfaces, and album
@@ -37,13 +37,16 @@ web page and internal API, so a change on their side can break it.
 
 | Key | Action |
 | --- | --- |
-| `⌃⌥Space` | Open or close the mini player, from any app |
-| `⌥⌘S` (`Ctrl+Alt+S` on Windows/Linux) | Search |
+| `⌃⌥K` (`Ctrl+Alt+K` on Windows/Linux) | Open or close the mini player, from any app |
+| `⌃⌥L` (`Ctrl+Alt+L`) | Bring up the full app, from any app |
+| `⌃⌥J` (`Ctrl+Alt+J`) | Search, in the shop or the mini player |
 | `Space` | Play / pause |
 | `←` `→` | Back / skip |
 | `↑` `↓` or scroll | Volume |
 | Scroll sideways, or drag | Turn the spinner rack (plant room), or the page of an album's songs |
 | `L` | Like |
+
+The first three can be changed in Settings > Shortcuts.
 | `Tab` / `Shift+Tab` | Next / previous section |
 | `Esc` | Put an album's records back, else back to the home spot, or close the mini player |
 | `⌘,` (`Ctrl+,` on Windows/Linux) | Settings |
@@ -109,7 +112,6 @@ npm run build && xvfb-run -a npm run e2e -- out_dir   # real app against YouTube
 - Packaged downloads
 - Playlists opening into their own songs like albums do (clicking one plays all of it for now)
 - Media keys
-- A configurable mini player shortcut
 
 ## License
 
