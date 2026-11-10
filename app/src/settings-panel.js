@@ -33,12 +33,19 @@ const CSS = `
 .st-veil { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
   background: rgba(60,45,35,.18); opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s .3s; }
 .st-veil.show { opacity: 1; visibility: visible; transition: opacity .3s ease; }
-.st-card { position: relative; width: min(920px, 94vw); max-height: 94vh; box-sizing: border-box; overflow-y: auto; padding: 30px 40px 26px; color: #2b2436;
+.st-card { position: relative; width: min(920px, 94vw); max-height: 94vh; box-sizing: border-box; display: flex; flex-direction: column; padding: 30px 40px 22px; color: #2b2436;
   font-family: ${FONT}; filter: drop-shadow(0 6px 10px rgba(50,35,25,.25));
   transform: translateY(18px) rotate(-1.4deg) scale(.96); transition: transform .45s cubic-bezier(.2,1.5,.4,1); }
 .st-veil.show .st-card { transform: rotate(-.5deg); }
 .st-paper { position: absolute; inset: 0; background: #f4ead6; }
-.st-head { position: relative; font-size: 42px; margin: 0 0 12px; color: ${INK}; }
+.st-head { position: relative; flex: none; font-size: 42px; margin: 0 0 12px; color: ${INK}; }
+/* only the rows scroll: the paper, the title and DONE stay put, so the card is always whole */
+.st-scroll { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; margin-right: -14px; padding-right: 14px;
+  -webkit-mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 10px), transparent); mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 10px), transparent);
+  padding-top: 8px; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: rgba(122,90,64,.45) transparent; }
+.st-scroll::-webkit-scrollbar { width: 8px; }
+.st-scroll::-webkit-scrollbar-track { background: transparent; }
+.st-scroll::-webkit-scrollbar-thumb { background: rgba(122,90,64,.45); border-radius: 4px; }
 .st-rows { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 0 36px; }
 .st-row { position: relative; margin: 0 0 16px; }
 .st-label { font-size: 30px; }
@@ -46,10 +53,10 @@ const CSS = `
 .st-opts { display: flex; flex-wrap: wrap; gap: 6px 4px; font-size: 27px; }
 .st-keys { grid-column: 1 / -1; }
 .st-keys .st-opts { align-items: center; gap: 6px 4px; }
-.st-kname { font-size: 24px; color: #5a4636; margin: 0 2px 0 14px; }
-.st-kname:first-child { margin-left: 0; }
+.st-kpair { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; margin-right: 14px; }
+.st-kname { font-size: 24px; color: #5a4636; margin: 0 2px 0 0; }
 .st-keys .st-msg { min-height: 1.2em; color: #a0442c; }
-.st-foot { position: relative; display: flex; justify-content: flex-end; font-size: 28px; }
+.st-foot { position: relative; flex: none; display: flex; padding-top: 6px; justify-content: flex-end; font-size: 28px; }
 `;
 
 // A hand-torn outline as a CSS polygon (same idea as the search slips).
@@ -109,7 +116,7 @@ export function createSettingsPanel() {
   const veil = document.createElement('div');
   veil.className = 'st-veil';
   veil.innerHTML = `<div class="st-card"><div class="st-paper"></div><div class="st-head">Settings</div>
-    <div class="st-rows">${ROWS.map(() => '<div class="st-row"><div class="st-label"></div><div class="st-hint"></div><div class="st-opts"></div></div>').join('')}</div>
+    <div class="st-scroll"><div class="st-rows">${ROWS.map(() => '<div class="st-row"><div class="st-label"></div><div class="st-hint"></div><div class="st-opts"></div></div>').join('')}</div></div>
     <div class="st-foot"></div></div>`;
   document.body.appendChild(veil);
   const card = veil.querySelector('.st-card');
@@ -151,14 +158,16 @@ export function createSettingsPanel() {
     const n = document.createElement('span');
     n.className = 'st-kname';
     n.textContent = label;
-    keysBox.appendChild(n);
+    const pair = document.createElement('span');
+    pair.className = 'st-kpair';
+    keysBox.appendChild(pair);
+    pair.appendChild(n);
     const w = word('', 91 + i * 7, () => (recording === name ? stopRecording() : startRecording(name)));
-    keysBox.appendChild(w);
+    pair.appendChild(w);
     keyWords[name] = w;
     optWords.push(w);
   });
   const resetWord = word('Reset', 117, () => { stopRecording(); shortcuts.reset().then(() => { msg.textContent = ''; }); });
-  resetWord.style.marginLeft = '14px';
   keysBox.appendChild(resetWord);
   optWords.push(resetWord);
   function showKeys() {
