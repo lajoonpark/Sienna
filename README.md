@@ -32,7 +32,8 @@ web page and internal API, so a change on their side can break it.
   painting off.
 - **Runs cool.** It only draws at full speed while something is moving. Once the shop is still it is
   not drawn again at all: only the turning record's corner and the paper border are repainted. It
-  stops drawing while its window is hidden.
+  stops drawing while its window is hidden. Left in the menu bar it lets go of the mini player's window
+  after five minutes unused (the next ⌃⌥K loads it again).
 
 ## Controls
 

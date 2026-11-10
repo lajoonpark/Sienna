@@ -457,7 +457,7 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
     const scale = washScale() * mul;
     const radius = Math.max(1, Math.round(L.radius * scale));
     const ws = washSize(renderer.getDrawingBufferSize(new THREE.Vector2()), scale);
-    const rt = () => new THREE.WebGLRenderTarget(ws.x, ws.y, { type: THREE.HalfFloatType });
+    const rt = () => new THREE.WebGLRenderTarget(ws.x, ws.y, { type: THREE.HalfFloatType, depthBuffer: false });   // full-screen passes: no depth
     const prepT = rt(), washT = rt(), bleedT = rt();
     const prepP = pass(prepShader, {}, { tScene: { value: target.texture } });
     const washP = pass(washShader, { RADIUS: radius }, { tScene: { value: prepT.texture }, texel: { value: new THREE.Vector2() } });

@@ -8,12 +8,24 @@ const path = require('node:path');
 const { lockNavigation, isAppUrl } = require('./security.cjs');
 
 const SIZE = { width: 540, height: 620 };    // matches W x H in src/mini.js
+// A hidden window is not free: its page and the suitcase's textures and buffers on the GPU stay loaded (about
+// 100 MB for its process and 80 MB in the GPU process on a Retina Mac), which was most of what Sienna kept
+// while it sat in the menu bar. So once it has been hidden this long it is let go of, and the next summon
+// loads it again (a moment slower, that once). SIENNA_MINI_RELEASE_S overrides it (for checks).
+const RELEASE_MS = (Number(process.env.SIENNA_MINI_RELEASE_S) || 5 * 60) * 1000;
 
 // trusted(event): did the ipc message come from one of Sienna's own pages? (security.cjs)
 function createMini({ onVisible, trusted = () => false } = {}) {
   let win = null;
   let state = 'hidden';                       // hidden | open | closing
   let shownAt = 0;
+  let releaseTimer = null;
+
+  // hidden from now on: let the window go if it is not summoned again soon
+  function releaseLater() {
+    clearTimeout(releaseTimer);
+    releaseTimer = setTimeout(() => { if (win && state === 'hidden') win.destroy(); }, RELEASE_MS);
+  }
 
   function create() {
     const mac = process.platform === 'darwin';
@@ -87,6 +99,7 @@ function createMini({ onVisible, trusted = () => false } = {}) {
   }
 
   function open() {
+    clearTimeout(releaseTimer);
     if (!win) create();
     if (state === 'hidden') {
       place();
@@ -124,7 +137,7 @@ function createMini({ onVisible, trusted = () => false } = {}) {
     if (!win || e.sender !== win.webContents || !trusted(e)) return;
     win.webContents.once('did-finish-load', () => {
       if (state === 'open') send('mini:open');
-      else if (state === 'closing') { state = 'hidden'; win.hide(); onVisible?.(); }
+      else if (state === 'closing') { state = 'hidden'; win.hide(); onVisible?.(); releaseLater(); }
     });
     win.webContents.reload();
   });
@@ -135,12 +148,14 @@ function createMini({ onVisible, trusted = () => false } = {}) {
       state = 'hidden';
       win.hide();
       onVisible?.();
+      releaseLater();
     }
   });
 
   return {
     isOpen: () => state !== 'hidden',
-    prewarm() { if (!win) create(); },         // load the page ahead of the first summon, so the lid does not stutter
+    // load the page ahead of the first summon, so the lid does not stutter (let go of again if none comes)
+    prewarm() { if (!win) { create(); releaseLater(); } },
     send,
     state: playerState,
     toggle, open, close,

@@ -68,6 +68,27 @@ Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, n
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.03;
 scene.add(sun, sun.target);
+// The shadow map, made here rather than by three. PCF shadows sample only its depth layer, but three gives
+// its target a full RGBA colour layer too (64 MB at 4096 px, written and never read). A framebuffer needs a
+// colour layer the same size, so it is the smallest one, one byte a pixel: 16 MB. Otherwise as three makes
+// it (WebGLShadowMap: PCF, no reversed depth); made again whenever timeofday.js has let go of it for the night.
+// Made at the first shadow draw (updateShadows), not here: a new texture takes a Math.random uuid, and the
+// street and shop below are built from Math.random, so making it now would build a different street.
+function leanShadowMap() {
+  if (!sun.castShadow) return;
+  if (sun.shadow.map?.texture.format === THREE.RedFormat) return;
+  sun.shadow.map?.dispose();   // one three made itself (a render got there first): swap it
+  const { x, y } = sun.shadow.mapSize;
+  const map = new THREE.WebGLRenderTarget(x, y, { format: THREE.RedFormat, generateMipmaps: false });
+  map.texture.name = 'sun.shadowMapColour';
+  map.depthTexture = new THREE.DepthTexture(x, y, THREE.UnsignedIntType);
+  map.depthTexture.name = 'sun.shadowMap';
+  map.depthTexture.format = THREE.DepthFormat;
+  map.depthTexture.compareFunction = THREE.LessEqualCompare;
+  map.depthTexture.minFilter = map.depthTexture.magFilter = THREE.LinearFilter;
+  sun.shadow.map = map;
+  sun.shadow.camera.updateProjectionMatrix();
+}
 
 const sky = createSky();
 scene.add(sky.dome);
@@ -191,6 +212,7 @@ function updateShadows(t) {
   if (nav.intro) { if (due) shadowOwed = true; due = doorDone; }
   else if (shadowOwed) { due = true; shadowOwed = false; }
   if (sunMoved || due || shadowLastAt < 0) {
+    leanShadowMap();   // the first draw, or the sun is back after the night
     renderer.shadowMap.needsUpdate = true;
     shadowLastAt = t;
     shadowSun.copy(sun.position); shadowSunOn.v = sun.castShadow;

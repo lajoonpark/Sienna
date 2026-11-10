@@ -94,8 +94,9 @@ export function createTimeOfDay({ scene, sun, hemi, sky }) {
         sun.color.set(m.sun);
         sun.intensity = m.sunI;
         sun.castShadow = e > -2; // moonlight stays soft; crisp moon shadows read as holes
-        // No sun shadows, no shadow map: at 4096 px it is 128 MB of video memory (three keeps a colour and a
-        // depth layer). It is made again when the sun is back (main.js redraws shadows when castShadow flips).
+        // No sun shadows, no shadow map: at 4096 px it is 80 MB of video memory (a depth layer and a one-byte
+        // colour layer, see leanShadowMap in main.js). It is made again when the sun is back (main.js redraws
+        // shadows when castShadow flips).
         if (!sun.castShadow && sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
         // sun swings from the right (morning) to the left (evening), always a bit from behind the
         // viewer so the alley is lit; at night the same light is a soft high moon
