@@ -3,10 +3,11 @@
 // then pauses and skips with the keys (the suitcase's own controls are 3D, so the keyboard is the stable way).
 // Usage (Linux server): npm run build && xvfb-run -a node scripts/e2e-electron.mjs out_dir
 import { _electron as electron } from 'playwright';
-const S = process.argv[2];
+import { outDir, sandboxArgs } from './safe.mjs';
+const S = outDir(process.argv[2], 'sienna-e2e-electron');
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,   // app/, wherever the repo is checked out
-  args: ['--no-sandbox', '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
   timeout: 60000,
 });
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);

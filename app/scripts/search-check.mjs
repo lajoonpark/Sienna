@@ -3,11 +3,10 @@
 // Usage: node scripts/search-check.mjs out_dir      (SIENNA_PORT=5231, ports 5231-5239)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { mkdirSync } from 'node:fs';
 import assert from 'node:assert';
+import { outDir } from './safe.mjs';
 
-const out = process.argv[2] || '/tmp/sienna-search';
-mkdirSync(out, { recursive: true });
+const out = outDir(process.argv[2], 'sienna-search');
 const port = Number(process.env.SIENNA_PORT) || 5231;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();

@@ -9,10 +9,12 @@
 //      of the playlist / mix (window.sienna.playlistArt(play), main process, via the API)
 //   3. else (songs) the video frame of play.videoId
 import { rng } from './rand.js';
+import { safeArtUrl } from './arturl.js';
 
 const SIZE = 512;
 
 function loadImage(url, ms = 6000) {
+  if (!safeArtUrl(url)) return Promise.resolve(null);
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';

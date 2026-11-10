@@ -3,15 +3,14 @@
 //   xvfb-run -a node scripts/album-live-check.mjs [out_dir]      (SIENNA_PORT=5234)
 import { _electron as electron } from 'playwright';
 import { createServer } from 'vite';
-import { mkdirSync } from 'node:fs';
-const S = process.argv[2] || '/tmp/sienna-album-live';
-mkdirSync(S, { recursive: true });
+import { outDir, sandboxArgs } from './safe.mjs';
+const S = outDir(process.argv[2], 'sienna-album-live');
 const port = Number(process.env.SIENNA_PORT) || 5234;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: ['--no-sandbox', '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
   env: { ...process.env, SIENNA_DEV_URL: `http://127.0.0.1:${port}/search-lab.html` },
   timeout: 60000,
 });

@@ -3,12 +3,34 @@
 //   in:  { id, url, size, level }
 //   out: { id, bitmap, color: [r, g, b] | null } (bitmap transferred), or { id, error }
 import { paintCover, coverSeed } from './coverpaint.js';
+import { safeArtUrl, artSizeOk, ART_MAX_BYTES, ART_TIMEOUT_MS } from './arturl.js';
+
+// The picture's bytes, refused past ART_MAX_BYTES (whatever Content-Length claims).
+async function readCapped(res) {
+  const declared = Number(res.headers.get('content-length'));
+  if (declared > ART_MAX_BYTES) throw new Error('picture too large');
+  const reader = res.body.getReader();
+  const parts = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > ART_MAX_BYTES) { reader.cancel().catch(() => {}); throw new Error('picture too large'); }
+    parts.push(value);
+  }
+  return new Blob(parts, { type: res.headers.get('content-type') || '' });
+}
 
 self.onmessage = async ({ data: { id, url, size, level } }) => {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), ART_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    if (!safeArtUrl(url)) throw new Error('cover url not allowed');
+    const res = await fetch(url, { mode: 'cors', credentials: 'omit', signal: abort.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const img = await createImageBitmap(await res.blob());
+    const img = await createImageBitmap(await readCapped(res));
+    if (!artSizeOk(img.width, img.height)) { img.close(); throw new Error('picture too large'); }
     const c = new OffscreenCanvas(size, size);
     const g = c.getContext('2d');
     const s = Math.min(img.width, img.height);
@@ -29,5 +51,7 @@ self.onmessage = async ({ data: { id, url, size, level } }) => {
     self.postMessage({ id, bitmap, color }, [bitmap]);
   } catch (e) {
     self.postMessage({ id, error: String(e?.message ?? e) });
+  } finally {
+    clearTimeout(timer);
   }
 };

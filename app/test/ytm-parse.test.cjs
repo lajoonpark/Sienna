@@ -194,3 +194,24 @@ test('art: an item with no usable image is reported through onNoArt, with its re
   assert.strictEqual(shelf.items[0].art, undefined);
   assert.deepStrictEqual(seen, [['Mystery', ['thumbnailRenderer', 'title', 'thumbnailOverlay']]]);
 });
+
+test('cleanUrl checks the parsed host, not the text', () => {
+  const { cleanUrl } = require('../electron/ytm-parse.cjs');
+  for (const bad of [
+    'https://audit.invalid?x=.ytimg.com/a',
+    'https://audit.invalid#.ytimg.com/a',
+    'https://ytimg.com.audit.invalid/a',
+    'https://127.0.0.1?x=.googleusercontent.com/a',
+    'https://localhost/.ggpht.com/a',
+    'https://user:pw@i.ytimg.com/a.jpg',
+    'https://i.ytimg.com:8443/a.jpg',
+    'https://evilytimg.com/a.jpg',
+    'javascript:alert(1)//.ytimg.com/',
+    'file:///etc/passwd',
+    'data:image/png;base64,AAAA',
+    null, 42,
+  ]) assert.equal(cleanUrl(bad), null, String(bad));
+  assert.equal(cleanUrl('https://i.ytimg.com/vi/x/hqdefault.jpg'), 'https://i.ytimg.com/vi/x/hqdefault.jpg');
+  assert.equal(cleanUrl('//lh3.googleusercontent.com/abc=w544-h544-l90-rj'), 'https://lh3.googleusercontent.com/abc=w544-h544-l90-rj');
+  assert.equal(cleanUrl('http://yt3.ggpht.com/abc=s88'), 'https://yt3.ggpht.com/abc=s88');
+});

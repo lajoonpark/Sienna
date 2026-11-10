@@ -47,6 +47,7 @@ import { settings } from '../settings.js';
 import { chooseDiscDir } from './clear.js';
 import { uploadSoon } from '../warmup.js';
 import { paintOffThread } from '../coverworker.js';
+import { safeArtUrl, artSizeOk } from '../arturl.js';
 import { toon, crisp } from '../materials.js';
 import { rng } from '../rand.js';
 import { brushStroke, INK, PAPER } from '../controls.js';
@@ -137,6 +138,7 @@ export function setCoverUploader(renderer) { coverUploader = renderer; }
 // Square cover texture from any thumbnail. Cached by URL and size; textures are shared by every
 // sleeve that shows the same art, so never dispose them yourself.
 export function getCover(url, size = 256) {
+  url = safeArtUrl(url);   // a url from anywhere else gets the blank paper sleeve
   const key = `${size}|${url || ''}`;
   let e = covers.get(key);
   if (e) {
@@ -196,6 +198,7 @@ function paintHere(url, size, g, tex, e) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = async () => {
+      if (!artSizeOk(img.naturalWidth, img.naturalHeight)) { res(); return; }
       try { await img.decode(); } catch { /* decoded on draw instead */ } // off the main thread
       // painting a cover is a few ms of canvas work, and a shelf's worth arrives at once (often
       // during the intro push-in), so they are painted in small slices, a few per frame

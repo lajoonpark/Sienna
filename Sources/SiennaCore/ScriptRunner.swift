@@ -42,10 +42,16 @@ public struct ProcessScriptRunner: ScriptRunner {
                     continuation.resume(throwing: error)
                     return
                 }
-                // Output is small (a JSON blob at most); read before waiting so a full pipe
-                // can never block the child.
+                // Drain both pipes at the same time, and before waiting: if one were read to the
+                // end first, a child that filled the other would block on it forever.
+                var errData = Data()
+                let errDone = DispatchSemaphore(value: 0)
+                DispatchQueue.global().async {
+                    errData = err.fileHandleForReading.readDataToEndOfFile()
+                    errDone.signal()
+                }
                 let outData = out.fileHandleForReading.readDataToEndOfFile()
-                let errData = err.fileHandleForReading.readDataToEndOfFile()
+                errDone.wait()
                 process.waitUntilExit()
                 if process.terminationStatus == 0 {
                     let text = String(decoding: outData, as: UTF8.self)

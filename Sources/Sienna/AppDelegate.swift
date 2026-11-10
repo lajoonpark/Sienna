@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let spec = HotkeySpec.default
         if !hotkey.register(spec, action: { [weak self] in self?.toggle() }) {
-            NSLog("Sienna: \(spec.displayName) is already taken by another app")
+            siennaLog("Sienna: \(spec.displayName) is already taken by another app")
         }
     }
 
@@ -146,7 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         Task { [weak self] in
-            let data = try? await URLSession.shared.data(from: url).0
+            let data = await ArtworkDownloader.fetch(url)
             let image = data.flatMap { NSImage(data: $0) }
             await MainActor.run {
                 // Ignore a slow download for a song that is no longer playing.

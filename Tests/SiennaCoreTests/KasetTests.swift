@@ -76,14 +76,25 @@ final class KasetTests: XCTestCase {
         let json = """
         {"isPlaying":true,"isPaused":false,"position":30,"duration":120,"volume":50,
          "currentTrack":{"name":"Song","artist":"Band","album":"LP","duration":120,
-                         "videoId":"abc","artworkURL":"https://example.com/a.jpg"}}
+                         "videoId":"abc","artworkURL":"https://lh3.googleusercontent.com/a.jpg"}}
         """
         let now = KasetPlayerInfo.nowPlaying(fromJSON: json)
         XCTAssertEqual(now.title, "Song")
         XCTAssertEqual(now.artist, "Band")
-        XCTAssertEqual(now.artworkURL, URL(string: "https://example.com/a.jpg"))
+        XCTAssertEqual(now.artworkURL, URL(string: "https://lh3.googleusercontent.com/a.jpg"))
         XCTAssertTrue(now.isPlaying)
         XCTAssertEqual(now.progress, 0.25, accuracy: 1e-9)
+    }
+
+    func testArtworkFromOtherHostsIsDropped() {
+        for art in ["https://example.com/a.jpg", "http://lh3.googleusercontent.com/a.jpg",
+                    "https://audit.invalid?x=.ytimg.com/a", "https://user@i.ytimg.com/a.jpg",
+                    "https://i.ytimg.com:8443/a.jpg", "https://evilytimg.com/a.jpg", "file:///etc/passwd"] {
+            let json = #"{"currentTrack":{"name":"S","artworkURL":"\#(art)"}}"#
+            XCTAssertNil(KasetPlayerInfo.nowPlaying(fromJSON: json).artworkURL, art)
+        }
+        XCTAssertTrue(ArtworkURL.isAllowed(URL(string: "https://i.ytimg.com/vi/x/hq.jpg")!))
+        XCTAssertTrue(ArtworkURL.isAllowed(URL(string: "https://yt3.ggpht.com/a=s88")!))
     }
 
     func testPausedAndMissingFields() {

@@ -7,8 +7,8 @@
 #   ./scripts/build.sh --run        # build and launch
 #   ./scripts/build.sh --debug      # debug build
 #
-# Ad-hoc signed. Permissions granted to the app are tied to the signature, so a rebuild may
-# need them re-granted.
+# Ad-hoc signed with the hardened runtime (set SIGN_IDENTITY to use a real certificate).
+# Permissions granted to the app are tied to the signature, so a rebuild may need them re-granted.
 
 set -euo pipefail
 
@@ -28,7 +28,7 @@ for arg in "$@"; do
     --install) INSTALL=1 ;;
     --run) RUN=1 ;;
     --debug) CONFIG="debug" ;;
-    -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 1 ;;
   esac
 done
@@ -70,9 +70,14 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-echo "==> Signing (ad-hoc)"
-codesign --force --sign - --timestamp=none "$APP_DIR" >/dev/null 2>&1 \
-  || echo "warning: codesign failed; the app may still run." >&2
+# Ad-hoc signature (no paid Apple Developer account needed) with the hardened runtime on, so the
+# binary refuses injected libraries and unsigned executable memory. SIGN_IDENTITY can name a real
+# certificate instead. A failed or invalid signature stops the build.
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+echo "==> Signing (${SIGN_IDENTITY/#-/ad-hoc}, hardened runtime)"
+codesign --force --options runtime --entitlements assets/Sienna.entitlements \
+  --sign "$SIGN_IDENTITY" --timestamp=none "$APP_DIR"
+codesign --verify --strict --verbose=2 "$APP_DIR"
 
 echo "==> Built $APP_DIR"
 

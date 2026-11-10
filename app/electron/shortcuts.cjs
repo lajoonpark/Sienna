@@ -14,7 +14,8 @@ const DEFAULTS = {
 };
 const GLOBAL = ['mini', 'app'];
 
-function createShortcuts(actions) {   // actions: { mini: fn, app: fn }
+// trusted(event): did the ipc message come from one of Sienna's own pages? (security.cjs)
+function createShortcuts(actions, { trusted = () => false } = {}) {   // actions: { mini: fn, app: fn }
   const file = path.join(app.getPath('userData'), 'shortcuts.json');
   let keys = { ...DEFAULTS };
   try {
@@ -46,7 +47,7 @@ function createShortcuts(actions) {   // actions: { mini: fn, app: fn }
 
   // Change one shortcut. A global one must register; if the system refuses it, the old one is kept.
   function set(name, accel) {
-    if (!(name in DEFAULTS) || typeof accel !== 'string' || !accel) return { ok: false, error: 'bad' };
+    if (!Object.hasOwn(DEFAULTS, name) || typeof accel !== 'string' || !accel || accel.length > 64) return { ok: false, error: 'bad' };
     const clash = Object.keys(keys).find((k) => k !== name && keys[k].toLowerCase() === accel.toLowerCase());
     if (clash) { resume(); return { ok: false, error: 'clash', with: clash }; }
     const old = keys[name];
@@ -64,15 +65,17 @@ function createShortcuts(actions) {   // actions: { mini: fn, app: fn }
   function pause() { paused = true; unregisterAll(); }
   function resume() { if (paused) { paused = false; registerAll(); } }
 
-  ipcMain.handle('keys:get', () => state());
-  ipcMain.handle('keys:set', (_e, name, accel) => set(name, accel));
-  ipcMain.handle('keys:reset', () => {
+  const refuse = () => { throw new Error('ipc from an untrusted page'); };
+  ipcMain.handle('keys:get', (e) => (trusted(e) ? state() : refuse()));
+  ipcMain.handle('keys:set', (e, name, accel) => (trusted(e) ? set(name, accel) : refuse()));
+  ipcMain.handle('keys:reset', (e) => {
+    if (!trusted(e)) refuse();
     for (const k of Object.keys(DEFAULTS)) keys[k] = DEFAULTS[k];
     paused = false;
     registerAll(); save(); broadcast();
     return state();
   });
-  ipcMain.on('keys:pause', (_e, on) => (on ? pause() : resume()));
+  ipcMain.on('keys:pause', (e, on) => { if (trusted(e)) (on ? pause() : resume()); });
 
   return {
     register() {

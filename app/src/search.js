@@ -195,7 +195,7 @@ export function createSearch({ music, onPlay, suggest = null }) {
         img.decoding = 'async';
         img.onerror = () => { cover.innerHTML = '<i></i>'; };
         cover.innerHTML = '<i></i>'; // blank paper until the painted copy is ready
-        paintedCoverURL(item.art).then((src) => { img.src = src; cover.replaceChildren(img); });
+        paintedCoverURL(item.art).then((src) => { if (src) { img.src = src; cover.replaceChildren(img); } });
       } else cover.innerHTML = '<i></i>';
       slip.querySelector('.cs-t').textContent = item.title;
       slip.querySelector('.cs-a').textContent = [item.subtitle, item.album && item.album !== item.title ? item.album : ''].filter(Boolean).join(' · ');
