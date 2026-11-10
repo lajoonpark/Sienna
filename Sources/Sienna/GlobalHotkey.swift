@@ -42,7 +42,7 @@ final class GlobalHotkey {
         )
         guard status == noErr, let ref else {
             lastRegistrationFailed = true
-            NSLog("Sienna: could not register \(spec.displayName) (OSStatus \(status))")
+            siennaLog("Sienna: could not register \(spec.displayName) (OSStatus \(status))")
             return false
         }
         hotKeyRef = ref

@@ -2,10 +2,11 @@
 // pixels that changed, overall and inside the ragged border (which boils on purpose). Usage: node scripts/still-check.mjs out_dir "query" [t1] [t2]
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { outDir as safeOutDir } from './safe.mjs';
 
-const [outDir = '/tmp/sienna-still', query = 'hour=12&shelves=8&at=home', a = '20', b = '20.7'] = process.argv.slice(2);
-mkdirSync(outDir, { recursive: true });
+const [outArg, query = 'hour=12&shelves=8&at=home', a = '20', b = '20.7'] = process.argv.slice(2);
+const outDir = safeOutDir(outArg, 'sienna-still');
 const port = Number(process.env.SIENNA_PORT) || 5197;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();

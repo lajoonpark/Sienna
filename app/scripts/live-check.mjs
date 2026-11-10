@@ -3,15 +3,15 @@
 //   xvfb-run -a node scripts/live-check.mjs out_dir      (SIENNA_PORT=5233)
 import { _electron as electron } from 'playwright';
 import { createServer } from 'vite';
-import { mkdirSync, writeFileSync, readdirSync } from 'node:fs';
-const S = process.argv[2] || '/tmp/sienna-live';
-mkdirSync(S, { recursive: true });
+import { writeFileSync, readdirSync } from 'node:fs';
+import { outDir, sandboxArgs } from './safe.mjs';
+const S = outDir(process.argv[2], 'sienna-live');
 const port = Number(process.env.SIENNA_PORT) || 5233;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', `--user-data-dir=${S}/ud`, '.'],
   env: { ...process.env, SIENNA_DEV_URL: `http://127.0.0.1:${port}/search-lab.html`, SIENNA_DUMP: '1' },
   timeout: 60000,
 });

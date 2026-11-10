@@ -5,10 +5,12 @@
 // shortcut again shuts the lid, and only then is the window hidden (the page tells us, 'mini:closed').
 const { BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('node:path');
+const { lockNavigation, isAppUrl } = require('./security.cjs');
 
 const SIZE = { width: 540, height: 620 };    // matches W x H in src/mini.js
 
-function createMini({ onVisible } = {}) {
+// trusted(event): did the ipc message come from one of Sienna's own pages? (security.cjs)
+function createMini({ onVisible, trusted = () => false } = {}) {
   let win = null;
   let state = 'hidden';                       // hidden | open | closing
   let shownAt = 0;
@@ -35,8 +37,10 @@ function createMini({ onVisible } = {}) {
         contextIsolation: true,
         nodeIntegration: false,
         spellcheck: false,
-        sandbox: false,                       // the preload loads the shop's preload (see mini-preload.cjs)
-        preload: path.join(__dirname, 'mini-preload.cjs'),
+        sandbox: true,
+        webviewTag: false,
+        preload: path.join(__dirname, 'preload.cjs'),   // the shop's preload; this flag adds window.siennaMini
+        additionalArguments: ['--sienna-mini'],
       },
     });
     win.setAlwaysOnTop(true, 'pop-up-menu');   // above full-screen windows and menus
@@ -45,6 +49,7 @@ function createMini({ onVisible } = {}) {
     if (mac) win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
+    lockNavigation(win.webContents, isAppUrl);   // and redirects
     const dev = process.env.SIENNA_DEV_URL;
     if (dev) win.loadURL(new URL('mini.html', dev).href);
     else win.loadFile(path.join(__dirname, '..', 'dist', 'mini.html'));
@@ -109,14 +114,14 @@ function createMini({ onVisible } = {}) {
   // Esc or a click on the card's margin: the page shuts the lid by itself; keep our state in step, so the
   // shortcut during the closing swing carries the lid back over the top instead of doing nothing.
   ipcMain.on('mini:closing', (e) => {
-    if (win && e.sender === win.webContents && state === 'open') state = 'closing';
+    if (win && e.sender === win.webContents && trusted(e) && state === 'open') state = 'closing';
   });
 
   // Settings > Lettering changed in the shop: the page reloads to repaint in the new font. Done from here,
   // because the page itself cannot navigate (will-navigate is blocked above, and that blocks reload() too).
   // If the window is on screen meanwhile, the fresh page is told to open the lid again.
   ipcMain.on('mini:reload', (e) => {
-    if (!win || e.sender !== win.webContents) return;
+    if (!win || e.sender !== win.webContents || !trusted(e)) return;
     win.webContents.once('did-finish-load', () => {
       if (state === 'open') send('mini:open');
       else if (state === 'closing') { state = 'hidden'; win.hide(); onVisible?.(); }
@@ -125,7 +130,7 @@ function createMini({ onVisible } = {}) {
   });
 
   ipcMain.on('mini:closed', (e) => {
-    if (!win || e.sender !== win.webContents) return;
+    if (!win || e.sender !== win.webContents || !trusted(e)) return;
     if (state === 'closing' || state === 'open') {
       state = 'hidden';
       win.hide();

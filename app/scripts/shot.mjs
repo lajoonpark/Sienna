@@ -2,10 +2,10 @@
 // The page must set window.__ready and window.__seek(t) in ?shot mode.
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { mkdirSync } from 'node:fs';
+import { outDir as safeOutDir } from './safe.mjs';
 
-const [outDir = '/tmp/sienna-shots', ...times] = process.argv.slice(2);
-mkdirSync(outDir, { recursive: true });
+const [outArg, ...times] = process.argv.slice(2);
+const outDir = safeOutDir(outArg, 'sienna-shots');
 // SIENNA_PORT lets several screenshot runs work at once
 const port = Number(process.env.SIENNA_PORT) || 5199;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });

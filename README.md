@@ -71,7 +71,16 @@ After a `git pull`, `npm run dev` installs any new packages by itself before it 
 The first time, use the sign-in button to log in to your Google account. Without signing in, it
 works as a guest, with ads and generic shelves.
 
-On Linux, start it with `npm run dev -- --no-sandbox`.
+On Linux, Electron keeps Chromium's sandbox on, which needs either unprivileged user namespaces
+(most distributions) or its setuid sandbox helper. If it stops with a sandbox error, set the helper up
+once after each `npm install`:
+
+```sh
+sudo chown root:root node_modules/electron/dist/chrome-sandbox
+sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+```
+
+Please don't run it with `--no-sandbox`: that turns off a protection for the YouTube pages it loads.
 
 macOS is the main target. Automated tests also run on Linux. Windows is untested.
 

@@ -4,12 +4,13 @@
 // Usage (Linux server): npm run build && xvfb-run -a node scripts/shortcuts-check.mjs out_dir
 import { _electron as electron } from 'playwright';
 import fs from 'node:fs';
-const S = process.argv[2];
+import { outDir, sandboxArgs } from './safe.mjs';
+const S = outDir(process.argv[2], 'sienna-shortcuts-check');
 if (!S) { console.log('usage: node scripts/shortcuts-check.mjs out_dir'); process.exit(2); }
 fs.rmSync(`${S}/ud`, { recursive: true, force: true });
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: ['--no-sandbox', '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
   env: { ...process.env, SIENNA_TEST: '1' },
   timeout: 60000,
 });

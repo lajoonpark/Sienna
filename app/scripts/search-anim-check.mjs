@@ -4,11 +4,11 @@
 // Usage: node scripts/search-anim-check.mjs out_dir      (SIENNA_PORT=5251)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import assert from 'node:assert';
+import { outDir } from './safe.mjs';
 
-const out = process.argv[2] || '/tmp/sienna-search-anim';
-mkdirSync(out, { recursive: true });
+const out = outDir(process.argv[2], 'sienna-search-anim');
 const port = Number(process.env.SIENNA_PORT) || 5251;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();

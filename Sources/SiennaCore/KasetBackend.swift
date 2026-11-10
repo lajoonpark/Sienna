@@ -24,7 +24,7 @@ public final class KasetBackend: MusicBackend {
         do {
             _ = try await runner.osascript(script)
         } catch {
-            NSLog("Sienna: Kaset command \(command) failed: \(error)")
+            siennaLog("Sienna: Kaset command \(command) failed: \(error)")
         }
     }
 
@@ -39,7 +39,7 @@ public final class KasetBackend: MusicBackend {
                 break
             }
         } catch {
-            NSLog("Sienna: could not open \"\(item.title)\": \(error)")
+            siennaLog("Sienna: could not open \"\(item.title)\": \(error)")
         }
     }
 }

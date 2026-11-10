@@ -29,12 +29,21 @@ const ART_SKIP = new Set(['menu', 'navigationEndpoint', 'watchEndpoint', 'watchP
 const COVER_SIZE = 544;
 
 // Real image urls come from google image hosts; protocol-relative and http urls are upgraded.
+// The host is checked on the parsed url (not the text), so "https://x.invalid?.ytimg.com/" or
+// "https://ytimg.com.x.invalid/" do not pass; nor do user info or a port.
+const ART_HOSTS = ['googleusercontent.com', 'ggpht.com', 'ytimg.com'];
 function cleanUrl(u) {
   if (typeof u !== 'string') return null;
   u = u.trim();
+  if (u.length > 4096) return null;
   if (u.startsWith('//')) u = 'https:' + u;
   if (u.startsWith('http://')) u = 'https://' + u.slice(7);
-  return /^https:\/\/[^/]+\.(googleusercontent|ggpht|ytimg)\.com\//.test(u) ? u : null;
+  let url;
+  try { url = new URL(u); } catch { return null; }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+  const host = url.hostname.toLowerCase();
+  if (!ART_HOSTS.some((h) => host.endsWith(`.${h}`))) return null;
+  return url.href;
 }
 
 // Pixel size written into a google image url (=w226-h226-..., =s176-c-..., =h120), if any.
@@ -282,4 +291,4 @@ function continuation(response) {
   return c ?? null;
 }
 
-module.exports = { parseShelves, parseSearch, parsePlaylistSongs, continuation, artOf, artDebug, text, findAll };
+module.exports = { parseShelves, parseSearch, parsePlaylistSongs, continuation, artOf, artDebug, text, findAll, cleanUrl };

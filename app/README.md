@@ -169,8 +169,9 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   washes (it has no camera to travel).
 - **Covers**: playlist and mix covers are found in any of YouTube's thumbnail shapes; one that is
   missing or fails to load is painted as a collage of the playlist's first songs (`src/cover.js`).
-  `SIENNA_DUMP=1` saves the raw API responses to the app's userData (`dumps/`) and logs any item
-  without art, for debugging.
+  `SIENNA_DUMP=1` (unpackaged runs only) saves the API responses to the app's userData (`dumps/`, readable by
+  you only, tracking/session identifiers stripped, newest 40 kept, none older than a day) and logs any item
+  without art, for debugging. They still describe your library and listening: do not share them.
 - **Keys**: Space play/pause, ← → back/skip, ↑ ↓ or scroll for volume (a sideways scroll is never volume), L like.
 - Covers and tags are drawn sharp: they write alpha 0 into the scene buffer (`crisp()` / `keepSharp()` in
   `materials.js`, also the SIENNA sign) and the watercolour pass leaves those pixels alone. The covers
@@ -183,6 +184,15 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 - Dev pages for screenshots: `lab.html?station=N` (one rack), `player-lab.html` (the suitcase in the shop),
   `mini.html`, `search-lab.html`, `cover-lab.html` (covers before / after painting). Shop URL options: `?at=home|N` start there, `?hover=N`, `?fly=from,to,p`,
   `?search=lemon`, `?shelves=8` (fake store: fill every station), `?albums=1` (fake store: an albums shelf).
+
+- **Security** (`electron/security.cjs`): every renderer is sandboxed (`app.enableSandbox()`). Permission
+  requests are refused, except full screen and copy-to-clipboard for music.youtube.com. No window opens popups
+  or `<webview>`s; the shop and mini window never leave their own page, the player and sign-in windows stay on
+  Google's sites. The main process answers ipc only from Sienna's own pages in its own windows. Cover urls must
+  point at Google's image hosts (checked on the parsed host: `cleanUrl` in `ytm-parse.cjs`, `src/arturl.js`),
+  and the pages' Content Security Policy (`index.html`, `mini.html`) enforces the same; downloads are capped
+  at 8 MB / 4096x4096 px with a 15 s timeout. The check scripts write to a fresh private temp folder unless
+  given one (`scripts/safe.mjs`) and only pass `--no-sandbox` when run as root or with `SIENNA_NO_SANDBOX=1`.
 
 ```
 npm test                                   # parser, suitcase (lid, knob, scrub, tonearm) tests

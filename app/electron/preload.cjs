@@ -1,4 +1,7 @@
-// The only bridge between the shop (renderer) and YouTube Music (main process).
+// The only bridge between the shop (renderer) and YouTube Music (main process). Also the mini window's
+// preload (mini.cjs starts it with --sienna-mini), which gets window.siennaMini as well. Sandboxed: it can
+// require nothing but 'electron', so both live in this one file. The main process answers only Sienna's own
+// pages in Sienna's own windows (security.cjs), whatever a page does with this.
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('sienna', {
@@ -22,3 +25,13 @@ contextBridge.exposeInMainWorld('sienna', {
     onChange: (cb) => ipcRenderer.on('keys:changed', (_e, k) => cb(k)),
   },
 });
+
+if (process.argv.includes('--sienna-mini')) {
+  contextBridge.exposeInMainWorld('siennaMini', {
+    onOpen: (cb) => ipcRenderer.on('mini:open', () => cb()),     // flick the lid open
+    onClose: (cb) => ipcRenderer.on('mini:close', () => cb()),   // shut it (Esc, blur and the shortcut come through here)
+    closing: () => ipcRenderer.send('mini:closing'),              // the page started shutting the lid itself (Esc, a click on the margin)
+    closed: () => ipcRenderer.send('mini:closed'),                // the lid has landed and faded: hide the window
+    reload: () => ipcRenderer.send('mini:reload'),                // reload the page (Settings > Lettering changed)
+  });
+}

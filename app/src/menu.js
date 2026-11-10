@@ -59,8 +59,15 @@ function makeFitter() {
     rec(0, Math.min(n, words.length), []);
     return best;
   };
+  // Shelf titles come from YouTube Music: a very long one would cost a lot of measuring (every way to
+  // split it into lines is tried), and at most three lines of it ever show, so only its start is fitted.
+  const MAX_CHARS = 120, MAX_WORDS = 24;
   return function fit(text, base, maxW) {
-    const words = text.split(/\s+/).filter(Boolean);
+    const all = String(text ?? '');
+    let words = all.slice(0, MAX_CHARS).split(/\s+/).filter(Boolean);
+    const cutShort = all.length > MAX_CHARS || words.length > MAX_WORDS;
+    if (words.length > MAX_WORDS) words = words.slice(0, MAX_WORDS);
+    if (cutShort && words.length) words[words.length - 1] += '…';
     const ok = (lines, size) => lines.every((l) => width(l, size) <= maxW);
     for (const [k, n] of [[1, 1], [0.92, 1], [0.84, 1], [1, 2], [0.92, 2], [0.84, 2], [0.76, 2], [0.68, 3], [0.6, 3]]) {
       const size = Math.round(base * k);

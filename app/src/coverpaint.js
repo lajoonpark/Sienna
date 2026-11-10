@@ -10,6 +10,7 @@
 // The racks' and the suitcase's covers are painted off the main thread in coverpaint.worker.js (coverworker.js).
 import { rng } from './rand.js';
 import { settings } from './settings.js';
+import { safeArtUrl, artSizeOk, ART_TIMEOUT_MS } from './arturl.js';
 import { brushShapes, COVERED, LEAN, STAMP_W, STAMP_H, VARIANTS } from './brushpaint.js';
 
 // strength multipliers per level (2 = the old "medium" look, tuned first)
@@ -267,21 +268,26 @@ export function coverSeed(url = '') {
 }
 
 const urls = new Map();
+// Resolves '' for a url that may not be loaded (see arturl.js).
 export function paintedCoverURL(url, size = 96) {
+  if (!safeArtUrl(url)) return Promise.resolve('');
   const level = coverLevel();
   const key = `${size}|${level}|${url}`;
   if (!urls.has(key)) {
     urls.set(key, new Promise((res) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
+      const t = setTimeout(() => { img.src = ''; res(url); }, ART_TIMEOUT_MS);
       img.onload = () => {
+        clearTimeout(t);
+        if (!artSizeOk(img.naturalWidth, img.naturalHeight)) { res(''); return; }
         const [c, g] = canvas(size, size);
         const s = Math.min(img.width, img.height);
         g.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
         paintCover(g, size, coverSeed(url), level);
         try { res(c.toDataURL('image/jpeg', 0.9)); } catch { res(url); } // tainted: show it unpainted
       };
-      img.onerror = () => res(url);
+      img.onerror = () => { clearTimeout(t); res(url); };
       img.src = url;
     }));
     if (urls.size > 200) urls.delete(urls.keys().next().value);

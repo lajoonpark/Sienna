@@ -20,6 +20,7 @@
 import * as THREE from 'three';
 import { paintCover, coverSeed } from './coverpaint.js';
 import { paintOffThread } from './coverworker.js';
+import { safeArtUrl, artSizeOk } from './arturl.js';
 import { settings } from './settings.js';
 import { LAYOUT as L, COMMANDS, isButton, armAngleForProgress, parkedArmAngle } from './tonearm.js';
 import { LidHinge, DEFAULT_STOP } from './lid.js';
@@ -48,6 +49,7 @@ export function startSong(music, sc, item) {
 const covers = new Map();
 settings.on('covers', () => { for (const t of covers.values()) t.userData.repaint?.(); });
 export function coverFromUrl(url) {
+  url = safeArtUrl(url);
   if (!url) return null;
   let t = covers.get(url);
   if (t) return t;
@@ -63,6 +65,7 @@ export function coverFromUrl(url) {
   img.crossOrigin = 'anonymous';
   t.userData.loaded = new Promise((res) => {
     img.onload = async () => {
+      if (!artSizeOk(img.naturalWidth, img.naturalHeight)) { res(false); return; }
       // drawn again when Settings > Cover art changes
       t.userData.repaint = async () => {
         const done = await paintOffThread(url, 512); // tens of ms of painting, as a record takes off

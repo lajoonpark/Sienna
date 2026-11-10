@@ -6,9 +6,8 @@
 // Film strips of one record per row go to out_dir.   node scripts/easel-check.mjs out_dir   (SIENNA_PORT)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { mkdirSync } from 'node:fs';
-const out = process.argv[2] ?? '/tmp/easel-check';
-mkdirSync(out, { recursive: true });
+import { outDir } from './safe.mjs';
+const out = outDir(process.argv[2], 'easel-check');
 const port = Number(process.env.SIENNA_PORT) || 5245;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();

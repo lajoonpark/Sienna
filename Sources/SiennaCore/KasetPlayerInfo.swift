@@ -36,7 +36,7 @@ struct KasetPlayerInfo: Decodable {
         return NowPlaying(
             title: name,
             artist: track.artist ?? "",
-            artworkURL: track.artworkURL.flatMap(URL.init(string:)),
+            artworkURL: ArtworkURL.allowed(track.artworkURL.flatMap(URL.init(string:))),
             isPlaying: info.isPlaying ?? !(info.isPaused ?? true),
             progress: progress,
             position: info.position ?? 0,

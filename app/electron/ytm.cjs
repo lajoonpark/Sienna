@@ -4,10 +4,13 @@
 const { BrowserWindow, app } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseShelves, parseSearch, parsePlaylistSongs, continuation, artDebug } = require('./ytm-parse.cjs');
+const { parseShelves, parseSearch, parsePlaylistSongs, continuation, artDebug, cleanUrl } = require('./ytm-parse.cjs');
 const { createSystemVolume } = require('./sysvolume.cjs');
+const { YTM_PARTITION, isGoogleUrl, lockNavigation } = require('./security.cjs');
 
-const PARTITION = 'persist:ytm'; // cookies survive restarts, so you sign in once
+const PARTITION = YTM_PARTITION; // cookies survive restarts, so you sign in once
+// What the shop may ask of the player page (window.__sienna.command in ytm-page.js).
+const COMMANDS = new Set(['toggle', 'play', 'pause', 'next', 'previous', 'seek', 'volume', 'like']);
 const HOME = 'https://music.youtube.com/';
 // The "songs" filter of YouTube Music search (the same params ytmusicapi uses; checked live).
 const SONGS_FILTER = 'EgWKAQIIAWoMEA4QChADEAQQCRAF';
@@ -29,6 +32,26 @@ const FIREFOX_UA = {
   win32: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0',
 }[process.platform] ?? 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0';
 
+// Identifiers that tie a response to you or your session, not needed to test parsing: dropped from dumps.
+const REDACT_KEYS = new Set(['responseContext', 'trackingParams', 'clickTrackingParams', 'visitorData', 'serviceTrackingParams', 'loggingContext', 'adSignalsInfo', 'clientScreenNonce', 'loggingDirectives', 'mainAppWebResponseContext', 'webResponseContextExtensionData']);
+function redact(v) {
+  if (Array.isArray(v)) return v.map(redact);
+  if (v && typeof v === 'object') {
+    const out = {};
+    for (const [k, x] of Object.entries(v)) if (!REDACT_KEYS.has(k)) out[k] = redact(x);
+    return out;
+  }
+  return v;
+}
+const DUMP_KEEP = 40, DUMP_MAX_AGE_MS = 24 * 3600 * 1000;
+function pruneDumps(dir) {
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'))
+    .map((f) => { const p = path.join(dir, f); return { p, t: fs.statSync(p).mtimeMs }; })
+    .sort((a, b) => b.t - a.t);
+  const now = Date.now();
+  files.forEach(({ p, t }, i) => { if (i >= DUMP_KEEP || now - t > DUMP_MAX_AGE_MS) fs.rmSync(p, { force: true }); });
+}
+
 function createYtm({ onState, onSignedIn }) {
   const ua = chromeUserAgent();
   const win = new BrowserWindow({
@@ -38,8 +61,13 @@ function createYtm({ onState, onSignedIn }) {
     title: 'YouTube Music (Sienna player)',
     // Throttled like a background tab: audio plays on, but the hidden page stops painting and
     // Chromium drops the video track of what plays in it (no unseen video decoding, less heat).
-    webPreferences: { partition: PARTITION, backgroundThrottling: true, autoplayPolicy: 'no-user-gesture-required' },
+    webPreferences: {
+      partition: PARTITION, backgroundThrottling: true, autoplayPolicy: 'no-user-gesture-required',
+      sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false,
+    },
   });
+  // The player stays on Google's sites (YouTube Music, consent, sign-in refresh); popups are refused (security.cjs).
+  lockNavigation(win.webContents, isGoogleUrl);
   win.webContents.setUserAgent(ua);
   win.webContents.setAudioMuted(false);
   // YouTube Music asks "leave site?" while playing; Sienna decides when to navigate.
@@ -71,17 +99,23 @@ function createYtm({ onState, onSignedIn }) {
     }
   }
 
-  // SIENNA_DUMP=1 saves every raw response to <userData>/dumps/<endpoint>-<time>-<n>.json, so a
-  // signed-in response can be copied into test/fixtures when something parses wrong.
+  // SIENNA_DUMP=1 (unpackaged runs only) saves raw responses to <userData>/dumps/<endpoint>-<time>-<n>.json,
+  // so a signed-in response can be copied into test/fixtures when something parses wrong. They describe
+  // your library and listening, so: tracking/session identifiers are stripped, the files are readable by
+  // you only, and only the newest DUMP_KEEP are kept (older ones, and any older than a day, are deleted).
   let dumped = 0;
+  const dumping = !!process.env.SIENNA_DUMP && !app.isPackaged;
+  if (process.env.SIENNA_DUMP && app.isPackaged) console.warn('[sienna] SIENNA_DUMP is ignored in a packaged app');
+  if (dumping) console.warn('[sienna] SIENNA_DUMP is on: responses from your account are saved under', path.join(app.getPath('userData'), 'dumps'));
   function dump(endpoint, body, res) {
-    if (!process.env.SIENNA_DUMP) return;
+    if (!dumping) return;
     try {
       const dir = path.join(app.getPath('userData'), 'dumps');
-      fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       const file = path.join(dir, `${endpoint}-${new Date().toISOString().replace(/[:.]/g, '-')}-${dumped++}.json`);
-      fs.writeFileSync(file, JSON.stringify({ request: body, response: res }));
+      fs.writeFileSync(file, JSON.stringify({ request: redact(body), response: redact(res) }), { mode: 0o600, flag: 'wx' });
       console.warn('[sienna] dumped', file);
+      pruneDumps(dir);
     } catch (e) { console.warn('[sienna] dump failed', e.message); }
   }
 
@@ -206,6 +240,8 @@ function createYtm({ onState, onSignedIn }) {
   }
 
   async function command(name, arg) {
+    if (!COMMANDS.has(name)) return false;
+    if (arg !== null && arg !== undefined && typeof arg !== 'number') return false;
     if (name === 'volume' && sysVol) { sysVol.set(arg); return true; }
     stir();
     await ready();
@@ -246,6 +282,7 @@ function createYtm({ onState, onSignedIn }) {
     const s = await js('window.__sienna?.state()').catch(() => null);
     lively = !s || s.playerState === 1 || s.playerState === 3;
     if (!s) return;
+    s.art = cleanUrl(s.art);   // the page's now-playing cover: only Google's image hosts, like the shelves' covers
     if (sysVol) {
       if (s.volume !== 100 && s.videoId) js('window.__sienna.command("volume", 100)').catch(() => {});
       if (sysVol.get() !== null) s.volume = sysVol.get();
@@ -267,8 +304,13 @@ function createYtm({ onState, onSignedIn }) {
     stir();
     const w = new BrowserWindow({
       width: 480, height: 720, parent, modal: false, title: 'Sign in to YouTube Music',
-      webPreferences: { partition: PARTITION, preload: path.join(__dirname, 'signin-preload.cjs') },
+      webPreferences: {
+        partition: PARTITION, preload: path.join(__dirname, 'signin-preload.cjs'),
+        sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false,
+      },
     });
+    // Sign-in stays on Google's sites; popups are refused (security.cjs).
+    lockNavigation(w.webContents, isGoogleUrl);
     const id = w.webContents.id;
     signInIds.add(id);
     w.on('closed', () => signInIds.delete(id));
