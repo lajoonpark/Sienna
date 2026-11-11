@@ -139,14 +139,19 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   *Frame rate* shows an fps readout. *Tour* > SHOW IT AGAIN starts the first-run tour from the door. The card lays rows in two columns when there is room.
 - **First-run tour** (`src/tour.js`): on a new install, once the intro reaches home, torn paper notes in the shop
   walk you through it, with brush-stroke words floating (bobbing) under each note instead of a settings card:
-  *welcome* (SIGN IN or LOOK AROUND FIRST, with small print: Sienna is free and open source, makes no money, has no
-  servers and keeps nothing about you; without Premium YouTube Music plays its own ads and Sienna earns nothing from
-  them; the code is at github.com/lajoonpark/Sienna), *paint* (brush strokes or a watercolour, applied live),
+  *welcome* (SIGN IN or LOOK AROUND FIRST, with the small print as four price stickers slapped on one by one: FREE,
+  makes no money; PRIVATE, no servers and keeps nothing about you; ADS?, without Premium YouTube Music plays its own
+  and Sienna earns nothing from them; OPEN SOURCE, the code is at github.com/lajoonpark/Sienna), *paint* (brush strokes or a watercolour, applied live),
   *letters* (the lettering; the reload it needs carries on at the same step, without the Settings card), *smooth*
   (60 or 30 fps), *record* (a small note at the top while you pick a record; the shop's keys work, it fades at a rack
   and moves on once a song plays), *player* (beside the suitcase: the knob is the Mac's own volume, scrubbing, keys),
   *keys* (each shortcut ticks when pressed; the global ones are reported by `keys:used` from `electron/shortcuts.cjs`;
   click one to change it, `shortcuts.record` in `src/shortcuts.js`) and *bye* (menu bar, ⌘,). SKIP TOUR or Esc ends it.
+  Each note drops in with a bounce, its title falling letter by letter over a brush underline and its words inking
+  in; a record with the step number slides out from behind it and spins, and a row of little records at the bottom
+  shows the track you are on. Moving on flicks the note off to one side. Clicks, ticks, a first record and the
+  goodbye burst into paint, confetti, music notes and records (`src/tourfx.js`: one canvas behind the notes that only
+  draws while something is flying). Reduced motion and `?shot` keep it all still.
   While a centred note is up the shop's own keys are quiet. The step reached is saved in localStorage `sienna.tour`.
   Installs from before the tour (saved settings, or already signed in) do not get it on their own, nor does a plain
   browser or an automated run (`navigator.webdriver`), so the check scripts see the shop as before. `?tour=0` keeps it
