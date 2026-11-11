@@ -1,4 +1,3 @@
-import { reloadBehindCurtain, liftCurtainWhen } from './curtain.js'; // first: up before anything paints
 import * as THREE from 'three';
 import { buildStreet } from './street.js';
 import { createIntroLight } from './introlight.js';
@@ -633,16 +632,7 @@ document.body.appendChild(fpsBox);
 const fpsOn = () => params.get('fps') === '1' || !!settings.get('fps');
 fpsBox.style.display = fpsOn() ? 'block' : 'none';
 settings.on('fps', () => { fpsBox.style.display = fpsOn() ? 'block' : 'none'; });
-// Settings > Lettering: tags, the sign and buttons are painted with the font, so reload to repaint
-// them all, behind a curtain (curtain.js) so the letters just change instead of the window blinking.
-// Where you stood (no intro) with the settings card open, so the choice can be compared.
-settings.on('font', () => {
-  const url = new URL(location.href);
-  url.searchParams.set('at', nav.settled && nav.at !== AT_HOME ? String(nav.at) : 'home');
-  // picked in the tour: it carries on at the same step after the reload, without the card
-  if (!tour.active) url.searchParams.set('settings', '');
-  reloadBehindCurtain(url);
-});
+// Settings > Lettering changes live: everything with lettering repaints itself (style.js onLettering).
 const fpsStat = { n: 0, since: performance.now(), last: performance.now(), worst: 0 };
 function tickFps() {
   if (fpsBox.style.display === 'none') return;
@@ -849,11 +839,5 @@ if (shotMode) {
       idleFps: () => (player?.playerState === 1 && suitcase.tucked < 0.5 ? 30 : 12),
     });
     pacer.start();
-    // a Lettering reload: lift the curtain once the shop stands there again in the new hand
-    liftCurtainWhen((async () => {
-      while (!everPlaced && !shelvesLoaded) await new Promise((r) => setTimeout(r, 50));
-      await Promise.all([suitcase.ready(), menu.ready(), ...racks.map((r) => r?.ready())]);
-      await new Promise((r) => setTimeout(r, 120)); // tag and sign textures are drawn a tick later
-    })());
   });
 }

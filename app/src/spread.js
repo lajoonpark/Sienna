@@ -22,7 +22,7 @@
 import * as THREE from 'three';
 import { vinylParts, vinylMaterial, getCover, createTag, canvas, fontReady, springTo, clamp01 } from './racks/common.js';
 import { crisp } from './materials.js';
-import { FONT } from './style.js';
+import { FONT, onLettering } from './style.js';
 import { rng } from './rand.js';
 
 const PAGE = 15;                    // songs per page; the play-all record comes first on every page
@@ -77,6 +77,7 @@ function sticker(text, seed, { w = 96, h = 64 } = {}) {
   };
   draw();
   fontReady.then(draw);
+  onLettering(tex, draw);
   return tex;
 }
 
@@ -107,6 +108,7 @@ function playAllTexture() {
   };
   draw();
   fontReady.then(draw);
+  onLettering(tex, draw);
   return (playAllLabel = tex);
 }
 

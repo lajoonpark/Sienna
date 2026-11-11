@@ -6,7 +6,7 @@ The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over
 
 **Look:** painted, through a screen pass (`src/watercolour.js`): brush strokes pinned to the world's surfaces by default (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Painting). Both have a ragged paper border. `?style=flat` shows the old flat toon look.
 
-**Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots. A change reloads both windows; the mini window is reloaded by the main process (`mini:reload` in `electron/mini.cjs`, as its page cannot navigate itself) and opens its lid again if it was on screen. Check: `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out`.
+**Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots. A change applies live in both windows, with no reload: `FONT`/`fontReady` are live exports, CSS uses `var(--sienna-font)`, and everything painted into a canvas or texture (tags, rack signs, the shop sign, button plates, menu words, search bar, album-spread stickers) registers a repaint with `onLettering(owner, draw)` in `src/style.js`, which runs once the new face has loaded. New lettered paint must register too. Check: `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out` (mini window, no reload) and `node scripts/tour-check.mjs out`.
 
 **Name:** the app was called Cadence until 2026-11-08. On first launch, `electron/main.cjs` moves the old `cadence-app` data folder (YouTube Music sign-in, settings) to `sienna-app`, and `src/settings.js` carries over the old `cadence.settings` key. Env vars are `SIENNA_*` (were `CADENCE_*`).
 
@@ -135,14 +135,14 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   `src/watercolour.js`). `?wc=0..4` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays
   when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Lettering* picks the font
-  (each choice is written in itself); the shop reloads to repaint tags, sign and buttons (to home, card open), the mini window reloads too.
+  (each choice is written in itself); it applies at once in both windows, without a reload (tags, signs and buttons repaint in place).
   *Frame rate* shows an fps readout. *Tour* > SHOW IT AGAIN starts the first-run tour from the door. The card lays rows in two columns when there is room.
 - **First-run tour** (`src/tour.js`): on a new install, once the intro reaches home, torn paper notes in the shop
   walk you through it, with brush-stroke words floating (bobbing) under each note instead of a settings card:
   *welcome* (SIGN IN or LOOK AROUND FIRST, with the small print as four price stickers slapped on one by one: FREE,
   makes no money; PRIVATE, no servers and keeps nothing about you; ADS?, without Premium YouTube Music plays its own
   and Sienna earns nothing from them; OPEN SOURCE, the code is at github.com/lajoonpark/Sienna), *paint* (brush strokes or a watercolour, applied live),
-  *letters* (the lettering; the reload it needs carries on at the same step, without the Settings card), *smooth*
+  *letters* (the lettering, applied live), *smooth*
   (60 or 30 fps), *record* (a small note at the top while you pick a record; the shop's keys work, it fades at a rack
   and moves on once a song plays), *player* (beside the suitcase: the knob is the Mac's own volume, scrubbing, keys),
   *keys* (each shortcut ticks when pressed; the global ones are reported by `keys:used` from `electron/shortcuts.cjs`;

@@ -1,6 +1,6 @@
 // Walks the first-run tour (src/tour.js) like a new user, in the shop with the fake store, and checks
-// each step ends the way it should: the choices change the settings, a new lettering reloads the shop
-// and carries on at the same step, playing a record moves on, the search shortcut gets its tick, the
+// each step ends the way it should: the choices change the settings, a new lettering applies live (no reload)
+// and the tour stays on its step, playing a record moves on, the search shortcut gets its tick, the
 // end is remembered, and Settings > Tour starts it again. Screenshots of every step go to out_dir.
 // Usage: node scripts/tour-check.mjs [out_dir]      (SIENNA_PORT=5241)
 import { chromium } from 'playwright';
@@ -60,17 +60,19 @@ await press('Next');
 assert.strictEqual(await step(), 'letters');
 assert.deepStrictEqual(await saved(), { step: 2, done: false });
 
-// a new lettering reloads the shop: the tour carries on at the same step, without the Settings card
-await Promise.all([page.waitForNavigation({ timeout: 120000 }), press('Caveat')]);
-await page.waitForFunction(() => window.__siennaDebug?.tour?.step === 'letters', null, { timeout: 120000 });
+// a new lettering applies live: no reload, the tour stays on its step and the notes take the new hand
+await page.evaluate(() => { window.__noReload = true; });
+await press('Caveat');
+await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--sienna-font').includes('Caveat'), null, { timeout: 20000 });
 await wait(800);
 assert.strictEqual(await setting('font'), 'caveat');
-assert.ok(!(await page.evaluate(() => location.search)).includes('settings'), 'no settings card after the reload');
+assert.ok(await page.evaluate(() => window.__noReload), 'the page did not reload');
+assert.strictEqual(await step(), 'letters');
 await shot('3-letters');
-ok('lettering reloads and the tour carries on');
-await Promise.all([page.waitForNavigation({ timeout: 120000 }), press('Amatic')]);
-await page.waitForFunction(() => window.__siennaDebug?.tour?.step === 'letters', null, { timeout: 120000 });
-await wait(800);
+ok('lettering applies live and the tour stays put');
+await press('Amatic');
+await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--sienna-font').includes('Amatic'), null, { timeout: 20000 });
+await wait(400);
 await press('Next');
 assert.strictEqual(await step(), 'smooth');
 await press('30 fps');

@@ -38,7 +38,7 @@
 //        holds the hovered one and def.control(core, id) runs on click.
 //   core.camLocal  the camera in the root's space (valid inside layout()).
 //   WOOD  shared toon wood materials (dark, top, light, pale, paint colours via paint(hex)).
-//   fontReady  Promise (brush font loaded).  smooth(rate, dt), easeOut(t), clamp01.
+//   fontReady  Promise (lettering font loaded; from style.js, live).  smooth(rate, dt), easeOut(t), clamp01.
 //   vinylParts() -> { geo, labelGeo, mat }, vinylMaterial(hex)   bare vinyl pieces (also the album spread).
 // ---------------------------------------------------------------------------------------------
 import * as THREE from 'three';
@@ -51,7 +51,9 @@ import { safeArtUrl, artSizeOk } from '../arturl.js';
 import { toon, crisp } from '../materials.js';
 import { rng } from '../rand.js';
 import { brushStroke, INK, PAPER } from '../controls.js';
-import { FONT } from '../style.js';
+import { FONT, fontReady, onLettering } from '../style.js';
+
+export { fontReady }; // live: a Lettering change swaps it (style.js)
 
 export const MAX_ITEMS = 24;
 export const SLEEVE = 0.31;
@@ -76,7 +78,6 @@ export function springTo(obj, key, target, dt, w, z = 1, floor = -Infinity) {
   return x;
 }
 export const easeOut = (t) => 1 - Math.pow(1 - clamp01(t), 3);
-export const fontReady = (typeof document !== 'undefined' && document.fonts?.load(`64px ${FONT}`).catch(() => {})) || Promise.resolve();
 
 export function canvas(w, h) {
   const c = document.createElement('canvas');
@@ -538,6 +539,7 @@ export function createSign({ w = 1.2, h = 0.15, color = INK, res = 1024 } = {}) 
       plate.src = brushStroke(Math.round(pw / 2), Math.round(CH * 0.47), color, 5 + title.length);
     }));
   };
+  onLettering(sign, () => { if (sign.title) sign.setTitle(sign.title); }); // Settings > Lettering: paint it again
   return sign;
 }
 
@@ -614,11 +616,15 @@ export function createTag({ w = 0.34, h = 0.1, wrap = true } = {}) {
   mesh.visible = false;
   let seq = 0;
   const tag = { mesh, ready: Promise.resolve(), w, h, h2, lines: 1 };
+  let shown = null; // [item, seed] last drawn
   tag.show = (item, seed = 3) => {
     const my = ++seq;
     mesh.visible = true;
+    shown = [item, seed];
     tag.ready = fontReady.then(() => { if (my === seq) { tag.lines = drawTag(g, item, seed, wrap); tex.needsUpdate = true; } });
   };
+  // Settings > Lettering: redraw what it shows in the new face (a hidden tag is drawn on its next show)
+  onLettering(tag, () => { if (shown && mesh.visible) { tag.lines = drawTag(g, shown[0], shown[1], wrap); tex.needsUpdate = true; } });
   tag.hide = () => { seq++; mesh.visible = false; mesh.removeFromParent(); };
   return tag;
 }

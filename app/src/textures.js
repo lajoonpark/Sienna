@@ -7,14 +7,18 @@ function canvas(w, h) {
 }
 
 // Sticker-style lettering: chunky white fill, thick black outline, hard offset shadow.
-// `font` (a CSS family list) swaps the default Arial Black; the texture is drawn again once that
-// web font has loaded, so it never stays in the fallback face.
+// `font` (a CSS family list, or a function returning one) swaps the default Arial Black; the texture
+// is drawn again once that web font has loaded, so it never stays in the fallback face.
+// texture.redraw() paints it again (the shop sign after a Lettering change, street.js).
 export function stickerTexture(text, { w = 1024, h = 256, size = 170, color = '#fff', font = null } = {}) {
   const [c, g] = canvas(w, h);
-  const face = font ? `700 ${size}px ${font}` : `900 ${size}px "Arial Black", Impact, system-ui, sans-serif`;
+  const faceOf = () => {
+    const f = typeof font === 'function' ? font() : font;
+    return f ? `700 ${size}px ${f}` : `900 ${size}px "Arial Black", Impact, system-ui, sans-serif`;
+  };
   const draw = () => {
     g.clearRect(0, 0, w, h);
-    g.font = face;
+    g.font = faceOf();
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.lineJoin = 'round';
     const x = w / 2, y = h / 2;
@@ -30,8 +34,9 @@ export function stickerTexture(text, { w = 1024, h = 256, size = 170, color = '#
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
   if (font && typeof document !== 'undefined' && document.fonts) {
-    document.fonts.load(face).then(() => { draw(); t.needsUpdate = true; }, () => {});
+    document.fonts.load(faceOf()).then(() => { draw(); t.needsUpdate = true; }, () => {});
   }
+  t.redraw = () => { draw(); t.needsUpdate = true; };
   return t;
 }
 

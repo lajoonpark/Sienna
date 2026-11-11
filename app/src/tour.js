@@ -4,7 +4,7 @@
 //
 //   welcome  sign in, or look around first; small print on ads, money, data and the source code
 //   paint    how the shop is painted          } choices apply at once, so the shop behind the note
-//   letters  the handwriting (page reloads)   } shows each one; they are the Settings card's choices,
+//   letters  the handwriting                  } shows each one; they are the Settings card's choices,
 //   smooth   60 or 30 fps                     } just floating in the shop
 //   record   pick a record (a small note at the top, the shop stays usable)
 //   player   the suitcase: volume is the Mac's own, scrubbing, keys (a note above the case)
@@ -12,7 +12,7 @@
 //   bye      the menu bar, Settings, and this tour again
 //
 // SKIP TOUR (top) or Esc ends it. Where it got to is saved after every step (localStorage 'sienna.tour'),
-// so quitting half-way, or the reload a new lettering needs, carries on from there. Installs from before
+// so quitting half-way carries on from there. Installs from before
 // the tour (saved settings, or already signed in) never get it on their own: Settings > Tour starts it.
 // Not on its own in a plain browser (fake store) or under automation (navigator.webdriver), so the check
 // scripts see the shop as before. ?tour=0 keeps it away; ?tour=<step name or number> shows that step
@@ -21,7 +21,7 @@
 import { settings } from './settings.js';
 import { shortcuts } from './shortcuts.js';
 import { torn, word } from './settings-panel.js';
-import { FONT, FONTS } from './style.js';
+import { FONTS, onLettering } from './style.js';
 import { INK, HOT } from './controls.js';
 import { createFx, COLOURS } from './tourfx.js';
 
@@ -38,7 +38,7 @@ const SEALS = [
 ];
 
 const CSS = `
-.tr { position: fixed; inset: 0; z-index: 8; pointer-events: none; font-family: ${FONT}; color: #2b2436; perspective: 1100px;
+.tr { position: fixed; inset: 0; z-index: 8; pointer-events: none; font-family: var(--sienna-font); color: #2b2436; perspective: 1100px;
   opacity: 0; visibility: hidden; transition: opacity .45s ease, visibility 0s .45s; }
 .tr.show { opacity: 1; visibility: visible; transition: opacity .45s ease; }
 .tr-skip { position: absolute; top: 3.4vh; left: 50%; transform: translateX(-50%); font-size: 22px; pointer-events: auto; opacity: .85; }
@@ -253,6 +253,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   let words = [skip];
   const paintAll = () => words.forEach((w) => w.paint());
   document.fonts?.addEventListener?.('loadingdone', paintAll);
+  onLettering(root, paintAll); // Settings > Lettering
 
   // a floating word: bobbing out of step with the others, a little tilted; `big` for the main choice
   let seed = 200;

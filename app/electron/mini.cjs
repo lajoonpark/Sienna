@@ -130,18 +130,6 @@ function createMini({ onVisible, trusted = () => false } = {}) {
     if (win && e.sender === win.webContents && trusted(e) && state === 'open') state = 'closing';
   });
 
-  // Settings > Lettering changed in the shop: the page reloads to repaint in the new font. Done from here,
-  // because the page itself cannot navigate (will-navigate is blocked above, and that blocks reload() too).
-  // If the window is on screen meanwhile, the fresh page is told to open the lid again.
-  ipcMain.on('mini:reload', (e) => {
-    if (!win || e.sender !== win.webContents || !trusted(e)) return;
-    win.webContents.once('did-finish-load', () => {
-      if (state === 'open') send('mini:open');
-      else if (state === 'closing') { state = 'hidden'; win.hide(); onVisible?.(); releaseLater(); }
-    });
-    win.webContents.reload();
-  });
-
   ipcMain.on('mini:closed', (e) => {
     if (!win || e.sender !== win.webContents || !trusted(e)) return;
     if (state === 'closing' || state === 'open') {

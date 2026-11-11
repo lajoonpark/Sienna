@@ -4,7 +4,7 @@
 // is kept until main.js stops using it.) Words are left as bare paper inside a dark watercolour
 // brush stroke, the way a painter masks out whites.
 import { rng } from './rand.js';
-import { FONT } from './style.js';
+import { FONT, onLettering } from './style.js';
 import { brushBand, TONES } from './brushpaint.js';
 
 export const INK = '#2d3158';   // indigo wash
@@ -69,7 +69,7 @@ const CSS = `
 .deck .stack { transform-style: preserve-3d; transform-origin: 0% 50%; will-change: transform;
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 .deck .caption { pointer-events: auto; margin: 0 0 10px 6px; padding: 10px 22px 12px 18px; max-width: 360px;
-  background: ${PAPER}; color: #2b2436; font-family: ${FONT};
+  background: ${PAPER}; color: #2b2436; font-family: var(--sienna-font);
   clip-path: polygon(0 6%, 18% 0, 47% 4%, 72% 0, 100% 5%, 98% 52%, 100% 96%, 66% 100%, 38% 95%, 9% 100%, 2% 60%);
   filter: drop-shadow(0 2px 0 rgba(60,40,30,.15)); transform: rotate(-1.5deg); transition: opacity .4s; }
 .deck .caption .t { font-size: 30px; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -79,7 +79,7 @@ const CSS = `
 .deck .caption .bar i { position: absolute; left: 0; top: 2px; height: 6px; border-radius: 3px 6px 6px 3px; background: ${INK}; opacity: .85; }
 .deck .caption.empty { opacity: 0; pointer-events: none; }
 .deck button { pointer-events: auto; position: relative; border: 0; padding: 0; background: none; cursor: pointer;
-  font-family: ${FONT}; color: ${PAPER}; line-height: 1; letter-spacing: .02em;
+  font-family: var(--sienna-font); color: ${PAPER}; line-height: 1; letter-spacing: .02em;
   transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
 .deck button .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; }
 .deck button .plate.hot { opacity: 0; }
@@ -142,6 +142,7 @@ export function createControls({ onCommand, onSignIn }) {
     }
   };
   const fontReady = (document.fonts?.load(`84px ${FONT}`) ?? Promise.resolve()).then(paint, paint);
+  onLettering(deck, paint); // Settings > Lettering: the words reflow (CSS var), so the plates are sized again
 
   let duration = 0;
   capBar.addEventListener('click', (e) => {
@@ -188,7 +189,7 @@ export function createControls({ onCommand, onSignIn }) {
 // ---- the paper caption beside the suitcase ----
 const TAG_CSS = `
 .cad-tag { position: fixed; z-index: 2; pointer-events: none; opacity: 0; transition: opacity .9s ease; user-select: none;
-  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-family: ${FONT}; }
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-family: var(--sienna-font); }
 .cad-tag.show { opacity: 1; }
 .cad-tag.shop { transition: opacity .9s ease, transform .35s ease; }
 .cad-tag.shop.show.tucked { opacity: 0; transform: translateY(28px); transition: opacity .3s ease, transform .35s ease; pointer-events: none; }
@@ -217,7 +218,7 @@ const TAG_CSS = `
   mask-image: linear-gradient(to left, transparent, #000 7px); }
 .cad-tag.mini .cap .bar:hover i { background-image: var(--fillhot); }
 .cad-tag button { pointer-events: auto; position: relative; border: 0; padding: 0; background: none; cursor: pointer;
-  font-family: ${FONT}; color: ${PAPER}; line-height: 1; letter-spacing: .02em; margin-left: 10px;
+  font-family: var(--sienna-font); color: ${PAPER}; line-height: 1; letter-spacing: .02em; margin-left: 10px;
   transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
 .cad-tag button .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; }
 .cad-tag button .plate.hot { opacity: 0; }
@@ -275,6 +276,7 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
   };
   const fontReady = (document.fonts?.load(`38px ${FONT}`) ?? Promise.resolve()).then(() => { paint(); paintCap(); }, () => { paint(); paintCap(); });
   if (variant === 'mini') new ResizeObserver(() => fontReady.then(paintCap)).observe(cap);
+  onLettering(root, () => { paint(); paintedW = 0; paintCap(); }); // Settings > Lettering
 
   let duration = 0, scrubP = null, lastP = 0;
   bar.addEventListener('click', (e) => {

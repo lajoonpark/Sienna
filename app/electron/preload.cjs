@@ -14,10 +14,6 @@ contextBridge.exposeInMainWorld('sienna', {
   startPrepared: (endpoint) => ipcRenderer.invoke('ytm:startPrepared', endpoint),
   command: (name, arg) => ipcRenderer.invoke('ytm:command', name, arg),
   signIn: () => ipcRenderer.invoke('ytm:signIn'),
-  // Settings > Lettering reloads the shop behind a picture of itself (src/curtain.js): snapshot() has the
-  // main process photograph the window; the fresh page finds that picture here (a data URL, or null).
-  snapshot: () => ipcRenderer.invoke('shop:snapshot'),
-  curtain: process.argv.includes('--sienna-mini') ? null : ipcRenderer.sendSync('shop:curtain'),
   onState: (cb) => ipcRenderer.on('ytm:state', (_e, s) => cb(s)),
   onSignedIn: (cb) => ipcRenderer.on('ytm:signedIn', () => cb()),
   // keyboard shortcuts (electron/shortcuts.cjs): { search, mini, app, failed, defaults }
@@ -37,6 +33,5 @@ if (process.argv.includes('--sienna-mini')) {
     onClose: (cb) => ipcRenderer.on('mini:close', () => cb()),   // shut it (Esc, blur and the shortcut come through here)
     closing: () => ipcRenderer.send('mini:closing'),              // the page started shutting the lid itself (Esc, a click on the margin)
     closed: () => ipcRenderer.send('mini:closed'),                // the lid has landed and faded: hide the window
-    reload: () => ipcRenderer.send('mini:reload'),                // reload the page (Settings > Lettering changed)
   });
 }

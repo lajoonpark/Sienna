@@ -17,7 +17,7 @@ export const DEFAULTS = {
   covers: 3, // how strongly album covers are painted, 0..3 (COVER_LEVELS in coverpaint.js)
   playOnArm: true, // the song starts when the tonearm lands and the record spins up (false: at once)
   maxFps: 60, // frame-rate cap, 60 or 30 (pacer.js); 30 runs cooler on a laptop
-  font: 'amatic', // lettering, a key of FONTS in style.js (the page reloads on change)
+  font: 'amatic', // lettering, a key of FONTS in style.js (changes live, see style.js)
   fps: false, // frame-rate readout in the corner (for perf reports)
 };
 

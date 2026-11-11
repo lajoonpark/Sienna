@@ -8,7 +8,7 @@
 //   onTour: Settings > Tour > SHOW IT AGAIN (main.js restarts src/tour.js)
 //
 // Shot hook: ?settings opens it.
-import { FONT, FONTS } from './style.js';
+import { FONTS, onLettering } from './style.js';
 import { INK, HOT, PAPER, brushStroke } from './controls.js';
 import { settings } from './settings.js';
 import { shortcuts, fromEvent } from './shortcuts.js';
@@ -19,10 +19,10 @@ const PAINT = ['Faint', 'Light', 'Medium', 'Heavy', 'Brush strokes'];
 
 const CSS = `
 .st-btn { position: fixed; top: 3.4vh; right: 2.6vw; z-index: 6; border: 0; padding: 0; background: none; cursor: pointer;
-  font-family: ${FONT}; color: ${PAPER}; font-size: 26px; line-height: 1; user-select: none; opacity: 0; transition: opacity .6s ease, transform .18s cubic-bezier(.3,1.6,.5,1); }
+  font-family: var(--sienna-font); color: ${PAPER}; font-size: 26px; line-height: 1; user-select: none; opacity: 0; transition: opacity .6s ease, transform .18s cubic-bezier(.3,1.6,.5,1); }
 .st-btn.show { opacity: .9; }
 .st-btn:hover { opacity: 1; transform: translateX(-4px) rotate(1deg); }
-.st-w { position: relative; display: inline-block; border: 0; padding: 0; background: none; cursor: pointer; font-family: ${FONT};
+.st-w { position: relative; display: inline-block; border: 0; padding: 0; background: none; cursor: pointer; font-family: var(--sienna-font);
   font-size: inherit; color: ${PAPER}; line-height: 1; transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
 .st-w .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; }
 .st-w .plate.hot { opacity: 0; }
@@ -35,7 +35,7 @@ const CSS = `
   background: rgba(60,45,35,.18); opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s .3s; }
 .st-veil.show { opacity: 1; visibility: visible; transition: opacity .3s ease; }
 .st-card { position: relative; width: min(920px, 94vw); max-height: 94vh; box-sizing: border-box; display: flex; flex-direction: column; padding: 30px 40px 22px; color: #2b2436;
-  font-family: ${FONT}; filter: drop-shadow(0 6px 10px rgba(50,35,25,.25));
+  font-family: var(--sienna-font); filter: drop-shadow(0 6px 10px rgba(50,35,25,.25));
   transform: translateY(18px) rotate(-1.4deg) scale(.96); transition: transform .45s cubic-bezier(.2,1.5,.4,1); }
 .st-veil.show .st-card { transform: rotate(-.5deg); }
 .st-paper { position: absolute; inset: 0; background: #f4ead6; }
@@ -111,7 +111,7 @@ export function createSettingsPanel({ onTour = null } = {}) {
     { key: 'covers', label: 'Cover art', hint: 'How strongly album covers are painted over.', opts: ['Off', 'Light', 'Medium', 'Heavy'].map((l, i) => [l, i]) },
     { key: 'playOnArm', label: 'Start of a song', hint: 'Play when the arm touches the record and it spins, or straight away.', opts: [['When the arm lands', true], ['At once', false]] },
     { key: 'maxFps', label: 'Smoothness', hint: 'Frames per second at most. 30 runs cooler and saves battery.', opts: [['60 fps', 60], ['30 fps', 30]] },
-    { key: 'font', label: 'Lettering', hint: 'The handwriting on tags, signs and buttons. The shop reloads.', opts: Object.entries(FONTS).map(([k, f]) => [f.label, k, f]) },
+    { key: 'font', label: 'Lettering', hint: 'The handwriting on tags, signs and buttons. It changes straight away.', opts: Object.entries(FONTS).map(([k, f]) => [f.label, k, f]) },
     { key: 'fps', label: 'Frame rate', hint: 'Show frames per second in the corner.', opts: [['Off', false], ['On', true]] },
   ];
   const veil = document.createElement('div');
@@ -234,6 +234,7 @@ export function createSettingsPanel({ onTour = null } = {}) {
   const words = [btn, ...optWords, done];
   const paintAll = () => words.forEach((w) => w.paint());
   document.fonts?.ready.then(paintAll);
+  onLettering(done, paintAll); // Settings > Lettering: words reflow in the new face, plates follow
   document.fonts?.addEventListener?.('loadingdone', paintAll); // the lettering choices load when first shown
   requestAnimationFrame(paintAll);
 

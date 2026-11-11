@@ -4,7 +4,7 @@
 // middle and tilting after the cursor. The section you are in is painted terracotta, like a hover.
 // A HOME word sits top-left whenever you are not home.
 import { brushStroke, INK, PAPER } from './controls.js';
-import { FONT } from './style.js';
+import { FONT, onLettering } from './style.js';
 
 const HOT = '#b4503a';
 const PER_SIDE = 4;
@@ -19,7 +19,7 @@ const CSS = `
 .mn.l .stack, .mn.h .stack { align-items: flex-start; transform-origin: 0% 50%; }
 .mn.r .stack { align-items: flex-end; transform-origin: 100% 50%; }
 .mn button { pointer-events: auto; position: relative; border: 0; padding: 0; background: none; cursor: pointer;
-  font-family: ${FONT}; color: ${PAPER}; line-height: 1; letter-spacing: .02em;
+  font-family: var(--sienna-font); color: ${PAPER}; line-height: 1; letter-spacing: .02em;
   transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
 .mn.h:not(.show) button { pointer-events: none; }
 .mn button .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; }
@@ -152,6 +152,7 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
   const fontReady = (document.fonts?.load(`40px ${FONT}`) ?? Promise.resolve()).catch(() => {});
   let fontsOk = false;
   fontReady.then(() => { fontsOk = true; layout(); });
+  onLettering(L.el, () => layout()); // Settings > Lettering: fit the words again in the new face
 
   function setLabel(b, text, base, maxW) {
     const { size, lines } = fit(text, base, maxW);

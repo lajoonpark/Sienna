@@ -18,7 +18,7 @@
 // Shot hooks (location.search): ?search=lemon opens it with that query, ?searchhl=N highlights slip N.
 import { shortcuts } from './shortcuts.js';
 import { rng } from './rand.js';
-import { FONT } from './style.js';
+import { FONT, onLettering } from './style.js';
 import { INK, PAPER } from './controls.js';
 import { brushBand, brushBandCanvas, TONES } from './brushpaint.js';
 import { createBarPaint, slipMasks, MARGIN, SLIP_FRAMES } from './searchpaint.js';
@@ -33,7 +33,7 @@ const SLIP_COATS = 5, HOT_COATS = 3;   // rows take turns with a few painted swi
 
 const CSS = `
 .cs { position: fixed; top: 3.2vh; left: 50%; width: min(640px, 92vw); z-index: 60; transform: translateX(-50%);
-  pointer-events: none; visibility: hidden; font-family: ${FONT}; user-select: none; }
+  pointer-events: none; visibility: hidden; font-family: var(--sienna-font); user-select: none; }
 .cs.show { pointer-events: auto; visibility: visible; }
 .cs.closing { visibility: visible; }
 .cs-bar { position: relative; height: ${BAR_H}px; transform: rotate(-.6deg); transform-origin: 20% 40%; }
@@ -41,7 +41,7 @@ const CSS = `
 .cs-paper { position: absolute; left: 32px; right: 50px; top: 16px; bottom: 16px; display: flex; align-items: center;
   padding: 0 26px 0 22px; gap: 8px; }
 .cs-paper svg { flex: none; width: 32px; height: 32px; margin-top: 2px; }
-.cs-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: 38px/1 ${FONT}; color: #2b2436; padding: 6px 0 2px;
+.cs-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: 38px/1 var(--sienna-font); color: #2b2436; padding: 6px 0 2px;
   caret-color: ${HOT}; letter-spacing: .01em; }
 .cs-input::placeholder { color: #a8957c; }
 .cs-input::selection { background: rgba(180,80,58,.28); }
@@ -143,6 +143,7 @@ export function createSearch({ music, onPlay, suggest = null }) {
   };
   const fontReady = (document.fonts?.load(`38px ${FONT}`) ?? Promise.resolve()).then(paintStrokes, paintStrokes);
   new ResizeObserver(() => fontReady.then(paintStrokes)).observe(root);
+  onLettering(root, () => { paintedW = 0; paintStrokes(); }); // Settings > Lettering
 
   // ---- state -----------------------------------------------------------------
   let isOpen = false;

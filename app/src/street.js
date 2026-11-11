@@ -8,7 +8,7 @@ import { windowUnit, doorUnit, balcony, wallLantern, eaves, drainpipe, pottedPla
 import { registerLamp, glowMesh } from './env.js';
 import { scooter, bicycle, cafeSet, crate, stall, chalkboard, bench, lampPost, stringLights, washingLine, bunting } from './props.js';
 import { stickerTexture } from './textures.js';
-import { FONT } from './style.js';
+import { FONT, onLettering } from './style.js';
 import { toon, keepSharp } from './materials.js';
 import { rng } from './rand.js';
 
@@ -258,7 +258,8 @@ function shopFront(kit, root) {
 
   // sign board above the door, sticker lettering in the app's cursive
   blk(kit, M, cx, top - 0.42, 0.04, 3.6, 0.62, 0.08, '#3f6e6a');
-  const signTex = stickerTexture('Sienna', { w: 1024, h: 256, size: 200, font: FONT });
+  const signTex = stickerTexture('Sienna', { w: 1024, h: 256, size: 200, font: () => FONT });
+  onLettering(signTex, signTex.redraw);
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 0.82), keepSharp(new THREE.MeshBasicMaterial({ map: signTex, alphaTest: 0.5 })) /* cut out, so it can flag itself sharp */);
   sign.applyMatrix4(mul(M, trs(cx, top - 0.4, 0.1, 0, 0, -0.03)));
   meshes.push(sign);
