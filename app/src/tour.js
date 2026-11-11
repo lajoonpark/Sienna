@@ -24,6 +24,7 @@ import { torn, word } from './settings-panel.js';
 import { FONTS, onLettering } from './style.js';
 import { INK, HOT } from './controls.js';
 import { createFx, COLOURS } from './tourfx.js';
+import { onCursorTilt, tiltCSS } from './cursortilt.js';
 
 const KEY = 'sienna.tour';
 const STEPS = ['welcome', 'paint', 'letters', 'smooth', 'record', 'player', 'keys', 'bye'];
@@ -551,6 +552,15 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
     show(false);
   }
 
+  // the note leans toward the cursor (cursortilt.js runs its own easing, so it turns even while the shop's
+  // camera holds still for a record at a rack)
+  let leanX = 0, leanY = 0;
+  function lean() {
+    if (at < 0) return;
+    stage.style.transform = `${STEPS[at] === 'player' ? '' : 'translate(-50%, 0) '}${stage.dataset.at === 'centre' ? 'translateY(-50%) ' : ''}${tiltCSS(leanX, leanY, 9)}`;
+  }
+  onCursorTilt((x, y) => { leanX = x; leanY = y; lean(); });
+
   // where the note sits; the player note stands just above the suitcase
   function place() {
     if (STEPS[at] !== 'player') { stage.style.left = stage.style.bottom = ''; return; }
@@ -588,7 +598,8 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
         next();
       }
     },
-    // every frame. ui: the intro is over and the shop's own words are showing. tx, ty: the cursor tilt, -1..1
+    // every frame. ui: the intro is over and the shop's own words are showing. tx, ty: unused (the note's lean
+    // comes from cursortilt.js now; kept so main.js's call stays the same)
     // atHome: the camera is at the door (away from it, the record note fades so the racks show through)
     update(ui, tx = 0, ty = 0, atHome = true) {
       if (!started && ui && !rec.done) {
@@ -603,7 +614,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
       searchWas = open;
       if (STEPS[at] === 'player') place();
       root.classList.toggle('away', STEPS[at] === 'record' && !atHome);
-      stage.style.transform = `${STEPS[at] === 'player' ? '' : 'translate(-50%, 0) '}${stage.dataset.at === 'centre' ? 'translateY(-50%) ' : ''}rotateY(${tx * 5}deg) rotateX(${-ty * 4}deg)`;
+      lean();
     },
     // Settings > Tour: from the start, at the door
     restart() {

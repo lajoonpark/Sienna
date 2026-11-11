@@ -122,6 +122,7 @@ npm run web                                # the shop in a browser, with a fake 
 npm run build && npm run electron          # run the production build
 npm run build && xvfb-run -a npm run e2e -- out_dir   # real app against YouTube Music (Linux)
 node scripts/tour-check.mjs                # walk the first-run tour like a new user (fake store)
+node scripts/tilt-check.mjs                # tour notes and Settings card lean with the cursor
 ```
 
 ## Not done yet

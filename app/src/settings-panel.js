@@ -1,6 +1,7 @@
 // Settings: a SETTINGS word top-right (like HOME top-left) and Cmd+, (Ctrl+, elsewhere) open a
 // torn paper card in the middle of the screen. Each setting is a row of brush-stroke words; the chosen
-// one is painted terracotta. Changes apply at once and are remembered (settings.js).
+// one is painted terracotta. Changes apply at once and are remembered (settings.js). The card leans
+// toward the cursor (cursortilt.js), like the tour's notes.
 // Esc, clicking outside the card, or DONE closes it. While it is open the shop's keys stay quiet
 // (main.js checks isOpen()).
 //
@@ -13,6 +14,7 @@ import { INK, HOT, PAPER, brushStroke } from './controls.js';
 import { settings } from './settings.js';
 import { shortcuts, fromEvent } from './shortcuts.js';
 import { rng } from './rand.js';
+import { onCursorTilt, tiltCSS } from './cursortilt.js';
 
 // Settings > Painting: watercolour strength (LEVELS in watercolour.js), lightest first
 const PAINT = ['Faint', 'Light', 'Medium', 'Heavy', 'Brush strokes'];
@@ -32,8 +34,10 @@ const CSS = `
 .st-btn .st-w span { padding: .16em .7em .1em 1em; }
 .st-btn .plate { transform: scaleX(-1); }
 .st-veil { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
-  background: rgba(60,45,35,.18); opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s .3s; }
+  background: rgba(60,45,35,.18); perspective: 1600px; opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s .3s; }
 .st-veil.show { opacity: 1; visibility: visible; transition: opacity .3s ease; }
+/* the card leans toward the cursor (cursortilt.js); a wrapper carries the lean so the card's own open/close bounce stays */
+.st-lean { display: flex; justify-content: center; will-change: transform; }
 .st-card { position: relative; width: min(920px, 94vw); max-height: 94vh; box-sizing: border-box; display: flex; flex-direction: column; padding: 30px 40px 22px; color: #2b2436;
   font-family: var(--sienna-font); filter: drop-shadow(0 6px 10px rgba(50,35,25,.25));
   transform: translateY(18px) rotate(-1.4deg) scale(.96); transition: transform .45s cubic-bezier(.2,1.5,.4,1); }
@@ -116,11 +120,13 @@ export function createSettingsPanel({ onTour = null } = {}) {
   ];
   const veil = document.createElement('div');
   veil.className = 'st-veil';
-  veil.innerHTML = `<div class="st-card"><div class="st-paper"></div><div class="st-head">Settings</div>
+  veil.innerHTML = `<div class="st-lean"><div class="st-card"><div class="st-paper"></div><div class="st-head">Settings</div>
     <div class="st-scroll"><div class="st-rows">${ROWS.map(() => '<div class="st-row"><div class="st-label"></div><div class="st-hint"></div><div class="st-opts"></div></div>').join('')}</div></div>
-    <div class="st-foot"></div></div>`;
+    <div class="st-foot"></div></div></div>`;
   document.body.appendChild(veil);
   const card = veil.querySelector('.st-card');
+  const leaner = veil.querySelector('.st-lean');
+  let unlean = null;
   card.querySelector('.st-paper').style.clipPath = torn(7);
   card.addEventListener('click', (e) => e.stopPropagation());
   veil.addEventListener('click', () => close());
@@ -243,11 +249,14 @@ export function createSettingsPanel({ onTour = null } = {}) {
     openNow = true;
     veil.classList.add('show');
     requestAnimationFrame(paintAll);
+    // a big card, so a gentler lean than the tour's notes
+    unlean ??= onCursorTilt((x, y) => { leaner.style.transform = tiltCSS(x, y, 5); });
   }
   function close() {
     stopRecording();
     openNow = false;
     veil.classList.remove('show');
+    unlean?.(); unlean = null; // it holds its last lean while it fades
   }
   function toggle() { (openNow ? close : open)(); }
 

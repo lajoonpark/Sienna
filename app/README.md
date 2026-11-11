@@ -152,6 +152,9 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   shows the track you are on. Moving on flicks the note off to one side. Clicks, ticks, a first record and the
   goodbye burst into paint, confetti, music notes and records (`src/tourfx.js`: one canvas behind the notes that only
   draws while something is flying). Reduced motion and `?shot` keep it all still.
+  The notes lean toward the cursor (about 9°), and so does the Settings card (5°, on a wrapper so its open bounce
+  stays): `src/cursortilt.js` eases the cursor on its own rAF loop, which runs only while the paper is catching up,
+  so the paper keeps turning while the camera's tilt holds still for a record at a rack. Check: `node scripts/tilt-check.mjs [out]`.
   While a centred note is up the shop's own keys are quiet. The step reached is saved in localStorage `sienna.tour`.
   Installs from before the tour (saved settings, or already signed in) do not get it on their own, nor does a plain
   browser or an automated run (`navigator.webdriver`), so the check scripts see the shop as before. `?tour=0` keeps it
