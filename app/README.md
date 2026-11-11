@@ -4,9 +4,9 @@ A 3D vinyl shop for YouTube Music (free, open source). Electron + Three.js.
 
 The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over the street, a little piazza, and the Sienna shop. The door swings open on its own, the camera walks into the shop, and the view tilts with the cursor. All scenery is procedural.
 
-**Look:** painted, through a screen pass (`src/watercolour.js`): brush strokes pinned to the world's surfaces by default (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Painting). Both have a ragged paper border. `?style=flat` shows the old flat toon look.
+**Look:** painted, through a screen pass (`src/watercolour.js`): brush strokes pinned to the world's surfaces by default (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Look > Painting). Both have a ragged paper border. `?style=flat` shows the old flat toon look.
 
-**Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots. A change applies live in both windows, with no reload: `FONT`/`fontReady` are live exports, CSS uses `var(--sienna-font)`, and everything painted into a canvas or texture (tags, rack signs, the shop sign, button plates, menu words, search bar, album-spread stickers) registers a repaint with `onLettering(owner, draw)` in `src/style.js`, which runs once the new face has loaded. New lettered paint must register too. Check: `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out` (mini window, no reload) and `node scripts/tour-check.mjs out`.
+**Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Look > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots. A change applies live in both windows, with no reload: `FONT`/`fontReady` are live exports, CSS uses `var(--sienna-font)`, and everything painted into a canvas or texture (tags, rack signs, the shop sign, button plates, menu words, search bar, album-spread stickers) registers a repaint with `onLettering(owner, draw)` in `src/style.js`, which runs once the new face has loaded. New lettered paint must register too. Check: `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out` (mini window, no reload) and `node scripts/tour-check.mjs out`.
 
 **Name:** the app was called Cadence until 2026-11-08. On first launch, `electron/main.cjs` moves the old `cadence-app` data folder (YouTube Music sign-in, settings) to `sienna-app`, and `src/settings.js` carries over the old `cadence.settings` key. Env vars are `SIENNA_*` (were `CADENCE_*`).
 
@@ -41,8 +41,18 @@ page (`electron/ytm-page.js`) and reads your home shelves from the same internal
 (`electron/ytm-parse.cjs`, unit tested against a real response in `test/fixtures/home.json`). The
 shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 
-- **Sign in** once with the SIGN IN button (or from the first-run tour's welcome note) (a Google window that shares the player's cookies, kept in
+- **Sign in** once with the SIGN IN button (or from the first-run tour's welcome note, or Settings > Account) (a Google window that shares the player's cookies, kept in
   the `persist:ytm` partition). Without signing in it works as a guest, with ads and generic shelves.
+- **Settings > Account** shows who is signed in (name, handle, avatar from YouTube Music's own
+  `account/account_menu`), lists the other Google accounts in the player (`account/accounts_list`, YouTube
+  Music's "Switch account" list) to switch to, *Use another account* (Google's AddSession page in the sign-in
+  window), and *Sign out* (asks first; clears the whole `persist:ytm` partition and reloads the player as a
+  guest). A switch follows YouTube's own sign-in link for that account, which stays in the main process
+  (`electron/ytm.cjs`). Any change of account (in, out or switched, noticed by the page's `DATASYNC_ID`) sends
+  `ytm:account`, and the shop and mini window reload their shelves (`music.onAccount`). The fake store has two
+  pretend accounts (`?guest` starts signed out). Parsers: `parseAccount`/`parseAccounts` in
+  `electron/ytm-parse.cjs` (`test/account-parse.test.cjs`). Real switching is untested on the server (no Google
+  account there). Check: `node scripts/account-check.mjs out`.
 - **Home**: the intro is a 10 s shot (`src/nav.js` SHOT = where the camera goes, PACE = how fast):
   low behind the fruit stall, rising under the arch, a slow beat under the Sienna sign while the doors
   open, then through them to a home spot just inside the shop. Painted cinema bars (`setBars` in
@@ -130,13 +140,16 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   `npm run build && xvfb-run -a node scripts/shortcuts-check.mjs out`.
 - **Settings**: the SETTINGS word (top right) or **⌘,** (Ctrl+, elsewhere) opens a paper card
   (`src/settings-panel.js`, stored by `src/settings.js` in localStorage, shared with the mini window).
+  A side rail picks a page: *Account*, *Look* (Painting, Cover art, Lettering), *Playback* (Start of a song),
+  *Performance* (Smoothness, Frame rate), *Shortcuts*, *Tour*. ↑/↓ or Tab move through the rail; it opens on
+  Account the first time, then where you left it. `?settings=<page>` opens a page for screenshots.
   *Painting* sets the look: Faint / Light / Medium / Heavy watercolour, or Brush strokes (default), which repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the
   old single pass; the others flatten shading into washes and let colour bleed (`LEVELS` in
   `src/watercolour.js`). `?wc=0..4` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays
   when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Lettering* picks the font
   (each choice is written in itself); it applies at once in both windows, without a reload (tags, signs and buttons repaint in place).
-  *Frame rate* shows an fps readout. *Tour* > SHOW IT AGAIN starts the first-run tour from the door. The card lays rows in two columns when there is room.
+  *Frame rate* shows an fps readout. *Tour* > SHOW IT AGAIN starts the first-run tour from the door.
 - **First-run tour** (`src/tour.js`): on a new install, once the intro reaches home, torn paper notes in the shop
   walk you through it, with brush-stroke words floating (bobbing) under each note instead of a settings card:
   *welcome* (SIGN IN or LOOK AROUND FIRST, with the small print as four price stickers slapped on one by one: FREE,
@@ -201,7 +214,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   themselves are repainted once when they load (`src/coverpaint.js`: a first wash, then real brush strokes on the
   shop's diagonal with colours read from the cover, finer marks where it has detail, paper grain and an unpainted
   margin), so real album art sits in the painting. The racks and the suitcase paint them in a worker
-  (`src/coverworker.js`, `src/coverpaint.worker.js`), since strokes take 40-100 ms a cover. Settings > Cover art sets the strength.
+  (`src/coverworker.js`, `src/coverpaint.worker.js`), since strokes take 40-100 ms a cover. Settings > Look > Cover art sets the strength.
 - In a plain browser (`npm run web`, screenshots) `src/music.js` fakes a record store with painted
   covers, so the shop can be worked on without Electron or an account.
 - Dev pages for screenshots: `lab.html?station=N` (one rack), `player-lab.html` (the suitcase in the shop),

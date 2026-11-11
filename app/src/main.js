@@ -175,8 +175,8 @@ menu.setCurrent(nav.at);
 // the search bar (Control+Option+J by default, Settings > Shortcuts) must exist before the key handlers below are registered
 // a search pick has no sleeve: the drawer in the suitcase slides out with the record in it
 const search = createSearch({ music, onPlay: (item) => { startSong(music, suitcase.suitcase, item); suitcase.dispense(getCover(item.art, 512).tex); } });
-// Settings (Cmd+, or the SETTINGS word): swallows keys itself while open; Settings > Tour starts the tour again
-const settingsPanel = createSettingsPanel({ onTour: () => tour.restart() });
+// Settings (Cmd+, or the SETTINGS word): a rail of pages (Account, Look, ...); swallows keys itself while open; Settings > Tour starts the tour again
+const settingsPanel = createSettingsPanel({ music, onTour: () => tour.restart() });
 // the first-run tour (src/tour.js): paper notes in the shop once the intro reaches home on a new install
 const tour = createTour({
   music,
@@ -352,7 +352,7 @@ async function loadShelves() {
   }
 }
 loadShelves();
-music.onSignedIn(loadShelves);
+music.onAccount(loadShelves);   // signed in, out or switched: that account's shelves
 
 // for tests and the devtools console
 window.__siennaDebug = {

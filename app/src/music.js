@@ -34,8 +34,14 @@ function realMusic(c) {
     startPrepared: (item) => c.startPrepared(item.play),
     command: (name, arg) => c.command(name, arg),
     signIn: () => c.signIn(),
+    // Settings > Account (electron/ytm.cjs)
+    account: () => c.account(),
+    accounts: () => c.accounts(),
+    switchAccount: (i) => c.switchAccount(i),
+    addAccount: () => c.addAccount(),
+    signOut: () => c.signOut(),
     onState: (cb) => c.onState(cb),
-    onSignedIn: (cb) => c.onSignedIn(cb),
+    onAccount: (cb) => c.onAccount(cb),   // signed in, out or switched to another account
   };
 }
 
@@ -143,6 +149,11 @@ function fakeAlbums() {
   };
 }
 
+const FAKE_ACCOUNTS = [
+  { name: 'Sienna Lane', byline: '@siennalane', handle: '@siennalane', photo: null },
+  { name: 'Lemon Grove Records', byline: '@lemongrove', handle: '@lemongrove', photo: null },
+];
+
 function fakeMusic() {
   const shelves = fakeShelves();
   const qs = new URLSearchParams(location.search);
@@ -152,7 +163,9 @@ function fakeMusic() {
   const withPlaylists = qs.has('playlists');
   if (withPlaylists) shelves.push(fakePlaylists(all));
   const listeners = [];
-  const st = { signedIn: true, ready: true, videoId: null, title: null, artist: null, art: null, playerState: -1, position: 0, duration: 0, volume: 70, muted: false, like: 'INDIFFERENT', adPlaying: false };
+  const accountCbs = [];
+  let who = 0;
+  const st = { signedIn: !qs.has('guest'), ready: true, videoId: null, title: null, artist: null, art: null, playerState: -1, position: 0, duration: 0, volume: 70, muted: false, like: 'INDIFFERENT', adPlaying: false };
   let queue = [];
   let at = 0;
   const load = (i) => {
@@ -218,8 +231,14 @@ function fakeMusic() {
     prepare: () => new Promise((r) => setTimeout(r, Number(new URLSearchParams(location.search).get('loadms')) || 0)),
     startPrepared(item) { return this.play(item); },
     command: async (name, arg) => commands[name]?.(arg),
-    signIn: async () => {},
+    // a pretend account, so Settings > Account can be worked on in a browser (?guest: signed out)
+    signIn: async () => { st.signedIn = true; who = 0; accountCbs.forEach((cb) => cb(true)); },
+    account: async () => (st.signedIn ? FAKE_ACCOUNTS[who] : null),
+    accounts: async () => (st.signedIn ? FAKE_ACCOUNTS.map((a, i) => ({ ...a, selected: i === who })) : []),
+    switchAccount: async (i) => { who = i; accountCbs.forEach((cb) => cb(true)); return true; },
+    addAccount: async () => {},
+    signOut: async () => { st.signedIn = false; accountCbs.forEach((cb) => cb(false)); return true; },
     onState: (cb) => listeners.push(cb),
-    onSignedIn: () => {},
+    onAccount: (cb) => accountCbs.push(cb),
   };
 }

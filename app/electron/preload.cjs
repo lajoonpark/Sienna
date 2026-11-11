@@ -14,8 +14,14 @@ contextBridge.exposeInMainWorld('sienna', {
   startPrepared: (endpoint) => ipcRenderer.invoke('ytm:startPrepared', endpoint),
   command: (name, arg) => ipcRenderer.invoke('ytm:command', name, arg),
   signIn: () => ipcRenderer.invoke('ytm:signIn'),
+  // Settings > Account
+  account: () => ipcRenderer.invoke('ytm:account'),                 // -> { name, handle, photo } | null
+  accounts: () => ipcRenderer.invoke('ytm:accounts'),               // -> [{ name, byline, photo, selected }]
+  switchAccount: (i) => ipcRenderer.invoke('ytm:switchAccount', i),  // i: index into accounts()
+  addAccount: () => ipcRenderer.invoke('ytm:addAccount'),
+  signOut: () => ipcRenderer.invoke('ytm:signOut'),
   onState: (cb) => ipcRenderer.on('ytm:state', (_e, s) => cb(s)),
-  onSignedIn: (cb) => ipcRenderer.on('ytm:signedIn', () => cb()),
+  onAccount: (cb) => ipcRenderer.on('ytm:account', (_e, signedIn) => cb(signedIn)),   // signed in, out or switched
   // keyboard shortcuts (electron/shortcuts.cjs): { search, mini, app, failed, defaults }
   keys: {
     get: () => ipcRenderer.invoke('keys:get'),

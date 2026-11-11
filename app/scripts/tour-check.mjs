@@ -131,6 +131,8 @@ ok('not again after it was finished');
 // Settings > Tour > Show it again
 await page.keyboard.press('Control+Comma');
 await wait(500);
+await page.locator('.st-side .st-w[data-page="tour"]').click();   // the Tour page on the rail
+await wait(300);
 await page.locator('.st-veil .st-w', { hasText: 'Show it again' }).click();
 await wait(500);
 assert.strictEqual(await step(), 'welcome');

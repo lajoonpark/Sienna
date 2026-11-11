@@ -49,13 +49,14 @@ const guarded = (fn) => (e, ...args) => {
 function startPlayer() {
   ytm = createYtm({
     onState: (s) => { win?.webContents.send('ytm:state', s); mini?.state(s); },   // both windows show the player
-    onSignedIn: () => { win?.webContents.send('ytm:signedIn'); mini?.send('ytm:signedIn'); },
+    onAccount: (signedIn) => { win?.webContents.send('ytm:account', signedIn); mini?.send('ytm:account', signedIn); },   // signed in, out or switched
   });
   ipcMain.handle('ytm:home', guarded((next) => ytm.home(next)));
   ipcMain.handle('ytm:play', guarded((endpoint) => ytm.play(endpoint)));
   ipcMain.handle('ytm:command', guarded((name, arg) => ytm.command(name, arg)));
   ipcMain.handle('ytm:signIn', guarded(() => ytm.signIn(win)));
-  for (const [name, fn] of Object.entries(ytm.ipc)) ipcMain.handle(`ytm:${name}`, guarded((...args) => fn(...args))); // ytm:search, ytm:playlistArt, ytm:albumSongs
+  ipcMain.handle('ytm:addAccount', guarded(() => ytm.addAccount(win)));
+  for (const [name, fn] of Object.entries(ytm.ipc)) ipcMain.handle(`ytm:${name}`, guarded((...args) => fn(...args))); // ytm:search, ytm:playlistArt, ytm:albumSongs, ytm:account(s), ytm:switchAccount, ytm:signOut
 }
 
 function createWindow() {

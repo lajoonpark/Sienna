@@ -40,7 +40,7 @@ async function load({ failFirst = false, held = false } = {}) {
       },
       playlistArt: async () => [], search: async () => [], play: async () => {}, command: async () => {}, signIn: async () => {},
       onState: () => {},
-      onSignedIn: (cb) => { window.__signedIn = cb; },
+      onAccount: (cb) => { window.__signedIn = cb; },
     };
     window.siennaMini = { onOpen: (cb) => { window.__open = cb; }, onClose: () => {}, closing: () => {}, closed: () => {} };
     // Press the hotkey and read the page in the same task plus microtasks: nothing has been painted yet.
@@ -84,7 +84,7 @@ ok('an old copy shows at once, the fresh one comes next time');
 await page.evaluate('window.__pressSearch()');
 
 // sign-in replaces the guest shelf
-await page.evaluate('window.__signedIn()');
+await page.evaluate('window.__signedIn(true)');
 await wait(600);
 assert.strictEqual(await page.evaluate('window.__home'), 3);
 assert.deepStrictEqual((await page.evaluate('window.__pressSearch()')).slips, ['Song 3.1', 'Song 3.2', 'Song 3.3']);

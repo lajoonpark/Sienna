@@ -184,6 +184,7 @@
     const art = song?.artwork?.length ? song.artwork[song.artwork.length - 1].src : null;
     return {
       signedIn: !!cfg('LOGGED_IN'),
+      who: cfg('LOGGED_IN') ? `${cfg('DATASYNC_ID') ?? ''}|${cfg('SESSION_INDEX') ?? ''}` : null,   // which account: ytm.cjs notices a switch (never leaves main)
       ready: !!p,
       videoId: data.video_id || null,
       title: ad ? null : song?.title || data.title || null,

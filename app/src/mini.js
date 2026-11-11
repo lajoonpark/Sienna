@@ -92,8 +92,8 @@ function refreshListenAgain() {
   return listenAgainBusy;
 }
 refreshListenAgain();
-// the guest shelf is no use after signing in
-music.onSignedIn?.(() => Promise.resolve(listenAgainBusy).then(() => { listenAgainAt = -Infinity; refreshListenAgain(); }));
+// the shelf belongs to whoever was signed in: refresh it on sign-in, sign-out or a switch
+music.onAccount?.(() => Promise.resolve(listenAgainBusy).then(() => { listenAgainAt = -Infinity; refreshListenAgain(); }));
 const search = createSearch({
   music,
   onPlay: (item) => {

@@ -291,4 +291,30 @@ function continuation(response) {
   return c ?? null;
 }
 
-module.exports = { parseShelves, parseSearch, parsePlaylistSongs, continuation, artOf, artDebug, text, findAll, cleanUrl };
+
+// ---- account (Settings > Account) -------------------------------------------
+// The largest https avatar in a { thumbnails: [{ url, width }] }, or null.
+function photoOf(t) {
+  const ts = (t?.thumbnails ?? []).filter((x) => cleanUrl(x?.url));
+  if (!ts.length) return null;
+  return cleanUrl(ts.reduce((a, b) => ((b.width || 0) > (a.width || 0) ? b : a)).url);
+}
+// account/account_menu -> { name, handle, photo } (the header of YouTube Music's avatar menu), or null.
+function parseAccount(res) {
+  const h = first(res, 'activeAccountHeaderRenderer');
+  if (!h) return null;
+  const name = text(h.accountName);
+  if (!name) return null;
+  return { name, handle: text(h.channelHandle) || text(h.email) || '', photo: photoOf(h.accountPhoto) };
+}
+// account/accounts_list -> [{ name, byline, photo, selected, signinUrl }]: every Google account (and
+// brand channel) signed in to the player, as YouTube Music's "Switch account" page lists them.
+function parseAccounts(res) {
+  return findAll(res, 'accountItem').map((a) => {
+    const tokens = a?.serviceEndpoint?.selectActiveIdentityEndpoint?.supportedTokens ?? [];
+    const signinUrl = tokens.map((t) => t?.accountSigninToken?.signinUrl).find((u) => typeof u === 'string') ?? null;
+    return { name: text(a?.accountName), byline: text(a?.accountByline) || text(a?.channelHandle), photo: photoOf(a?.accountPhoto), selected: !!a?.isSelected, signinUrl };
+  }).filter((a) => a.name && (a.selected || a.signinUrl));
+}
+
+module.exports = { parseAccount, parseAccounts, parseShelves, parseSearch, parsePlaylistSongs, continuation, artOf, artDebug, text, findAll, cleanUrl };

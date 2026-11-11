@@ -33,6 +33,8 @@ ok(JSON.stringify(await registered()) === JSON.stringify(['Control+Alt+K', 'Cont
 // open the card and read the row
 await page.keyboard.press('Control+Comma');
 await wait(600);
+await page.locator('.st-side .st-w[data-page="shortcuts"]').click();   // the Shortcuts page on the rail
+await wait(400);
 const words = () => page.evaluate(() => [...document.querySelectorAll('.st-keys .st-w span')].map((e) => e.textContent));
 console.log('     row:', (await words()).join(' | '));
 ok((await words())[0] === 'Ctrl + Alt + J', 'search shown as Ctrl + Alt + J');

@@ -4,7 +4,7 @@
 const { BrowserWindow, app } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseShelves, parseSearch, parsePlaylistSongs, continuation, artDebug, cleanUrl } = require('./ytm-parse.cjs');
+const { parseShelves, parseSearch, parsePlaylistSongs, continuation, artDebug, cleanUrl, parseAccount, parseAccounts } = require('./ytm-parse.cjs');
 const { createSystemVolume } = require('./sysvolume.cjs');
 const { YTM_PARTITION, isGoogleUrl, lockNavigation } = require('./security.cjs');
 
@@ -52,7 +52,7 @@ function pruneDumps(dir) {
   files.forEach(({ p, t }, i) => { if (i >= DUMP_KEEP || now - t > DUMP_MAX_AGE_MS) fs.rmSync(p, { force: true }); });
 }
 
-function createYtm({ onState, onSignedIn }) {
+function createYtm({ onState, onAccount }) {
   const ua = chromeUserAgent();
   const win = new BrowserWindow({
     show: false,
@@ -254,7 +254,7 @@ function createYtm({ onState, onSignedIn }) {
   // process, the player's and the window's). Every 3 s while only the menu-bar icon is left (keeps
   // sign-in and volume in step).
   let active = true;
-  let lastSignedIn = null;
+  let lastWho;                       // undefined until the first state; then null (signed out) or an account id
   let pollTimer = null;
   let lively = true;                 // the last state read was playing or buffering (or none was read yet)
   let stirredUntil = Date.now() + 15000;   // something was asked of the player: poll fast until then (start-up counts)
@@ -287,9 +287,12 @@ function createYtm({ onState, onSignedIn }) {
       if (s.volume !== 100 && s.videoId) js('window.__sienna.command("volume", 100)').catch(() => {});
       if (sysVol.get() !== null) s.volume = sysVol.get();
     }
+    const who = s.who ?? null;
+    delete s.who;
     onState(s);
-    if (lastSignedIn === false && s.signedIn) onSignedIn?.();
-    lastSignedIn = s.signedIn;
+    // signed in, out, or switched to another account: the shelves and the Settings > Account page refresh
+    if (lastWho !== undefined && who !== lastWho && s.ready) onAccount?.(!!s.signedIn);
+    if (s.ready) lastWho = who;
   }
 
   // Google sign-in in a visible window that shares the player's cookies.
@@ -300,7 +303,7 @@ function createYtm({ onState, onSignedIn }) {
     }
     cb({ requestHeaders: d.requestHeaders });
   });
-  function signIn(parent) {
+  function signIn(parent, start = `https://accounts.google.com/ServiceLogin?service=youtube&continue=${encodeURIComponent(HOME)}`) {
     stir();
     const w = new BrowserWindow({
       width: 480, height: 720, parent, modal: false, title: 'Sign in to YouTube Music',
@@ -315,7 +318,7 @@ function createYtm({ onState, onSignedIn }) {
     signInIds.add(id);
     w.on('closed', () => signInIds.delete(id));
     w.webContents.setUserAgent(FIREFOX_UA);
-    w.loadURL(`https://accounts.google.com/ServiceLogin?service=youtube&continue=${encodeURIComponent(HOME)}`);
+    w.loadURL(start);
     w.webContents.on('did-navigate', (_e, url) => {
       if (url.startsWith(HOME)) {
         w.close();
@@ -326,9 +329,52 @@ function createYtm({ onState, onSignedIn }) {
     });
   }
 
+  // Settings > Account. Who is signed in -> { name, handle, photo } or null when signed out.
+  async function account() {
+    await ready();
+    if (!(await js('!!window.ytcfg?.get?.("LOGGED_IN")'))) return null;
+    return parseAccount(await api('account/account_menu', {}));
+  }
+  // The Google accounts signed in to this player (YouTube Music's own "Switch account" list), each
+  // { name, byline, photo, selected }. The sign-in links stay in here; switchAccount(i) follows one.
+  let switchUrls = [];
+  async function accounts() {
+    await ready();
+    if (!(await js('!!window.ytcfg?.get?.("LOGGED_IN")'))) { switchUrls = []; return []; }
+    const list = parseAccounts(await api('account/accounts_list', {}));
+    switchUrls = list.map((a) => a.signinUrl);
+    return list.map(({ signinUrl, ...a }) => a);
+  }
+  async function switchAccount(i) {
+    const raw = switchUrls[i];
+    if (!raw) return false;
+    let url;
+    try { url = new URL(raw, HOME).href; } catch { return false; }
+    if (!isGoogleUrl(url)) return false;
+    stirredUntil = Date.now() + 30000; // hear of the new account promptly
+    stir();
+    win.loadURL(url);                   // YouTube's own sign-in hop, then back to the home page as that account
+    return true;
+  }
+  // "Use another account": Google's add-account page in the sign-in window; the old accounts stay.
+  function addAccount(parent) {
+    return signIn(parent, `https://accounts.google.com/AddSession?service=youtube&continue=${encodeURIComponent(HOME)}`);
+  }
+  // Sign out of every Google account in the player: its cookies and storage go (the partition is the
+  // player's alone), and it reloads as a guest.
+  async function signOut() {
+    stirredUntil = Date.now() + 30000;
+    stir();
+    switchUrls = [];
+    await win.webContents.session.clearStorageData();
+    await win.webContents.session.clearCache();
+    win.loadURL(HOME);
+    return true;
+  }
+
   // Request handlers main.cjs registers as ipc channels ytm:<name> (renderer: window.sienna.<name>).
-  const ipc = { search, playlistArt, albumSongs, prepare, startPrepared };
-  return { home, play, command, signIn, ipc, search, playlistArt, albumSongs, setActive, setFocused, window: win };
+  const ipc = { search, playlistArt, albumSongs, prepare, startPrepared, account, accounts, switchAccount, signOut };
+  return { home, play, command, signIn, addAccount, ipc, search, playlistArt, albumSongs, setActive, setFocused, window: win };
 }
 
 module.exports = { createYtm };

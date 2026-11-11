@@ -123,6 +123,7 @@ npm run build && npm run electron          # run the production build
 npm run build && xvfb-run -a npm run e2e -- out_dir   # real app against YouTube Music (Linux)
 node scripts/tour-check.mjs                # walk the first-run tour like a new user (fake store)
 node scripts/tilt-check.mjs                # tour notes and Settings card lean with the cursor
+node scripts/account-check.mjs out_dir     # Settings rail + Account page: switch, sign out (fake store)
 ```
 
 ## Not done yet
