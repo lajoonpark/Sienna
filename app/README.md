@@ -168,6 +168,9 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   The notes lean toward the cursor (about 9°), and so does the Settings card (5°, on a wrapper so its open bounce
   stays): `src/cursortilt.js` eases the cursor on its own rAF loop, which runs only while the paper is catching up,
   so the paper keeps turning while the camera's tilt holds still for a record at a rack. Check: `node scripts/tilt-check.mjs [out]`.
+  The torn edge of the notes and the Settings card (`torn()` in `src/settings-panel.js`) tears unevenly: uneven spacing,
+  a slow wander, calm and ragged stretches, the odd bite and chipped corners. No tear goes deeper than its `cap`
+  (12px on notes, 10px on Settings), which stays below the paper's padding so it never reaches text. Check: `node scripts/tear-check.mjs [out]`.
   While a centred note is up the shop's own keys are quiet. The step reached is saved in localStorage `sienna.tour`.
   Installs from before the tour (saved settings, or already signed in) do not get it on their own, nor does a plain
   browser or an automated run (`navigator.webdriver`), so the check scripts see the shop as before. `?tour=0` keeps it
