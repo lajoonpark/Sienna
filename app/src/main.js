@@ -15,6 +15,7 @@ import { createNav, AT_HOME, paintViews, introBars, BASE_FOV } from './nav.js';
 import { createMenu } from './menu.js';
 import { createSearch } from './search.js';
 import { createSettingsPanel } from './settings-panel.js';
+import { createTour } from './tour.js';
 import { settings } from './settings.js';
 import { createPacer } from './pacer.js';
 import { createMusic } from './music.js';
@@ -174,12 +175,20 @@ menu.setCurrent(nav.at);
 // the search bar (Control+Option+J by default, Settings > Shortcuts) must exist before the key handlers below are registered
 // a search pick has no sleeve: the drawer in the suitcase slides out with the record in it
 const search = createSearch({ music, onPlay: (item) => { startSong(music, suitcase.suitcase, item); suitcase.dispense(getCover(item.art, 512).tex); } });
-// Settings (Cmd+, or the SETTINGS word): swallows keys itself while open
-const settingsPanel = createSettingsPanel();
+// Settings (Cmd+, or the SETTINGS word): swallows keys itself while open; Settings > Tour starts the tour again
+const settingsPanel = createSettingsPanel({ onTour: () => tour.restart() });
+// the first-run tour (src/tour.js): paper notes in the shop once the intro reaches home on a new install
+const tour = createTour({
+  music,
+  goHome: () => nav.go(AT_HOME),
+  isSearchOpen: () => search.isOpen(),
+  playerBox: () => suitcase.avoidRect(),
+});
 // covers that were repaired in the background: let the racks reload them
 music.onArt?.((item) => racks.forEach((r) => r?.refreshArt?.(item)));
 music.onState((s) => {
   player = s;
+  tour.setState(s);
   playingId = s.adPlaying ? null : s.videoId;
   racks.forEach((r) => r?.setPlaying(playingId));
 });
@@ -390,6 +399,7 @@ window.__siennaDebug = {
   menu,
   search,
   suitcase,
+  tour,
   get stations() { return STATIONS.map((s, i) => ({ index: i, id: s.id, style: s.style, shelf: placed.get(i)?.title ?? null })); },
   get state() { return { phase: nav.phase, at: nav.at, settled: nav.settled, flying: nav.flying, progress: nav.progress, introDone: nav.introDone, sections: nav.sections }; },
   get focus() { return { ...focus }; },
@@ -627,7 +637,8 @@ settings.on('fps', () => { fpsBox.style.display = fpsOn() ? 'block' : 'none'; })
 settings.on('font', () => {
   const url = new URL(location.href);
   if (!url.searchParams.has('at')) url.searchParams.set('at', 'home');
-  url.searchParams.set('settings', '');
+  // picked in the tour: it carries on at the same step after the reload, without the card
+  if (!tour.active) url.searchParams.set('settings', '');
   location.replace(url);
 });
 const fpsStat = { n: 0, since: performance.now(), last: performance.now(), worst: 0 };
@@ -707,10 +718,12 @@ function frame(t, dtOverride, draw = true) {
 
   const ui = nav.introDone || !!pinnedPose;
   suitcase.tuck(!!currentRack() && !pinnedPose); // at a rack the case tucks down out of the records' way
+  if (tour.wantsPlayer) suitcase.wake(0.5); // ...but not while the tour's note is telling you about it
   suitcase.show(ui, shotMode); // the lid flicks open the first time, when the intro reaches home
   suitcase.update(dt, t);
   menu.show(ui, shotMode);
   settingsPanel.show(ui);
+  tour.update(ui && !pinnedPose, tilt.x, tilt.y, nav.at === AT_HOME);
   menu.tilt(tilt.x, tilt.y);
   // at a station (or flying to one) the side words step back so the racks stay reachable
   menu.update(dt, cursorX01, !pinnedPose && nav.at !== AT_HOME);

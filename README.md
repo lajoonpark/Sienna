@@ -11,6 +11,11 @@ web page and internal API, so a change on their side can break it.
 
 ## What it does
 
+- **A first-run tour.** The first time you open Sienna, paper notes in the shop show you around: sign in
+  (or look around as a guest), pick how it is painted and lettered, play a first record, meet the player
+  and try the shortcuts. Skip it any time; Settings > Tour shows it again. Its welcome note says it
+  plainly: Sienna is free and open source, makes no money and keeps nothing about you, and the ads you
+  hear without YouTube Premium come from YouTube Music, not Sienna.
 - **The shop.** Eight sections, each with its own kind of rack, from a crate table in the hall to a
   spinner rack in the plant room and a market stall in the courtyard. Your shelves ("Quick picks",
   "Listen again"...) are brush-stroke words down the sides of the screen; click one and the camera
@@ -116,6 +121,7 @@ npm test                                   # unit tests: parser and suitcase
 npm run web                                # the shop in a browser, with a fake record store
 npm run build && npm run electron          # run the production build
 npm run build && xvfb-run -a npm run e2e -- out_dir   # real app against YouTube Music (Linux)
+node scripts/tour-check.mjs                # walk the first-run tour like a new user (fake store)
 ```
 
 ## Not done yet

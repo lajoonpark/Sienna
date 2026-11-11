@@ -41,7 +41,7 @@ page (`electron/ytm-page.js`) and reads your home shelves from the same internal
 (`electron/ytm-parse.cjs`, unit tested against a real response in `test/fixtures/home.json`). The
 shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 
-- **Sign in** once with the SIGN IN button (a Google window that shares the player's cookies, kept in
+- **Sign in** once with the SIGN IN button (or from the first-run tour's welcome note) (a Google window that shares the player's cookies, kept in
   the `persist:ytm` partition). Without signing in it works as a guest, with ads and generic shelves.
 - **Home**: the intro is a 10 s shot (`src/nav.js` SHOT = where the camera goes, PACE = how fast):
   low behind the fruit stall, rising under the arch, a slow beat under the Sienna sign while the doors
@@ -136,7 +136,22 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays
   when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Lettering* picks the font
   (each choice is written in itself); the shop reloads to repaint tags, sign and buttons (to home, card open), the mini window reloads too.
-  *Frame rate* shows an fps readout. The card lays rows in two columns when there is room.
+  *Frame rate* shows an fps readout. *Tour* > SHOW IT AGAIN starts the first-run tour from the door. The card lays rows in two columns when there is room.
+- **First-run tour** (`src/tour.js`): on a new install, once the intro reaches home, torn paper notes in the shop
+  walk you through it, with brush-stroke words floating (bobbing) under each note instead of a settings card:
+  *welcome* (SIGN IN or LOOK AROUND FIRST, with small print: Sienna is free and open source, makes no money, has no
+  servers and keeps nothing about you; without Premium YouTube Music plays its own ads and Sienna earns nothing from
+  them; the code is at github.com/lajoonpark/Sienna), *paint* (brush strokes or a watercolour, applied live),
+  *letters* (the lettering; the reload it needs carries on at the same step, without the Settings card), *smooth*
+  (60 or 30 fps), *record* (a small note at the top while you pick a record; the shop's keys work, it fades at a rack
+  and moves on once a song plays), *player* (beside the suitcase: the knob is the Mac's own volume, scrubbing, keys),
+  *keys* (each shortcut ticks when pressed; the global ones are reported by `keys:used` from `electron/shortcuts.cjs`;
+  click one to change it, `shortcuts.record` in `src/shortcuts.js`) and *bye* (menu bar, ⌘,). SKIP TOUR or Esc ends it.
+  While a centred note is up the shop's own keys are quiet. The step reached is saved in localStorage `sienna.tour`.
+  Installs from before the tour (saved settings, or already signed in) do not get it on their own, nor does a plain
+  browser or an automated run (`navigator.webdriver`), so the check scripts see the shop as before. `?tour=0` keeps it
+  away, `?tour=new` runs it as a new install, `?tour=<step>` shows one step unsaved (`&guest` for the guest welcome):
+  `SIENNA_QUERY="at=home&tour=keys" node scripts/shot.mjs out 3`. Check: `node scripts/tour-check.mjs [out]`.
 - **Heat / battery**: the shop is drawn at that cap only while something moves (camera, input, flights,
   lid); once still it drops to 12 fps (30 while a record spins on screen), and stops while the window is
   hidden, minimised or covered (`src/pacer.js`; `node scripts/idle-check.mjs [rack]` checks it).

@@ -91,4 +91,36 @@ export const shortcuts = {
   pause: (on) => bridge?.pause(on),
   // set while recording, so the search bar does not open on its own shortcut being pressed
   recording: false,
+  // fn(name) each time a global one ('mini' / 'app') fires, whichever app has the keyboard (the tour ticks them off)
+  onUsed(fn) { bridge?.onUsed?.(fn); },
+  // Record a new combination for `name` from the next usable key press, as Settings does, and save it.
+  // Esc cancels (-> null); otherwise -> { ok, error?, with? } from set(). The global ones are let go meanwhile.
+  record(name) {
+    return new Promise((resolve) => {
+      shortcuts.recording = true;
+      shortcuts.pause(true);
+      const finish = (r) => {
+        shortcuts.cancelRecording = () => {};
+        removeEventListener('keydown', onKey, true);
+        shortcuts.recording = false;
+        shortcuts.pause(false);
+        resolve(r);
+      };
+      const onKey = (e) => {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (e.repeat) return;
+        if (e.key === 'Escape') { finish(null); return; }
+        const accel = fromEvent(e);
+        if (!accel) return;   // just modifiers so far, or a bare key: keep listening
+        removeEventListener('keydown', onKey, true);
+        shortcuts.recording = false;
+        shortcuts.cancelRecording = () => {};
+        shortcuts.set(name, accel).then(resolve, () => resolve({ ok: false, error: 'bad' }));
+      };
+      addEventListener('keydown', onKey, true);
+      shortcuts.cancelRecording = () => finish(null);
+    });
+  },
+  cancelRecording() {},
 };

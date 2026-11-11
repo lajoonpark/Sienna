@@ -22,6 +22,11 @@ function createShortcuts(actions, { trusted = () => false } = {}) {   // actions
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
     for (const k of Object.keys(DEFAULTS)) if (typeof saved?.[k] === 'string' && saved[k]) keys[k] = saved[k];
   } catch { /* first run, or unreadable: defaults */ }
+  // each one also tells every window it was used (the first-run tour ticks it off: src/tour.js)
+  const fired = Object.fromEntries(GLOBAL.map((name) => [name, () => {
+    actions[name]();
+    for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('keys:used', name);
+  }]));
   const failed = new Set();   // global shortcuts the system refused (another app owns them)
   let paused = false;
 
@@ -31,7 +36,7 @@ function createShortcuts(actions, { trusted = () => false } = {}) {   // actions
   function unregisterAll() { globalShortcut.unregisterAll(); }
   function registerOne(name) {
     let ok = false;
-    try { ok = globalShortcut.register(keys[name], actions[name]); } catch { ok = false; }   // throws on a malformed accelerator
+    try { ok = globalShortcut.register(keys[name], fired[name]); } catch { ok = false; }   // throws on a malformed accelerator
     if (ok) failed.delete(name);
     else { failed.add(name); console.warn(`Sienna: could not register ${keys[name]} (${name})`); }
     return ok;

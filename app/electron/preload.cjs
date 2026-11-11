@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('sienna', {
     reset: () => ipcRenderer.invoke('keys:reset'),
     pause: (on) => ipcRenderer.send('keys:pause', on),                   // let go of the global ones while recording
     onChange: (cb) => ipcRenderer.on('keys:changed', (_e, k) => cb(k)),
+    onUsed: (cb) => ipcRenderer.on('keys:used', (_e, name) => cb(name)),  // a global one fired (the tour ticks it off)
   },
 });
 

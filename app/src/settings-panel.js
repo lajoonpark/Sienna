@@ -4,7 +4,8 @@
 // Esc, clicking outside the card, or DONE closes it. While it is open the shop's keys stay quiet
 // (main.js checks isOpen()).
 //
-//   const panel = createSettingsPanel();   panel.open() / close() / toggle() / isOpen()
+//   const panel = createSettingsPanel({ onTour });   panel.open() / close() / toggle() / isOpen()
+//   onTour: Settings > Tour > SHOW IT AGAIN (main.js restarts src/tour.js)
 //
 // Shot hook: ?settings opens it.
 import { FONT, FONTS } from './style.js';
@@ -60,7 +61,7 @@ const CSS = `
 `;
 
 // A hand-torn outline as a CSS polygon (same idea as the search slips).
-function torn(seed, amp = 5) {
+export function torn(seed, amp = 5) {
   const r = rng(seed);
   const j = () => (r() * amp).toFixed(1);
   const pts = [];
@@ -73,7 +74,7 @@ function torn(seed, amp = 5) {
 }
 
 // A word in a brush stroke. Plates are painted once the word has its real size (after fonts load).
-function word(text, seed, onClick) {
+export function word(text, seed, onClick) {
   const el = document.createElement('button');
   el.className = 'st-w';
   el.tabIndex = -1;
@@ -92,7 +93,7 @@ function word(text, seed, onClick) {
   return el;
 }
 
-export function createSettingsPanel() {
+export function createSettingsPanel({ onTour = null } = {}) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -215,6 +216,17 @@ export function createSettingsPanel() {
   }
   showKeys();
   shortcuts.on(showKeys);
+
+  // Tour: the first-run tour again, from the door (src/tour.js)
+  if (onTour) {
+    const tourRow = document.createElement('div');
+    tourRow.className = 'st-row';
+    tourRow.innerHTML = '<div class="st-label">Tour</div><div class="st-hint">The welcome notes from the first time, with the choices and shortcuts.</div><div class="st-opts"></div>';
+    card.querySelector('.st-rows').appendChild(tourRow);
+    const again = word('Show it again', 131, () => { close(); onTour(); });
+    tourRow.querySelector('.st-opts').appendChild(again);
+    optWords.push(again);
+  }
 
   const done = word('Done', 31, () => close());
   card.querySelector('.st-foot').appendChild(done);
