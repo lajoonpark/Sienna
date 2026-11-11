@@ -58,6 +58,29 @@ function startPlayer() {
   for (const [name, fn] of Object.entries(ytm.ipc)) ipcMain.handle(`ytm:${name}`, guarded((...args) => fn(...args))); // ytm:search, ytm:playlistArt, ytm:albumSongs
 }
 
+// Settings > Lettering reloads the shop (src/curtain.js). Just before, the page asks for a picture of the
+// window; the reloaded page picks it up from its preload (once, and only soon after) to cover the rebuild.
+let curtain = null;   // { url: jpeg data URL, at: ms }
+function startCurtain() {
+  ipcMain.handle('shop:snapshot', async (e) => {
+    if (!trusted(e) || e.sender !== win?.webContents) throw new UntrustedSender();
+    // a slow capture (a busy or software GPU) must not hold up the change: the page fades to dark instead
+    const img = await Promise.race([win.webContents.capturePage(), new Promise((r) => setTimeout(r, 600, null))]).catch(() => null);
+    if (!img || img.isEmpty()) return false;
+    curtain = { url: `data:image/jpeg;base64,${img.toJPEG(90).toString('base64')}`, at: Date.now() };
+    return true;
+  });
+  // sync: the preload needs the answer before the page's own scripts run. Always answer, or the page hangs.
+  ipcMain.on('shop:curtain', (e) => {
+    let pic = null;
+    try {
+      if (curtain && trusted(e) && e.sender === win?.webContents && Date.now() - curtain.at < 10000) pic = curtain.url;
+    } catch { /* no picture */ }
+    if (pic || (win && e.sender === win.webContents)) curtain = null;
+    e.returnValue = pic;
+  });
+}
+
 function createWindow() {
   win = new BrowserWindow({
     icon: path.join(__dirname, 'icon.png'),   // taskbar/window icon on Windows and Linux
@@ -124,6 +147,7 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, 'icon.png'));
     lockSessions();   // permission requests: refused, except what YouTube Music needs
     startPlayer();
+    startCurtain();
     createWindow();   // open on start
     createTray();
     mini = createMini({ onVisible: updateActive, trusted });

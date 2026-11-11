@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('sienna', {
   startPrepared: (endpoint) => ipcRenderer.invoke('ytm:startPrepared', endpoint),
   command: (name, arg) => ipcRenderer.invoke('ytm:command', name, arg),
   signIn: () => ipcRenderer.invoke('ytm:signIn'),
+  // Settings > Lettering reloads the shop behind a picture of itself (src/curtain.js): snapshot() has the
+  // main process photograph the window; the fresh page finds that picture here (a data URL, or null).
+  snapshot: () => ipcRenderer.invoke('shop:snapshot'),
+  curtain: process.argv.includes('--sienna-mini') ? null : ipcRenderer.sendSync('shop:curtain'),
   onState: (cb) => ipcRenderer.on('ytm:state', (_e, s) => cb(s)),
   onSignedIn: (cb) => ipcRenderer.on('ytm:signedIn', () => cb()),
   // keyboard shortcuts (electron/shortcuts.cjs): { search, mini, app, failed, defaults }
