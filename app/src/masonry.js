@@ -279,10 +279,14 @@ export function plasterPanel(shape, M, color, depth = 0.2) {
 }
 
 // Outline of a wall that ends in a semicircular top (the end wall of a barrel vault), x 0..w.
-export function lunetteShape(w, spring) {
+// It reaches VAULT_RIM past the vault's inner radius (w / 2), out to the vault's mortar shell, so it closes
+// the whole brick ring where the vault meets it. Cut at the inner radius, the gaps between the brick ends
+// and the wall showed the sky behind as thin blue arches along the ceiling.
+export const VAULT_RIM = BRICK.depth + 0.01;
+export function lunetteShape(w, spring, rim = VAULT_RIM) {
   const s = new THREE.Shape();
-  s.moveTo(0, -0.3); s.lineTo(w, -0.3); s.lineTo(w, spring);
-  s.absarc(w / 2, spring, w / 2, 0, Math.PI, false);
+  s.moveTo(-rim, -0.3); s.lineTo(w + rim, -0.3); s.lineTo(w + rim, spring);
+  s.absarc(w / 2, spring, w / 2 + rim, 0, Math.PI, false);
   s.closePath();
   return s;
 }
@@ -320,7 +324,7 @@ export function barrelVault(kit, { cx = 0, spring, r, z0, z1, seed = 1, pal = PA
     }
   }
   const shell = new THREE.Mesh(
-    new THREE.CylinderGeometry(r + BRICK.depth + 0.01, r + BRICK.depth + 0.01, z0 - z1, 40, 1, true, -Math.PI / 2, Math.PI),
+    new THREE.CylinderGeometry(r + VAULT_RIM, r + VAULT_RIM, z0 - z1, 40, 1, true, -Math.PI / 2, Math.PI),
     toon(pal.mortar, { side: THREE.BackSide }),
   );
   shell.rotation.x = -Math.PI / 2;
