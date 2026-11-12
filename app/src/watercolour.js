@@ -32,7 +32,8 @@ const LEVELS = [
   { radius: 4, bleed: 12, bleedMix: 0.75, bloom: 0.8, edge: 0.8, lift: 0.12 },
   { radius: 6, bleed: 20, bleedMix: 0.9, bloom: 1.0, edge: 0.7, lift: 0.15 },
   // Brush strokes (brushstrokes.js): the world is repainted stroke by stroke, then the strokes run into
-  // each other along the same bleed. radius/lift also set how the suitcase overlay is washed, as above.
+  // each other along the same bleed. radius/lift also set how the suitcase overlay is washed, as above (only
+  // with ?overwash: by default it gets no wash, see OVER_WASH).
   { strokes: true, radius: 6, bleed: 10, bleedMix: 0.4, bloom: 1.0, edge: 0.55, lift: 0.05, grain: 0.4 },
 ];
 // Brush strokes in the small card window. It holds only the suitcase, whose strokes are in its textures
@@ -186,6 +187,7 @@ uniform float lift;       // how far every wash is thinned toward the paper
 uniform sampler2D tOver;  // brush mode: the suitcase overlay's own wash, inside overBox
 uniform float overlayOn;
 uniform vec4 overBox;
+uniform float overClean; // brush mode: how much of the suitcase is shown as drawn instead of washed (1 - OVER_WASH)
 uniform float grainAmt;
 uniform vec3 fovea;       // where you look (uv x, y) and how far full detail reaches (share of the height); z 0 = everywhere
 varying vec2 vUv;
@@ -285,6 +287,13 @@ void main() {
   float rim = inside - smoothstep(0.69, 0.72, bm);
   col = mix(col, col * 0.8 + 0.2 * vec3(0.985, 0.965, 0.93), inside * 0.3 * bloomAmt);
   col = mix(col, col * 0.85, rim * 0.35 * bloomAmt);
+#ifdef STROKES
+  // The suitcase gets a light touch: its own textures are already brushed, and the wobble and wash
+  // smeared it into a blur that slid off its sharp button icons. Inside it the picture is the overlay
+  // as drawn (no wobble, so caps and icons line up); its edge keeps the wobbled fringe from above, and
+  // the glazed darks, paper grain and lift below still reach it.
+  if (overlayOn > 0.5 && overClean > 0.0) col = mix(col, sceneAt(vUv), step(texture2D(tDepth, vUv).x, 0.99999) * overClean);
+#endif
 #else
   // 2. colour bleed: soft ring of taps, jittered so the blur reads as wet spreading, not a lens blur
   vec3 sharp = sceneAt(uv);
@@ -402,6 +411,13 @@ export function renderOverlay(renderer, overlay) {
   renderer.autoClear = auto;
 }
 
+// Brush mode: how much of the shop's wash the suitcase overlay gets (0 = drawn as is, apart from grain and
+// glaze; ?overwash=0..1 to compare). Above 0 its own wash runs in its box each overlay frame.
+const OVER_WASH = (() => {
+  const v = Number(new URLSearchParams(globalThis.location?.search ?? '').get('overwash'));
+  return Number.isFinite(v) && v > 0 ? Math.min(1, v) : 0;
+})();
+
 // 2x MSAA from 1.5 pixels per CSS pixel up (Sharpness Balanced or Full on a Retina screen), else 4x
 const msaaFor = (renderer) => (renderer.getPixelRatio() >= 1.5 ? 2 : 4);
 
@@ -448,6 +464,7 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
       tOver: { value: null },
       overlayOn: { value: 0 },
       overBox: { value: new THREE.Vector4(2, 2, 2, 2) },
+      overClean: { value: 1 - OVER_WASH },
       grainAmt: { value: 1 },
       fovea: { value: new THREE.Vector3(0.5, 0.5, 0) },
     },
@@ -777,7 +794,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     sync?.('scene');
     const u = material.uniforms;
     u.overBox.value.set(2, 2, 2, 2);
-    if (rect && rect.right > rect.left) {
+    if (OVER_WASH > 0 && rect && rect.right > rect.left) {
       scissorFull(rect);
       wash.render(sync);
       u.overBox.value.copy(mixP.m.uniforms.hi.value);
@@ -941,7 +958,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
         sync?.('overlay');
         u.overlayOn.value = overlay ? 1 : 0;
         u.overBox.value.set(2, 2, 2, 2);
-        if (rect && rect.right > rect.left) {
+        if (OVER_WASH > 0 && rect && rect.right > rect.left) {
           scissorFull(rect);
           wash.render(sync);
           u.overBox.value.copy(mixP.m.uniforms.hi.value);

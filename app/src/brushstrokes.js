@@ -148,12 +148,16 @@ void main() {
   // (Covers wrote alpha 0, which the blurred level still shows.)
   fade *= smoothstep(0.9, 0.99, textureLod(tRef, uc, lods.x + lodShift).a);
   if (gate.y > 0.0) fade *= smoothstep(gate.x, gate.y, length(fine - coarse));
+  // away from where you look (other-optimizations, C4): 1
+  float periph = fovea.z > 0.0 ? smoothstep(fovea.z, fovea.z * 1.7, length((a - fovea.xy) * vec2(aspect, 1.0))) : 0.0;
 #if defined(CORRECT) || defined(TOUCH)
-  // the detail marks only around where you look (other-optimizations, C4); the coat covers everywhere
-  if (fovea.z > 0.0) fade *= 1.0 - smoothstep(fovea.z, fovea.z * 1.7, length((a - fovea.xy) * vec2(aspect, 1.0)));
+  // the detail marks only around where you look; the coat covers everywhere
+  fade *= 1.0 - periph;
 #endif
 #ifdef GROUND
-  fade *= 1.0 - smoothstep(calm.x, calm.y, length(textureLod(tRef, uc, 1.2 + lodShift).rgb - fine));
+  // The coat steps aside where the picture has detail, for the smaller marks to paint it. Those are left
+  // out away from where you look, so there it stays: else that detail was bare (gaps on busy brick walls).
+  fade *= 1.0 - smoothstep(calm.x, calm.y, length(textureLod(tRef, uc, 1.2 + lodShift).rgb - fine)) * (1.0 - periph);
 #endif
   if (fade <= 0.01) return;
   vFade = fade;
@@ -297,7 +301,8 @@ function bakeAtlas(renderer) {
   return t;
 }
 
-const positionMaterial = () => new THREE.ShaderMaterial({
+// alpha 2: the point is on something that comes and goes (see `ownStrokes` in bake)
+const positionMaterial = (tag = 1) => new THREE.ShaderMaterial({
   vertexShader: /* glsl */ `
 varying vec3 vW;
 void main() {
@@ -311,7 +316,7 @@ void main() {
 }`,
   fragmentShader: /* glsl */ `
 varying vec3 vW;
-void main() { gl_FragColor = vec4(vW, 1.0); }`,
+void main() { gl_FragColor = vec4(vW, ${tag.toFixed(1)}); }`,
   side: THREE.DoubleSide,
 });
 
@@ -385,7 +390,7 @@ const FACES = (n) => (Math.abs(n.x) > Math.abs(n.y) && Math.abs(n.x) > Math.abs(
 // A fingerprint of what a bake would see: every solid, drawn mesh (its geometry's size, where it is, its
 // instances), the views, and how strokes are laid out. The stroke cache keeps a bake under it, so a
 // change to the street, the shop or this file's settings bakes again instead of reusing old strokes.
-const CACHE_VERSION = 1; // bump when `place` changes in a way the numbers below do not show
+const CACHE_VERSION = 2; // bump when `place` changes in a way the numbers below do not show
 export function strokeFingerprint(world, views) {
   let h1 = 0x811c9dc5 ^ CACHE_VERSION, h2 = 0x9e3779b9;
   const add = (v) => {
@@ -457,6 +462,9 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
       for (let x = 0; x < BAKE_W - 2 * BAKE_STRIDE; x += BAKE_STRIDE) {
         const px = x + Math.floor(r() * BAKE_STRIDE), py = y + Math.floor(r() * BAKE_STRIDE);
         if (!at(px, py, p) || !at(px + BAKE_STRIDE, py, a) || !at(px, py + BAKE_STRIDE, b)) continue;
+        // on furniture that a rack replaces: its strokes get places of their own, so the wall close behind
+        // it (in the same row of places) still gets its coat once the furniture is gone
+        const own = data[(py * BAKE_W + px) * 4 + 3] > 1.5 ? 1 : 0;
         const d = toEye.subVectors(eye, p).length();
         if (d > FARTHEST) continue;
         // the normal, from as wide a patch as is still flat, so a long stroke lies true on bricks
@@ -487,7 +495,7 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
           const row = Math.floor(p.dot(across) / rowH);
           const col = Math.floor(p.dot(hand) / (len * layer.colGap) + ((row * 0.618) % 1 + 1) % 1);
           const depth = Math.floor(p.dot(n) / Math.max(0.15, rowH));
-          const key = (row + 16384) * 2 ** 33 + (col + 16384) * 2 ** 18 + (depth + 2048) * 2 ** 6 + octave * 8 + FACES(n);
+          const key = (row + 16384) * 2 ** 33 + (col + 16384) * 2 ** 18 + (depth + 2048) * 2 ** 6 + octave * 8 + FACES(n) + own * 2 ** 51;
           if (taken.has(key)) continue;
           taken.add(key);
           if (!measured) {
@@ -552,7 +560,15 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
   // views: [{ pos, target, fov }]. Adds strokes for whatever those views can see that has none yet.
   function bake(world, views) {
     const rt = new THREE.WebGLRenderTarget(BAKE_W, BAKE_H, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false });
-    const mat = positionMaterial();
+    const mat = positionMaterial(), ownMat = positionMaterial(2);
+    // things that come and go (station furniture): drawn again over the positions, alpha 2 where they are in front
+    // (listed in a scene of their own without being moved: the renderer only walks `children` and reads
+    // the world matrices they already have)
+    const ownScene = new THREE.Scene();
+    ownScene.matrixWorldAutoUpdate = false;
+    ownScene.overrideMaterial = ownMat;
+    world.updateMatrixWorld();
+    world.traverseVisible((o) => { if (o.userData.ownStrokes) ownScene.children.push(o); });
     const cam = new THREE.PerspectiveCamera(70, BAKE_W / BAKE_H, 0.1, 200);
     const data = new Float32Array(BAKE_W * BAKE_H * 4);
     // only solid, drawn meshes: glows, lines and glass have no surface to paint on
@@ -576,6 +592,11 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
       cam.lookAt(v.target);
       cam.updateMatrixWorld();
       renderer.render(world, cam);
+      if (ownScene.children.length) {
+        renderer.autoClear = false;
+        renderer.render(ownScene, cam); // same depth as in the first draw, so it passes (LessEqual) where it is in front
+        renderer.autoClear = true;
+      }
       renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, data);
       place(cam, data);
     }
@@ -588,6 +609,8 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     for (const o of hidden) o.visible = true;
     rt.dispose();
     mat.dispose();
+    ownMat.dispose();
+    ownScene.children.length = 0;
     upload();
   }
 

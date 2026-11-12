@@ -45,6 +45,7 @@ function stationFurniture(id, build) {
   build(kit);
   const g = new THREE.Group();
   kit.flush(g);
+  g.userData.ownStrokes = true; // it comes and goes: its brush strokes never stand in for the wall's (brushstrokes.js)
   STATION_FURNITURE[id] = g;
 }
 

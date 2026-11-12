@@ -112,6 +112,10 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   record player: the record spins with the cover on its label, the tonearm creeps in as the song
   plays, the knob is volume (drag it or scroll; scrolling down is quieter), the buttons are back / play / skip / like, and
   dragging the record scrubs. A paper tag beside it shows the song with a seekable progress line.
+  Under Brush strokes it gets only a light touch of the paint (paper grain, glazed darks, a wobbly edge) and
+  no wobble or wash inside, since its own textures are already brushed: washed, it went blurry and its
+  sharp button icons slid off their caps. `?overwash=0..1` gives it that share of the shop's wash back
+  (its own wash pass then runs in its box again, ~1 ms).
 - **Mini player**: **⌃⌥K** anywhere opens the same suitcase at the cursor on a torn-paper card
   (`mini.html`, `electron/mini.cjs`); the lid flicks open on a physical hinge (`src/lid.js`). Esc,
   clicking away or ⌃⌥K again shuts it. The search shortcut works there too.
@@ -214,13 +218,20 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
     overlap on near walls, and at 3/4 size it looks the same.
   - *Sharp only where you look* (C4): around the eased cursor (`fovea`, reach 0.45 of the height, `?fovea=0` off)
     the final pass does its full wet pooling and colour edges and the detail strokes (CORRECT, TOUCH) show; toward
-    the corners it reads fewer taps and only the coat paints. Small gain (~2.5 ms at home): that pass is limited
+    the corners it reads fewer taps and only the coat paints (there the coat no longer steps aside for detail, or
+    busy walls were left bare). `?foveaAt=x,y` pins where you look for screenshots (uv, y up; `0.12,0.15` = the
+    suitcase). Small gain (~2.5 ms at home): that pass is limited
     by its noise maths, not its reads.
   - *Strokes baked at build time* (C1): `node scripts/bake-strokes.mjs` writes `strokes/shop.bin.gz` (packed by
     `src/strokepack.js`, ~9 MB), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
     its fingerprint matches (the app reads it through the main process, `strokes:shipped`; a browser fetches it),
     so a first start also skips placing them (fresh profile: 5.7 s -> 1.7 s to the intro here). Run it again after
     changing the street, the shop or the stroke settings; until then the app places them itself as before.
+    It is baked as the app starts (no `?shot`): station furniture stands where racks will go and gets strokes
+    first. Those furniture strokes have places of their own (`ownStrokes` in `src/shop.js`, drawn with alpha 2 in
+    the bake), so when a rack replaces the furniture the wall behind it still gets its coat; before, the wall
+    above the cubby rack was left with gaps. `?shot` builds racks before the bake, so shots with
+    `?strokecache=0` never showed this; shots that read the shipped strokes do.
     Painting the shop into textures ahead of time is not possible as the shop is built (no texture coordinates,
     tens of thousands of instanced pieces), so the paint passes still run live.
   - *Player diet* (C2, the safe part): the hidden YouTube Music page loads no pictures or fonts
