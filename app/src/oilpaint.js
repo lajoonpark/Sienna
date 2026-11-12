@@ -479,16 +479,28 @@ void main() {
     }
   }
   if (bestR < 0.0) { bestC = fbC; bestA = fbA; bestS = fbS; bestT = vec4(0.5); }
-  // its colour: the scene where its middle lies, if that is this same surface (else this pixel's own)
+  // its colour: the scene where its middle lies, where that is this same surface (else this pixel's own).
+  // Read over a few pixels round the middle, each by how surely it is this surface, and eased between the
+  // two: one pixel read and a yes/no let the whole dab jump to another colour whenever the camera moved its
+  // middle across an edge (a mortar line, a jamb's corner), and the dabs flickered as the camera moved.
   vec3 C = P + U * (bestC.x - q.x) + V * (bestC.y - q.y);
   C -= W * dot(C - P, N) / max(abs(dot(W, N)), 0.3) * sign(dot(W, N));
   vec4 cc = VP * vec4(C, 1.0);
   vec2 cuv = cc.xy / cc.w * 0.5 + 0.5;
   vec3 col = here.rgb;
   if (cc.w > 0.1 && cuv.x > 0.0 && cuv.x < 1.0 && cuv.y > 0.0 && cuv.y < 1.0) {
-    vec3 Q = (toL * vec4(worldAt(cuv), 1.0)).xyz;
-    vec4 there = texture2D(tScene, cuv);
-    if (abs(dot(Q - C, N)) < 0.01 + 0.004 * dist && there.a > 0.5) col = mix(here.rgb, there.rgb, 0.85);
+    float tol = 0.01 + 0.004 * dist;
+    vec3 sum = vec3(0.0);
+    float wsum = 0.0;
+    for (int i = 0; i < 4; i++) {
+      vec2 tuv = clamp(cuv + vec2(i == 0 || i == 2 ? -1.5 : 1.5, i < 2 ? -1.5 : 1.5) * full, 0.0, 1.0);
+      vec3 Q = (toL * vec4(worldAt(tuv), 1.0)).xyz;
+      vec4 there = texture2D(tScene, tuv);
+      float wt = (1.0 - smoothstep(tol, tol * 2.0, abs(dot(Q - C, N)))) * smoothstep(0.4, 0.6, there.a);
+      sum += there.rgb * wt;
+      wsum += wt;
+    }
+    if (wsum > 0.0) col = mix(here.rgb, sum / wsum, 0.85 * min(1.0, wsum / 2.0));
   }
   float r3 = h21(bestC * 3.1), r4 = h21(bestC * 5.7 + 1.0);
   col *= (0.93 + 0.14 * r3) * mix(vec3(1.04, 1.0, 0.95), vec3(0.95, 1.0, 1.05), r4);
@@ -629,7 +641,7 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
     screen: { value: new THREE.Vector2(1, 1) },
     shape: { value: new THREE.Vector2(...OIL_SHAPE) },
     impasto: { value: IMPASTO },
-    agree: { value: new THREE.Vector2(1, 1) },
+    agree: { value: new THREE.Vector2(...(params.get('oilagree')?.split(',').map(Number) ?? [1, 1])) },
   };
   const scene = new THREE.Scene();
   // Each stroke's dabs: SUB_ALONG x SUB_ACROSS quads, one segment long each (an oil dab is short enough to bend

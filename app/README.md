@@ -179,8 +179,10 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   per pixel in the first pass into the paint target: the pixel's world position and facing come from the scene's
   depth, and dabs are laid on a grid on the plane of the axis that surface faces most (two grids half a cell apart,
   only the 2 x 2 cells nearest looked at), cells a power of two in metres that halve and double dab by dab with
-  distance; each dab is one colour (the scene where its middle lies, if that is the same surface) with the brush
-  sheet's ridges, and a pixel no dab reaches takes the nearest dab's colour. Things that move (records, their
+  distance; each dab is one colour (the scene round where its middle lies: 4 pixels, each weighed by how surely it
+  is the same surface, eased toward the pixel's own colour where none is; a single pixel and a yes/no made whole
+  dabs jump colour as the camera moved) with the brush sheet's ridges, and a pixel no dab reaches takes the
+  nearest dab's colour. Things that move (records, their
   discs: `unpinned()` in `src/materials.js`, alpha 0.99 in the scene buffer) get no under-coat, as it is pinned to
   the world. **Glass gets no dab at all** (Lajoon, 2026-11-12: dabs made it look worse): window glass, the shop
   door's panes and fanlight, the display windows and lantern panes are flagged with `glass()` in `src/materials.js`
@@ -197,7 +199,12 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   over the scene, crisp things, glass and the suitcase as drawn, a faint canvas weave. RX 550 @2x (frame-bench), against
   Brush strokes: home 48.6 -> 27.0 ms before the under-coat, 39.5 with it; station 0 38.9 -> 20.3 / 24 before,
   29-30 with it; station 3 45.5 -> 23.2 / 24 before, 27 with it (bare canvas at home 52% -> 0%). The scene pass is
-  still drawn whole. Brush strokes repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the
+  still drawn whole. Brush strokes repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map; `SHOTS=120,121 MARK=1` saves those frames with the flipped pixels in magenta; `hotPct` = pixels
+flipping in over a tenth of the frames). That count also takes in textured edges sliding past; to find what
+*jumps* as the camera moves, `node scripts/pop-check.mjs <out> [query] [times]` draws each moment twice a sliver
+of time apart (`DT`, default 1/300 s; `DT=0 NUDGE=0.0002` leans the camera a hair instead, for still views like
+`at=3`) with the cursor's lean pinned, and marks in magenta what changed: z-fighting, dabs popping, colours picked
+from another pixel. Faint is the
   old single pass; the others flatten shading into washes and let colour bleed (`LEVELS` in
   `src/watercolour.js`). `?wc=0..5` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays
