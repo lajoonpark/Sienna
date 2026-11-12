@@ -3,7 +3,7 @@
 // flower boxes and pots. Small repeated parts go through the instanced kit.
 import * as THREE from 'three';
 import { trs, mul } from './kit.js';
-import { toon } from './materials.js';
+import { toon, glass as flagGlass } from './materials.js';
 import { rng } from './rand.js';
 import { registerLamp, registerWindow, glowMesh } from './env.js';
 
@@ -55,7 +55,7 @@ export function windowUnit(kit, M, o, opts = {}) {
   const meshes = [];
   const wood = opts.wood ?? '#f0e6d2';
   // glass recessed into the wall, its own material so it can light up in the evening
-  const glassMat = new THREE.MeshBasicMaterial({ color: '#6e7a86' });
+  const glassMat = flagGlass(new THREE.MeshBasicMaterial({ color: '#6e7a86' }));
   registerWindow(glassMat, { order: r() });
   const glass = new THREE.Mesh(new THREE.PlaneGeometry(o.w, o.type === 'arch' ? o.h - o.w / 2 : o.h), glassMat);
   glass.applyMatrix4(mul(M, trs(o.x, o.y + (o.type === 'arch' ? (o.h - o.w / 2) / 2 : o.h / 2), -0.17)));
@@ -256,9 +256,9 @@ export function wallLantern(kit, M, x, y, { order, out = 0.45 } = {}) {
   kit.cone.add(mul(M, trs(lx, ly + 0.25, lz, 0, Math.PI / 4, 0, 0.3, 0.14, 0.3)), iron);
   blk(kit, M, lx, ly - 0.17, lz, 0.18, 0.04, 0.18, iron);
   for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) blk(kit, M, lx + dx * 0.085, ly + 0.03, lz + dz * 0.085, 0.02, 0.36, 0.02, iron);
-  const glassMat = new THREE.MeshBasicMaterial({ color: '#5a4c40' });
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.32, 0.15), glassMat);
-  glass.applyMatrix4(mul(M, trs(lx, ly + 0.03, lz)));
+  const glassMat = flagGlass(new THREE.MeshBasicMaterial({ color: '#5a4c40' }));
+  const pane = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.32, 0.15), glassMat);
+  pane.applyMatrix4(mul(M, trs(lx, ly + 0.03, lz)));
   const halo = glowMesh('sprite', 1.3, 0.7);
   halo.position.set(lx, ly + 0.03, lz).applyMatrix4(M);
   const wash = glowMesh('plane', 3.2, 0.32);
@@ -268,7 +268,7 @@ export function wallLantern(kit, M, x, y, { order, out = 0.45 } = {}) {
   pool.applyMatrix4(mul(M, trs(lx, 0.1, 1.3, -Math.PI / 2, 0, 0)));
   pool.scale.set(3.6, 3.6, 1);
   registerLamp({ glass: glassMat, glows: [halo, wash, pool], order });
-  return [glass, halo, wash, pool];
+  return [pane, halo, wash, pool];
 }
 
 // Roof edge: cornice, rafter ends, and a course of terracotta canal tiles.

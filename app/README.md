@@ -175,13 +175,19 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   distance; each dab is one colour (the scene where its middle lies, if that is the same surface) with the brush
   sheet's ridges, and a pixel no dab reaches takes the nearest dab's colour. Things that move (records, their
   discs: `unpinned()` in `src/materials.js`, alpha 0.99 in the scene buffer) get no under-coat, as it is pinned to
-  the world. Filling each stroke's patch with more placed dabs instead (`?oilsub=4,3`, `?oilstep=`, `?oilrow=`)
+  the world. **Glass gets no dab at all** (Lajoon, 2026-11-12: dabs made it look worse): window glass, the shop
+  door's panes and fanlight, the display windows and lantern panes are flagged with `glass()` in `src/materials.js`
+  (alpha `GLASS_ALPHA` 0.993 in the scene buffer; a see-through pane keeps its colour blending and only sets the
+  alpha it leaves, so the flag holds over the room behind), and the last pass shows those pixels as drawn, with what
+  is seen through them. New glass should use `glass()`. Glows (halos, washes, the intro's beams: `GLOW_BLENDING`)
+  add their light but leave the scene's alpha alone, so a glow cannot wipe out the glass, record or crisp flag under
+  it. Filling each stroke's patch with more placed dabs instead (`?oilsub=4,3`, `?oilstep=`, `?oilrow=`)
   doubled the frame (each spot lies under ~20 strokes placed from views at other distances) and still left the
   edges bare. Dabs are depth tested against the scene (its depth brought down to the paint target, a few cm
   nearer: `?oilbias=`), so the GPU skips their hidden parts. Check coverage with `node scripts/oil-cover-check.mjs
   [out] [stations] [dpr] [query]`: the share of the paintable picture no dab reaches, a magenta map of it, the frame
   time, and the overdraw (`VARIANTS='[{"count":1}]'`). No wash, bleed or border passes; the last pass lays the dabs
-  over the scene, crisp things and the suitcase as drawn, a faint canvas weave. RX 550 @2x (frame-bench), against
+  over the scene, crisp things, glass and the suitcase as drawn, a faint canvas weave. RX 550 @2x (frame-bench), against
   Brush strokes: home 48.6 -> 27.0 ms before the under-coat, 39.5 with it; station 0 38.9 -> 20.3 / 24 before,
   29-30 with it; station 3 45.5 -> 23.2 / 24 before, 27 with it (bare canvas at home 52% -> 0%). The scene pass is
   still drawn whole. Brush strokes repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the

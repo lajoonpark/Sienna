@@ -11,6 +11,7 @@
 //   cine 0..1 how much of the intro look is on (the bars' value), door 0..1 open, camZ camera z,
 //   sunE sun elevation in degrees. Returns { grade: [r, g, b], vignette } for the painter.
 import * as THREE from 'three';
+import { GLOW_BLENDING } from './materials.js';
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const smooth = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -58,7 +59,7 @@ function beamTexture() {
   return new THREE.CanvasTexture(c);
 }
 
-const glow = (map, color) => new THREE.MeshBasicMaterial({ map, color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide });
+const glow = (map, color) => new THREE.MeshBasicMaterial({ map, color, transparent: true, opacity: 0, depthWrite: false, ...GLOW_BLENDING, fog: false, side: THREE.DoubleSide });
 
 // the grade at the two ends of the intro (multiplied into the painted picture)
 const COOL = [0.86, 0.9, 1.0];

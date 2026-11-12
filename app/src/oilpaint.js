@@ -11,12 +11,14 @@
 // Wherever the placed dabs leave canvas showing (they are capped in size, and none are placed on mortar lines,
 // thin edges or rails), an under-coat of smaller dabs, worked out per pixel on the surface's own plane, fills
 // it (UNDER). What moves (records and their discs) has neither and shows the scene as drawn; crisp things
-// (covers, labels) and the suitcase overlay always do.
+// (covers, labels), glass (windows, the door's panes, lanterns: materials.js glass) and the suitcase overlay
+// always do.
 //
 //   const oil = createOilPaint(renderer, strokes, sceneTarget)   // strokes = createBrushStrokes(...)
 //   oil.render(world, camera)       // dabs into oil.texture (premultiplied, linear)
 //   oil.finalMaterial(uniforms)     // the last pass, sharing the painter's uniforms
 import * as THREE from 'three';
+import { GLASS_ALPHA } from './materials.js';
 
 const params = new URLSearchParams(globalThis.location?.search ?? '');
 // dabs are drawn at this many drawing-buffer px per CSS px (1 = one per CSS px); ?oilscale= to try others
@@ -388,7 +390,7 @@ void main() {
   if (under.y < 0.5) return;
   vec4 here = texture2D(tScene, vUv);
   float z0 = texture2D(tDepth, vUv).x;
-  // the sky, crisp things (alpha 0) and things that move (alpha 0.99, materials.js unpinned): as drawn
+  // the sky, crisp things (alpha 0), things that move (alpha 0.99, materials.js unpinned) and glass (materials.js glass): as drawn
   if (z0 >= 0.99999 || here.a < 0.995) return;
   // where this pixel is, and which way its surface faces (from the nearer neighbour each way, so an edge
   // does not bend it)
@@ -507,8 +509,10 @@ void main() {
   vec4 base = texture2D(tScene, vUv);
   vec4 p = texture2D(tPaint, vUv);
   vec3 col = p.rgb + base.rgb * (1.0 - p.a);
-  // crisp things (album art, labels: alpha 0) and the suitcase overlay are shown as drawn
+  // crisp things (album art, labels: alpha 0), glass (alpha GLASS_ALPHA, materials.js glass: no dab is laid on
+  // it, nor on what is seen through it) and the suitcase overlay are shown as drawn
   float keep = clamp(1.0 - base.a, 0.0, 1.0);
+  keep = max(keep, step(${GLASS_ALPHA - 0.0015}, base.a) * step(base.a, ${GLASS_ALPHA + 0.0015}));
   if (overlayOn > 0.5) keep = max(keep, step(texture2D(tDepth, vUv).x, 0.99999));
   col = mix(col, base.rgb, keep);
   col = toSRGB(clamp(col, 0.0, 1.0));

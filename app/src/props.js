@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { trs, mul } from './kit.js';
 import { blk, rod } from './details.js';
 import { rng } from './rand.js';
+import { glass as flagGlass } from './materials.js';
 import { registerLamp, glowMesh } from './env.js';
 
 const C = new THREE.Color();
@@ -153,7 +154,7 @@ export function lampPost(kit, M, order) {
   kit.cone.add(mul(M, trs(0, 3.65, 0, 0, Math.PI / 4, 0, 0.5, 0.2, 0.5)), iron);
   blk(kit, M, 0, 3.12, 0, 0.26, 0.05, 0.26, iron);
   for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) blk(kit, M, dx * 0.12, 3.35, dz * 0.12, 0.025, 0.45, 0.025, iron);
-  const glassMat = new THREE.MeshBasicMaterial({ color: '#5a4c40' });
+  const glassMat = flagGlass(new THREE.MeshBasicMaterial({ color: '#5a4c40' }));
   const glass = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.42, 0.22), glassMat);
   glass.applyMatrix4(mul(M, trs(0, 3.35, 0)));
   const halo = glowMesh('sprite', 1.6, 0.75);

@@ -1,6 +1,7 @@
 // Things that respond to the time of day: lamps (light up one by one at dusk, with a warm-up
 // flicker) and windows (lit gradually in the evening, some go dark late at night).
 import * as THREE from 'three';
+import { GLOW_BLENDING } from './materials.js';
 
 export const lamps = [];
 
@@ -25,7 +26,7 @@ function glowTexture() {
 // A glow that fades in with its lamp. kind: 'sprite' (halo around the lamp) or 'plane' (a wash of
 // light on a wall or the ground; orient it yourself).
 export function glowMesh(kind, size, opacity, color = '#ffb54a') {
-  const params = { map: glowTexture(), color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false };
+  const params = { map: glowTexture(), color, transparent: true, opacity: 0, depthWrite: false, ...GLOW_BLENDING, fog: false };
   const m = kind === 'sprite'
     ? new THREE.Sprite(new THREE.SpriteMaterial(params))
     : new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial(params));
