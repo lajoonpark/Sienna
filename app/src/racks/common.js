@@ -487,6 +487,7 @@ export function instancedBoxes(list) {
   mesh.count = list.length;
   mesh.castShadow = mesh.receiveShadow = true;
   mesh.frustumCulled = false;
+  mesh.userData.strokeEach = true; // each block is its own thing to paint: strokes fit one, never a row (brushstrokes.js)
   return mesh;
 }
 

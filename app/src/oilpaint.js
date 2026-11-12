@@ -148,7 +148,7 @@ const dabVertex = /* glsl */ `
 attribute vec4 aPos;         // world position, stroke length in metres
 attribute vec4 aTan;         // direction along the surface, random
 attribute vec4 aNor;         // surface normal, random
-attribute vec2 aShape;       // length and width fitted to the shape it sits on (metres)
+attribute vec4 aShape;       // length and width fitted to the shape it sits on, and the room the shape leaves there (metres)
 attribute vec4 aCol;         // its object's paint, and how it is lit (1 lights, 0 glows, -1 never painted)
 uniform sampler2D tDepth;
 uniform mat4 viewProj;
@@ -159,6 +159,7 @@ uniform float aspect;
 uniform vec2 window;
 uniform vec3 farGrow;
 uniform vec2 shape;          // OIL_SHAPE: wider, shorter
+uniform int hiddenOwn;        // bit k: station furniture k is hidden (a rack stands there)
 uniform float keep;          // the share of this layer's strokes painted as dabs
 uniform vec2 maxSize;        // the most a dab may be across and along, in shares of the screen's height
 varying vec2 vAtlas;
@@ -166,6 +167,7 @@ varying vec3 vC1;
 varying vec3 vC2;
 varying vec4 vAxis;
 varying float vDepth;
+varying float vPlane;        // how far its plane is from the eye, along its normal
 ${LIGHT}
 float sceneDepth(vec2 uv) {
   float z = textureLod(tDepth, uv, 0.0).x * 2.0 - 1.0;
@@ -173,8 +175,13 @@ float sceneDepth(vec2 uv) {
 }
 void main() {
   gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-  vAtlas = vec2(0.0); vC1 = vC2 = vec3(0.0); vAxis = vec4(0.0); vDepth = 0.0;
-  if (aCol.a < -0.5) return;
+  vAtlas = vec2(0.0); vC1 = vC2 = vec3(0.0); vAxis = vec4(0.0); vDepth = 0.0; vPlane = 0.0;
+  // how it is lit (aCol.w = lit + 10 x the station furniture it is on)
+  float ownK = floor((aCol.a + 1.5) / 10.0);
+  float lit = aCol.a - 10.0 * ownK;
+  if (lit < -0.5) return;
+  // on furniture a rack has replaced: gone with it (else it floats on the rack)
+  if (ownK > 0.5 && ((hiddenOwn >> int(ownK)) & 1) == 1) return;
   // oil dabs are fatter than the strokes placed for them: fewer are needed to cover (and each costs)
   if (fract(aTan.w * 13.7 + aNor.w * 3.3) > keep) return;
   vec4 clipA = viewProj * vec4(aPos.xyz, 1.0);
@@ -198,8 +205,10 @@ void main() {
   grow = sqrt(grow);
 
   float r1 = aNor.w, r2 = fract(aNor.w * 7.13), r3 = fract(aTan.w * 5.37), r4 = fract(aTan.w * 11.9);
-  float len = aShape.x * shape.y * (0.8 + 0.2 * r1) * grow;
-  float wid = min(aShape.y * shape.x, aShape.x * 0.75) * (0.85 + 0.3 * r2) * grow;
+  // fatter and shorter than the stroke placed there, but never past the edges of the thing it is on: the room
+  // its face leaves round it (measured when it was placed) is the most it may cover
+  float len = min(aShape.x * shape.y * (0.8 + 0.2 * r1), aShape.z) * grow;
+  float wid = min(min(aShape.y * shape.x * (0.85 + 0.3 * r2), aShape.x * 0.75), aShape.w) * grow;
   // never bigger on the canvas than a brush that size could lay (far walls get broad dabs, not smears)
   float px = clipA.w * heightAt1m;
   len = min(len, maxSize.y * px);
@@ -207,12 +216,14 @@ void main() {
   float bend = (fract(aNor.w * 11.3) - 0.5) * 0.5;
   vec2 lp = vec2(position.x, position.y + bend * (position.x * position.x - 0.15));
   vec3 side = cross(aNor.xyz, aTan.xyz);
-  vec3 world = aPos.xyz + aTan.xyz * lp.x * len + side * lp.y * wid + aNor.xyz * 0.01;
+  // (in its plane exactly: dabs are not depth tested, the fragment shader keeps them to their face)
+  vec3 world = aPos.xyz + aTan.xyz * lp.x * len + side * lp.y * wid;
   gl_Position = viewProj * vec4(world, 1.0);
   vDepth = gl_Position.w;
+  vPlane = abs(dot(aPos.xyz - eye, aNor.xyz));
 
   // its paint, lit where it lies
-  vec3 c = aCol.a > 0.5 ? aCol.rgb * shopLight(aPos.xyz, aNor.xyz) : aCol.rgb;
+  vec3 c = lit > 0.5 ? aCol.rgb * shopLight(aPos.xyz, aNor.xyz) : aCol.rgb;
   if (fogRange.y > 0.0) c = mix(c, fogColor, smoothstep(fogRange.x, fogRange.y, clipA.w));
   // no two loads alike: a little lighter or darker, leaning warm or cool, as if the brush was not rinsed
   c *= (0.9 + 0.2 * r3) * mix(vec3(1.05, 1.0, 0.93), vec3(0.94, 1.0, 1.07), r4);
@@ -240,13 +251,13 @@ uniform sampler2D tDepth;
 uniform sampler2D tScene;     // the scene as drawn (linear)
 uniform vec2 clipRange;
 uniform vec2 screen;         // size of the target the dabs are drawn into
-uniform float slack;
 uniform float impasto;
 varying vec2 vAtlas;
 varying vec3 vC1;
 varying vec3 vC2;
 varying vec4 vAxis;
 varying float vDepth;
+varying float vPlane;
 float sceneDepth(vec2 uv) {
   float z = textureLod(tDepth, uv, 0.0).x * 2.0 - 1.0;
   return (2.0 * clipRange.x * clipRange.y) / (clipRange.y + clipRange.x - z * (clipRange.y - clipRange.x));
@@ -254,10 +265,13 @@ float sceneDepth(vec2 uv) {
 void main() {
   vec4 t = texture2D(tAtlas, vAtlas);   // paint, streak, slope along, slope across
   if (t.r < 0.3) discard;
-  // its own surface only: no paint lands on the wall behind a shelf, or on the shelf in front of a wall
+  // Its own face only, to about a centimetre: what is drawn at this pixel must lie on the dab's plane (the
+  // scene's point along this pixel's ray, measured square to the plane, not along the ray, which at a glancing
+  // look let paint wrap round a corner or float over a gap). Past the edge of the face it stops.
   vec2 uv = gl_FragCoord.xy / screen;
-  float tol = (0.02 + 0.006 * vDepth) * slack;
-  float own = 1.0 - smoothstep(tol, tol * 1.6, abs(sceneDepth(uv) - vDepth));
+  float off = vPlane * abs(sceneDepth(uv) / vDepth - 1.0);
+  float tol = 0.006 + 0.0015 * vDepth;
+  float own = 1.0 - smoothstep(tol, tol * 1.8, off);
   if (own <= 0.0) discard;
   // and only where the scene agrees it is this paint: a dab stops where something it does not know about
   // is drawn on its surface (a lit window, glass, a sign), as a careful hand paints round it
@@ -366,6 +380,7 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
     tDepth: { value: sceneTarget.depthTexture },
     tScene: { value: sceneTarget.texture },
     maxSize: { value: new THREE.Vector2(...MAX_SIZE) },
+    hiddenOwn: { value: 0 },
     tAtlas: { value: atlas.texture },
     screen: { value: new THREE.Vector2(1, 1) },
     shape: { value: new THREE.Vector2(...OIL_SHAPE) },
@@ -393,7 +408,6 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
       uniforms: {
         ...strokes.shared, ...light, ...own,
         window: { value: new THREE.Vector2(...layer.window) },
-        slack: { value: layer.slack },
         keep: { value: OIL_KEEP[i] ?? 1 },
       },
       transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
@@ -412,8 +426,9 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
   const v = new THREE.Vector3(), w = new THREE.Vector3();
   function gather(world) {
     if (found && frame - foundAt < 120) return found;
-    found = { hemi: [], sun: [], points: [] };
+    found = { hemi: [], sun: [], points: [], owners: [] };
     world.traverse((o) => {
+      if (o.userData.ownStrokes) found.owners.push(o);
       if (o.isHemisphereLight) found.hemi.push(o);
       else if (o.isDirectionalLight) found.sun.push(o);
       else if (o.isPointLight) found.points.push(o);
@@ -454,6 +469,9 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
       n++;
     }
     light.points.value = n;
+    let hidden = 0;
+    for (const o of L.owners) if (!shown(o)) hidden |= 1 << Math.min(8, Number(o.userData.ownStrokes) || 1);
+    own.hiddenOwn.value = hidden;
     const fog = world.fog;
     if (fog && 'near' in fog) { light.fogColor.value.copy(fog.color); light.fogRange.value.set(fog.near, fog.far); } else light.fogRange.value.set(0, 0);
   }

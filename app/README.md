@@ -155,14 +155,21 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   with the shop's own lights the way the toon materials do (sky, sun with one shadow-map look, the lamps that are
   on, fog), so the colour is decisive and never swims with the picture, and time of day still reaches it. The
   brush sheet holds a height and its slope; light from the canvas's upper left rakes across the ridges
-  (`?impasto=`). Dabs keep to their own surface (depth) and stop where the scene draws something they do not know
-  about (a lit window, glass: the colour there disagrees). Records (`userData.noStrokes` on a rack's Sleeve) get no strokes in any look, since they
+  (`?impasto=`). Each dab fits the one thing under it: strokes are placed with an id picture (every mesh its own
+  number, every piece of an instanced mesh marked `userData.strokeEach`, the racks' filler spines) and stop where
+  the object or its paint changes (`PAINT_STEP`, so a row of spines or a striped box is never one surface); a dab
+  is never fatter or longer than the room its face leaves there (`aShape.zw`); and at each pixel it is cut where
+  the scene leaves its plane, to about a centimetre (measured square to the plane, so it cannot wrap round a corner
+  or float over a gap). It also stops where the scene draws something it does not know about (a lit window, glass:
+  the colour there disagrees). Strokes on station furniture remember which piece they are on (`ownStrokes` = k,
+  `aCol.w` += 10k) and go when a rack replaces it: before, they floated on the new rack. Spines thinner than a
+  pixel of the bake (320 x 200) get no dab and show as drawn. Records (`userData.noStrokes` on a rack's Sleeve) get no strokes in any look, since they
   move (a rack revealed mid-session used to pin strokes to its records). Coat and medium layers only, about half the coat's strokes
   (they are wider): `?oillayers=1,1,0`, `?oilkeep=0.55,0.7,1`, `?oilshape=2.2,1.0` (width, length), `?oilmax=`,
   `?oilscale=1` (dab px per CSS px), `?dabwidth=`. No wash, bleed or border passes; the last pass lays the dabs over
   the scene, crisp things and the suitcase as drawn, a faint canvas weave. RX 550 @2x (frame-bench): home 48.6 ->
-  35.5 ms, station 0 38.9 -> 25.9, station 3 45.5 -> 34.7 against Brush strokes; the dabs are most of what is
-  left (~10 ms at home), the scene pass is still drawn whole. Brush strokes repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the
+  27.0 ms, station 0 38.9 -> 20.3, station 3 45.5 -> 23.2 against Brush strokes; the scene pass is still drawn
+  whole. Brush strokes repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the
   old single pass; the others flatten shading into washes and let colour bleed (`LEVELS` in
   `src/watercolour.js`). `?wc=0..5` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays
@@ -238,12 +245,12 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
     suitcase). Small gain (~2.5 ms at home): that pass is limited
     by its noise maths, not its reads.
   - *Strokes baked at build time* (C1): `node scripts/bake-strokes.mjs` writes `strokes/shop.bin.gz` (packed by
-    `src/strokepack.js`, ~12 MB with each stroke's paint colour), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
+    `src/strokepack.js`, ~9.5 MB with each stroke's paint colour and room), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
     its fingerprint matches (the app reads it through the main process, `strokes:shipped`; a browser fetches it),
     so a first start also skips placing them (fresh profile: 5.7 s -> 1.7 s to the intro here). Run it again after
     changing the street, the shop or the stroke settings; until then the app places them itself as before.
     It is baked as the app starts (no `?shot`): station furniture stands where racks will go and gets strokes
-    first. Those furniture strokes have places of their own (`ownStrokes` in `src/shop.js`, drawn with alpha 2 in
+    first. Those furniture strokes have places of their own (`ownStrokes` in `src/shop.js`, drawn with alpha 1 + k in
     the bake), so when a rack replaces the furniture the wall behind it still gets its coat; before, the wall
     above the cubby rack was left with gaps. `?shot` builds racks before the bake, so shots with
     `?strokecache=0` never showed this; shots that read the shipped strokes do.
