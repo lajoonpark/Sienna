@@ -242,6 +242,18 @@ function items(entries, onNoArt) {
   return out;
 }
 
+// A shelf's name as YouTube Music shows it. Some shelves split it in two: a small strapline over the
+// title, e.g. "SIMILAR TO" over "Munn" (an artist name, but the shelf is YouTube's mixes and playlists
+// like that artist) or "MORE FROM" over an artist. Those read as one phrase, so they are joined:
+// "Similar to Munn". Other straplines are just a caption (the account name over "Listen again"),
+// so they stay out of the name.
+const JOINING_STRAPLINE = /\b(to|from|by|of|for|like|with|on|about)$/i;
+function shelfTitle(title, strapline) {
+  if (!strapline || !JOINING_STRAPLINE.test(strapline)) return title;
+  const lead = strapline.toLowerCase();
+  return `${lead[0].toUpperCase()}${lead.slice(1)} ${title}`;
+}
+
 // Shelves from a browse response (first page or a continuation).
 // Only things that can be played land on a shelf; artists and empty shelves are dropped.
 function parseShelves(response, { onNoArt } = {}) {
@@ -249,9 +261,10 @@ function parseShelves(response, { onNoArt } = {}) {
   for (const key of SHELF_KEYS) {
     for (const s of findAll(response, key)) {
       const header = s.header?.musicCarouselShelfBasicHeaderRenderer ?? s.header?.musicImmersiveCarouselShelfBasicHeaderRenderer ?? s.header;
-      const title = text(header?.title);
+      const name = text(header?.title).trim();
+      const strapline = text(header?.strapline).trim() || undefined;
       const list = items(s.contents, onNoArt);
-      if (title && list.length) shelves.push({ title, strapline: text(header?.strapline) || undefined, items: list });
+      if (name && list.length) shelves.push({ title: shelfTitle(name, strapline), strapline, items: list });
     }
   }
   return shelves;
@@ -317,4 +330,4 @@ function parseAccounts(res) {
   }).filter((a) => a.name && (a.selected || a.signinUrl));
 }
 
-module.exports = { parseAccount, parseAccounts, parseShelves, parseSearch, parsePlaylistSongs, continuation, artOf, artDebug, text, findAll, cleanUrl };
+module.exports = { parseAccount, parseAccounts, parseShelves, shelfTitle, parseSearch, parsePlaylistSongs, continuation, artOf, artDebug, text, findAll, cleanUrl };
