@@ -333,7 +333,10 @@ function layerMesh(layer, shared, atlas) {
     geo.setAttribute(name, a);
     return a;
   };
-  const buffers = { aPos: attr('aPos'), aTan: attr('aTan'), aNor: attr('aNor'), aShape: attr('aShape', 2) };
+  // aCol: the paint of the object under it (rgb, linear) and how it is lit: 1 by the lights, 0 it glows by
+  // itself (lamps, windows), -1 a crisp thing that is never painted over (covers, labels). Oil paint (oilpaint.js)
+  // colours its strokes from this; the other looks read the rendered picture instead.
+  const buffers = { aPos: attr('aPos'), aTan: attr('aTan'), aNor: attr('aNor'), aShape: attr('aShape', 2), aCol: attr('aCol') };
   geo.instanceCount = 0;
   const blend = layer.mode === 'TOUCH' || layer.mode === 'GROUND'
     ? { blending: THREE.NormalBlending }
@@ -390,7 +393,7 @@ const FACES = (n) => (Math.abs(n.x) > Math.abs(n.y) && Math.abs(n.x) > Math.abs(
 // A fingerprint of what a bake would see: every solid, drawn mesh (its geometry's size, where it is, its
 // instances), the views, and how strokes are laid out. The stroke cache keeps a bake under it, so a
 // change to the street, the shop or this file's settings bakes again instead of reusing old strokes.
-const CACHE_VERSION = 2; // bump when `place` changes in a way the numbers below do not show
+const CACHE_VERSION = 3; // bump when `place` changes in a way the numbers below do not show
 export function strokeFingerprint(world, views) {
   let h1 = 0x811c9dc5 ^ CACHE_VERSION, h2 = 0x9e3779b9;
   const add = (v) => {
@@ -455,7 +458,7 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
   const r = rng(7);
   const p = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), e = new THREE.Vector3(), n = new THREE.Vector3(), toEye = new THREE.Vector3(), side = new THREE.Vector3(), centre = new THREE.Vector3(), long = new THREE.Vector3(), mid = new THREE.Vector3(), hit = new THREE.Vector3(), hand = new THREE.Vector3(), across = new THREE.Vector3();
   const ends = Array.from({ length: RAYS }, () => new THREE.Vector3());
-  const place = (cam, data) => {
+  const place = (cam, data, albedo, glow) => {
     const at = (x, y, out) => { if (x < 0 || y < 0 || x >= BAKE_W || y >= BAKE_H) return null; const i = (y * BAKE_W + x) * 4; if (!data[i + 3]) return null; return out.set(data[i], data[i + 1], data[i + 2]); };
     const eye = cam.getWorldPosition(new THREE.Vector3());
     for (let y = 0; y < BAKE_H - 2 * BAKE_STRIDE; y += BAKE_STRIDE) {
@@ -552,6 +555,10 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
           buffers.aShape.setXY(i, fitted, wid);
           buffers.aTan.setXYZW(i, t.x, t.y, t.z, r());
           buffers.aNor.setXYZW(i, n.x, n.y, n.z, r());
+          const j = (py * BAKE_W + px) * 4;
+          const lit = albedo[j + 3] < 0.5 ? -1 : (glow[j] + glow[j + 1] + glow[j + 2]) > 0.3 * (albedo[j] + albedo[j + 1] + albedo[j + 2]) + 0.01 ? 0 : 1;
+          if (lit === 0) buffers.aCol.setXYZW(i, glow[j], glow[j + 1], glow[j + 2], 0);
+          else buffers.aCol.setXYZW(i, Math.max(0, albedo[j] - glow[j]), Math.max(0, albedo[j + 1] - glow[j + 1]), Math.max(0, albedo[j + 2] - glow[j + 2]), lit);
         }
       }
     }
@@ -571,10 +578,24 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     world.traverseVisible((o) => { if (o.userData.ownStrokes) ownScene.children.push(o); });
     const cam = new THREE.PerspectiveCamera(70, BAKE_W / BAKE_H, 0.1, 200);
     const data = new Float32Array(BAKE_W * BAKE_H * 4);
+    const albedo = new Float32Array(BAKE_W * BAKE_H * 4), glow = new Float32Array(BAKE_W * BAKE_H * 4);
+    // The paint each object is: the world drawn as it is, but lit only by an even white sky of strength pi (a
+    // lit material then shows exactly its own colour) and with no fog; once more with no light at all, which
+    // leaves what glows by itself. Lights are turned down, not off, so no shader has to be built again.
+    const lights = [];
+    world.traverse((o) => { if (o.isLight) lights.push([o, o.intensity, o.isHemisphereLight ? [o.color.clone(), o.groundColor.clone()] : null]); });
+    const fog = world.fog && 'near' in world.fog ? [world.fog.near, world.fog.far] : null;
+    const evenLight = (k) => {
+      for (const [l, , hemi] of lights) {
+        if (hemi) { l.color.set(0xffffff); l.groundColor.set(0xffffff); l.intensity = Math.PI * k; } else l.intensity = 0;
+      }
+    };
     // only solid, drawn meshes: glows, lines and glass have no surface to paint on
     const hidden = [];
     world.traverse((o) => {
       if (!o.visible) return;
+      // records, which move: painted as drawn, never stroked (a stroke left in the air when one lifts)
+      if (o.userData.noStrokes) { hidden.push(o); o.visible = false; return; }
       const solid = o.isMesh && ![].concat(o.material).every((m) => m.transparent || m.opacity < 1);
       if (!solid && (o.isSprite || o.isLine || o.isPoints || o.isMesh)) { hidden.push(o); o.visible = false; }
     });
@@ -598,7 +619,18 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
         renderer.autoClear = true;
       }
       renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, data);
-      place(cam, data);
+      world.overrideMaterial = null;
+      if (fog) { world.fog.near = 1e5; world.fog.far = 1e6; }
+      evenLight(1);
+      renderer.render(world, cam);
+      renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, albedo);
+      evenLight(0);
+      renderer.render(world, cam);
+      renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, glow);
+      for (const [l, k, hemi] of lights) { l.intensity = k; if (hemi) { l.color.copy(hemi[0]); l.groundColor.copy(hemi[1]); } }
+      if (fog) [world.fog.near, world.fog.far] = fog;
+      world.overrideMaterial = mat;
+      place(cam, data, albedo, glow);
     }
     renderer.setRenderTarget(prev.target);
     renderer.setClearColor(prev.clear, prev.alpha);
@@ -653,6 +685,9 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
 
   return {
     scene,
+    // for oil paint (oilpaint.js): the same placed strokes, drawn its own way
+    parts: layers.map((part) => ({ geo: part.geo, layer: part.layer })),
+    shared,
     bake,
     save,
     load,

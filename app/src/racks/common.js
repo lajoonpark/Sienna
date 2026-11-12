@@ -315,6 +315,7 @@ export class Sleeve {
     // some racks are seen from behind)
     this.mesh = new THREE.Mesh(sleeveGeo(size, thick), [this.spineMat, this.spineMat, this.spineMat, this.spineMat, this.coverMat, this.coverMat]);
     this.mesh.castShadow = true;
+    this.mesh.userData.noStrokes = true; // records move: no strokes are pinned to them (brushstrokes.js)
     this.mesh.rotation.order = 'YXZ';
     this.mesh.visible = false;
     const v = vinylParts();

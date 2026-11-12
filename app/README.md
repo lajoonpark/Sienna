@@ -4,7 +4,7 @@ A 3D vinyl shop for YouTube Music (free, open source). Electron + Three.js.
 
 The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over the street, a little piazza, and the Sienna shop. The door swings open on its own, the camera walks into the shop, and the view tilts with the cursor. All scenery is procedural.
 
-**Look:** painted, through a screen pass (`src/watercolour.js`): brush strokes pinned to the world's surfaces by default (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Look > Painting). Both have a ragged paper border. `?style=flat` shows the old flat toon look.
+**Look:** painted, through a screen pass (`src/watercolour.js`): oil paint by default on branch `oil-paint` (`src/oilpaint.js`: opaque dabs on the brush strokes' places, each with its object's own paint, lit live, with impasto ridges; full bleed, no border), brush strokes pinned to the world's surfaces (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Look > Painting). The brush and watercolour looks have a ragged paper border. `?style=flat` shows the old flat toon look.
 
 **Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Look > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots. A change applies live in both windows, with no reload: `FONT`/`fontReady` are live exports, CSS uses `var(--sienna-font)`, and everything painted into a canvas or texture (tags, rack signs, the shop sign, button plates, menu words, search bar, album-spread stickers) registers a repaint with `onLettering(owner, draw)` in `src/style.js`, which runs once the new face has loaded. New lettered paint must register too. Check: `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out` (mini window, no reload) and `node scripts/tour-check.mjs out`.
 
@@ -147,9 +147,24 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   A side rail picks a page: *Account*, *Look* (Painting, Cover art, Lettering), *Playback* (Start of a song),
   *Performance* (Smoothness, Sharpness, Auto cool-down, Frame rate), *Shortcuts*, *Tour*. ↑/↓ or Tab move through the rail; it opens on
   Account the first time, then where you left it. `?settings=<page>` opens a page for screenshots.
-  *Painting* sets the look: Faint / Light / Medium / Heavy watercolour, or Brush strokes (default), which repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the
+  *Painting* sets the look: Faint / Light / Medium / Heavy watercolour, Brush strokes, or Oil paint (default on branch
+  `oil-paint`, a trial of D from the optimisation plan, after blendi's oil-paint demo on patch.gg, MIT). Oil paint
+  (`src/oilpaint.js`) draws the brush strokes' places as thick opaque dabs: each stroke records its object's paint
+  when it is placed (`aCol` in `src/brushstrokes.js`: the world drawn once under an even white sky of strength pi,
+  once with no light, so glows and crisp covers are told apart), and the dab's vertex shader lights that paint
+  with the shop's own lights the way the toon materials do (sky, sun with one shadow-map look, the lamps that are
+  on, fog), so the colour is decisive and never swims with the picture, and time of day still reaches it. The
+  brush sheet holds a height and its slope; light from the canvas's upper left rakes across the ridges
+  (`?impasto=`). Dabs keep to their own surface (depth) and stop where the scene draws something they do not know
+  about (a lit window, glass: the colour there disagrees). Records (`userData.noStrokes` on a rack's Sleeve) get no strokes in any look, since they
+  move (a rack revealed mid-session used to pin strokes to its records). Coat and medium layers only, about half the coat's strokes
+  (they are wider): `?oillayers=1,1,0`, `?oilkeep=0.55,0.7,1`, `?oilshape=2.2,1.0` (width, length), `?oilmax=`,
+  `?oilscale=1` (dab px per CSS px), `?dabwidth=`. No wash, bleed or border passes; the last pass lays the dabs over
+  the scene, crisp things and the suitcase as drawn, a faint canvas weave. RX 550 @2x (frame-bench): home 48.6 ->
+  35.5 ms, station 0 38.9 -> 25.9, station 3 45.5 -> 34.7 against Brush strokes; the dabs are most of what is
+  left (~10 ms at home), the scene pass is still drawn whole. Brush strokes repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the
   old single pass; the others flatten shading into washes and let colour bleed (`LEVELS` in
-  `src/watercolour.js`). `?wc=0..4` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
+  `src/watercolour.js`). `?wc=0..5` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays
   when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Sharpness* sets how
   many pixels the shop is drawn with (`src/quality.js`): Full (every Retina pixel), Balanced (default: 3/4 of the screen's
@@ -167,7 +182,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   walk you through it, with brush-stroke words floating (bobbing) under each note instead of a settings card:
   *welcome* (SIGN IN or LOOK AROUND FIRST, with the small print as four price stickers slapped on one by one: FREE,
   makes no money; PRIVATE, no servers and keeps nothing about you; ADS?, without Premium YouTube Music plays its own
-  and Sienna earns nothing from them; OPEN SOURCE, the code is at github.com/lajoonpark/Sienna), *paint* (brush strokes or a watercolour, applied live),
+  and Sienna earns nothing from them; OPEN SOURCE, the code is at github.com/lajoonpark/Sienna), *paint* (oil paint, brush strokes or a watercolour, applied live),
   *letters* (the lettering, applied live), *smooth*
   (60 or 30 fps), *record* (a small note at the top while you pick a record; the shop's keys work, it fades at a rack
   and moves on once a song plays), *player* (beside the suitcase: the knob is the Mac's own volume, scrubbing, keys),
@@ -223,7 +238,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
     suitcase). Small gain (~2.5 ms at home): that pass is limited
     by its noise maths, not its reads.
   - *Strokes baked at build time* (C1): `node scripts/bake-strokes.mjs` writes `strokes/shop.bin.gz` (packed by
-    `src/strokepack.js`, ~9 MB), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
+    `src/strokepack.js`, ~12 MB with each stroke's paint colour), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
     its fingerprint matches (the app reads it through the main process, `strokes:shipped`; a browser fetches it),
     so a first start also skips placing them (fresh profile: 5.7 s -> 1.7 s to the intro here). Run it again after
     changing the street, the shop or the stroke settings; until then the app places them itself as before.

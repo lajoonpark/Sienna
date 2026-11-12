@@ -417,7 +417,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
     paint() {
       where('upper');
       text('Make it yours', 'How should the shop be painted? Try them: the shop changes behind this note as you pick.');
-      choices('paint', [['Brush strokes', 4], ['Heavy watercolour', 3], ['Medium watercolour', 2], ['Light watercolour', 1]]);
+      choices('paint', [['Oil paint', 5], ['Brush strokes', 4], ['Heavy watercolour', 3], ['Medium watercolour', 2], ['Light watercolour', 1]]);
       brk();
       float('Next', next, { big: true });
       onKey = (e) => { if (e.key === 'Enter') { next(); return true; } };
