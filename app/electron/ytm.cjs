@@ -295,6 +295,17 @@ function createYtm({ onState, onAccount }) {
     if (s.ready) lastWho = who;
   }
 
+  // Player diet (other-optimizations branch, C2): the hidden page is never seen, so it loads no pictures and
+  // no fonts (thumbnails, avatars, its UI's icon font). Covers in the shop come from the shop's own session and
+  // the artwork url is read from the player, not the picture. Not while the page is shown (cookie consent),
+  // nor in the sign-in window that shares this session. SIENNA_PLAYER_DIET=0 turns it off.
+  if (process.env.SIENNA_PLAYER_DIET !== '0') {
+    const playerId = win.webContents.id;
+    win.webContents.session.webRequest.onBeforeRequest((d, cb) => {
+      cb({ cancel: d.webContentsId === playerId && !win.isDestroyed() && !win.isVisible() && (d.resourceType === 'image' || d.resourceType === 'font') });
+    });
+  }
+
   // Google sign-in in a visible window that shares the player's cookies.
   const signInIds = new Set();
   win.webContents.session.webRequest.onBeforeSendHeaders((d, cb) => {

@@ -36,8 +36,23 @@ export function trs(px, py, pz, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) 
   return new THREE.Matrix4().compose(_p.set(px, py, pz), _q, _s.set(sx, sy, sz));
 }
 
+// Stage-set walls (other-optimizations branch, C5): bricks and flagstones are drawn as flat cards, just
+// the face you see (2 triangles instead of 300), laid exactly where the 3D pieces were with the same
+// colours, so the courses, joints and colours stay and only the relief goes. ?walls=3d brings the real
+// 3D pieces back (with the distance boxes below).
+const WALLS = new URLSearchParams(globalThis.location?.search ?? '').get('walls');
+export const CARD_WALLS = WALLS !== '3d';
+function card(w, h, depth, face) {
+  const g = new THREE.PlaneGeometry(w, h);
+  if (face === 'top') { g.rotateX(-Math.PI / 2); g.translate(0, depth / 2, 0); } else g.translate(0, 0, depth / 2);
+  return g;
+}
+
 class Part {
-  constructor(geometry, material, { castShadow = true, receiveShadow = true } = {}) {
+  constructor(geometry, material, { castShadow = true, receiveShadow = true, card = null } = {}) {
+    // a card casts no shadow of its own: the wall's mortar backing behind it does, and a lone face has
+    // nothing to add to the shadow map but draw calls
+    if (card && CARD_WALLS) { geometry = card; this.isCard = true; castShadow = false; }
     this.geometry = geometry;
     this.material = material;
     this.castShadow = castShadow;
@@ -120,9 +135,9 @@ function halfPipe() {
 export function createKit() {
   const white = () => toon('#ffffff');
   const parts = {
-    brick: new Part(new RoundedBoxGeometry(BRICK.len, BRICK.row - BRICK.gap, BRICK.depth, 2, 0.035), white()),
+    brick: new Part(new RoundedBoxGeometry(BRICK.len, BRICK.row - BRICK.gap, BRICK.depth, 2, 0.035), white(), { card: card(BRICK.len, BRICK.row - BRICK.gap, BRICK.depth, 'front') }),
     block: new Part(new RoundedBoxGeometry(1, 1, 1, 1, 0.06), white()), // generic stone/wood block, scaled freely
-    flag: new Part(new RoundedBoxGeometry(1, 0.12, 1, 2, 0.05), white(), { castShadow: false }),
+    flag: new Part(new RoundedBoxGeometry(1, 0.12, 1, 2, 0.05), white(), { castShadow: false, card: WALLS === 'bricks' ? null : card(1, 1, 0.12, 'top') }),
     tile: new Part(halfPipe(), toon('#ffffff', { side: THREE.DoubleSide })),
     slat: new Part(new THREE.BoxGeometry(1, 1, 1), white()),
     rod: new Part(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), white()), // iron bars, pipes, poles (unit, scaled)

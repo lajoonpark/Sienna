@@ -204,6 +204,30 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   fingerprint of the scene, views and stroke settings (`src/strokecache.js`, `strokeFingerprint` in
   `src/brushstrokes.js`); the next start reads them back (on the RX 550 the intro starts after 1.5 s instead of 5.7 s).
   Any change to the street, shop or stroke settings bakes again. `?strokecache=0` skips it.
+  **Branch `other-optimizations`** (Lajoon's experiments, 2026-11-12; each has a URL switch to compare):
+  - *Stage-set walls* (C5): bricks and flagstones are flat cards, just the face you see, in the same places and
+    colours (`CARD_WALLS` in `src/kit.js`; they cast no shadow, the mortar backing does). Triangles at home 2.2M ->
+    0.8M. `?walls=3d` brings the 3D pieces back, `?walls=bricks` cards only the bricks.
+  - *Fewer, bigger strokes far away* (OP-C): a stroke's smallest on-screen size grows with distance (`farGrow`,
+    `FAR_GROW` in `src/brushstrokes.js`, `?fargrow=near,far,k`), and the strokes are laid at 3/4 of the CSS-pixel
+    size (`BRUSH_SCALE` in `src/watercolour.js`, `?brushscale=1` for full): most of the strokes' cost is the coat's
+    overlap on near walls, and at 3/4 size it looks the same.
+  - *Sharp only where you look* (C4): around the eased cursor (`fovea`, reach 0.45 of the height, `?fovea=0` off)
+    the final pass does its full wet pooling and colour edges and the detail strokes (CORRECT, TOUCH) show; toward
+    the corners it reads fewer taps and only the coat paints. Small gain (~2.5 ms at home): that pass is limited
+    by its noise maths, not its reads.
+  - *Strokes baked at build time* (C1): `node scripts/bake-strokes.mjs` writes `strokes/shop.bin.gz` (packed by
+    `src/strokepack.js`, ~9 MB), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
+    its fingerprint matches (the app reads it through the main process, `strokes:shipped`; a browser fetches it),
+    so a first start also skips placing them (fresh profile: 5.7 s -> 1.7 s to the intro here). Run it again after
+    changing the street, the shop or the stroke settings; until then the app places them itself as before.
+    Painting the shop into textures ahead of time is not possible as the shop is built (no texture coordinates,
+    tens of thousands of instanced pieces), so the paint passes still run live.
+  - *Player diet* (C2, the safe part): the hidden YouTube Music page loads no pictures or fonts
+    (`electron/ytm.cjs`, `SIENNA_PLAYER_DIET=0` off): -13 MB and a little CPU while playing
+    (`npm run build && xvfb-run -a node scripts/player-check.mjs`: the player process's memory, CPU and fetches).
+    Playing without that page (~320 MB) is not built: see the note in the root README.
+  Together on the RX 550 at Balanced (1440x900 Retina): home 62 -> 50 ms, crate table 49 -> 41, station 3 53 -> 47.
   **Measuring**: `node scripts/frame-bench.mjs [at=home,0] [dpr=2] [query]` paints whole frames back to back on the GPU
   and gives ms per frame, the JS cost of a still frame and of the scene's render call, draw calls and triangles;
   `VARIANTS='[{},{"noPoint":true},{"noBricks":true},{"noOverlay":true}]'` switches parts off to see their share.

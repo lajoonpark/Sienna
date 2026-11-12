@@ -131,6 +131,8 @@ if (!app.requestSingleInstanceLock()) {
     mini = createMini({ onVisible: updateActive, trusted });
     // how warm the Mac is and whether it runs on battery: the shop draws lighter when it heats up (src/quality.js)
     createPower({ send: (s) => win?.webContents.send('power:state', s), guarded });
+    // the brush strokes baked at build time (scripts/bake-strokes.mjs), read by the shop's stroke cache
+    ipcMain.handle('strokes:shipped', guarded(() => fs.promises.readFile(path.join(__dirname, '..', 'strokes', 'shop.bin.gz')).then((b) => new Uint8Array(b)).catch(() => null)));
     // global shortcuts (Settings > Shortcuts): mini player, and the full app (also closes the mini player)
     createShortcuts({ mini: () => mini.toggle(), app: () => { mini.close(); openSienna(); } }, { trusted }).register();
     setTimeout(() => mini.prewarm(), 4000);

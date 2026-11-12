@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('sienna', {
   signOut: () => ipcRenderer.invoke('ytm:signOut'),
   onState: (cb) => ipcRenderer.on('ytm:state', (_e, s) => cb(s)),
   onAccount: (cb) => ipcRenderer.on('ytm:account', (_e, signedIn) => cb(signedIn)),   // signed in, out or switched
+  // the brush strokes baked at build time (app/strokes/shop.bin.gz, scripts/bake-strokes.mjs): bytes or null
+  shippedStrokes: () => ipcRenderer.invoke('strokes:shipped'),
   // how warm the computer is, and battery (electron/power.cjs): { thermal: 'nominal'|'fair'|'serious'|'critical'|'unknown', battery }
   power: {
     get: () => ipcRenderer.invoke('power:get'),

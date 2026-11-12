@@ -86,6 +86,8 @@ uniform float heightAt1m;    // metres of world filling the screen's height, 1 m
 uniform float lodShift;      // keeps stroke colours at the same scale at any window size
 uniform float aspect;        // width / height of the picture
 uniform vec2 window;         // stroke length on screen (fraction of its height) where it is fully shown
+uniform vec3 farGrow;        // near m, far m, factor: the smallest size grows this much with distance
+uniform vec3 fovea;          // where you look (uv) and the reach of full detail (share of the height; 0 = all)
 uniform vec2 lods;           // fine, coarse colour levels
 uniform vec2 gate;           // detail difference that starts / fully shows a stroke (0 0: always)
 uniform float power;         // the coat is lighter than the scene: thin paint with the paper glowing through it
@@ -107,7 +109,11 @@ void main() {
   if (a.x < -0.5 || a.x > 1.5 || a.y < -0.5 || a.y > 1.5) return;
   if (dot(aNor.xyz, eye - aPos.xyz) <= 0.0) return;
   float onScreen = aPos.w / (clipA.w * heightAt1m);
-  float fade = smoothstep(window.x * 0.6, window.x, onScreen) * (1.0 - smoothstep(window.y, window.y * 1.5, onScreen));
+  // Far away, fewer and bigger: the smallest size a mark may be on screen grows with distance (farGrow:
+  // from x metres to y metres it grows up to z times), so a far wall is painted in a few broad marks
+  // rather than many small ones on top of each other (most of this pass's cost is that overlap).
+  float minSize = window.x * mix(1.0, farGrow.z, smoothstep(farGrow.x, farGrow.y, clipA.w));
+  float fade = smoothstep(minSize * 0.6, minSize, onScreen) * (1.0 - smoothstep(window.y, window.y * 1.5, onScreen));
   if (fade <= 0.01) return;
 
   // hidden behind something nearer? Several taps, so a stroke fades as it goes behind an edge
@@ -142,6 +148,10 @@ void main() {
   // (Covers wrote alpha 0, which the blurred level still shows.)
   fade *= smoothstep(0.9, 0.99, textureLod(tRef, uc, lods.x + lodShift).a);
   if (gate.y > 0.0) fade *= smoothstep(gate.x, gate.y, length(fine - coarse));
+#if defined(CORRECT) || defined(TOUCH)
+  // the detail marks only around where you look (other-optimizations, C4); the coat covers everywhere
+  if (fovea.z > 0.0) fade *= 1.0 - smoothstep(fovea.z, fovea.z * 1.7, length((a - fovea.xy) * vec2(aspect, 1.0)));
+#endif
 #ifdef GROUND
   fade *= 1.0 - smoothstep(calm.x, calm.y, length(textureLod(tRef, uc, 1.2 + lodShift).rgb - fine));
 #endif
@@ -261,6 +271,8 @@ const LAYERS = [
   { segments: 1, cap: 120000, reach: 0.05, rowGap: 0.5, colGap: 0.5, widthRatio: 0.29, window: [0.03, 0.1], lods: [0.8, 2.2], gate: [0.07, 0.18], opacity: 0.72, rim: 0.2, clip: [0.7, 0.1, 0.22], slack: 1, mode: 'TOUCH' },
 ];
 const BASE_LENGTH = 0.1; // metres; stroke lengths are this times a power of two
+// far away, fewer and bigger marks (see farGrow in the vertex shader); ?fargrow=near,far,k to try others
+const FAR_GROW = (new URLSearchParams(globalThis.location?.search ?? '').get('fargrow')?.split(',').map(Number) ?? [5, 18, 2.2]);
 const MAX_OCTAVE = 6;
 const BAKE_W = 320, BAKE_H = 200;
 const BAKE_STRIDE = 3;
@@ -412,6 +424,8 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     pan: { value: new THREE.Vector2() },
     aspect: { value: 1 },
     lodShift: { value: 0 },
+    farGrow: { value: new THREE.Vector3(...FAR_GROW) },
+    fovea: { value: new THREE.Vector3(0.5, 0.5, 0) },
   };
   const atlas = bakeAtlas(renderer);
   const scene = new THREE.Scene();
@@ -626,6 +640,7 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
       shared.lodShift.value = Math.log2(Math.max(1, h) / 720);
     },
     setPan(x, y) { shared.pan.value.set(x, y); },
+    setFovea(v) { shared.fovea.value.copy(v); },
     setCamera(camera) {
       shared.viewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       camera.getWorldPosition(shared.eye.value);
