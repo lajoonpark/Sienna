@@ -213,8 +213,9 @@ export function archBridge(kit, M, { w, h, d, archW, archH, seed = 3, pal = PALE
     while (z > -d + 0.2) {
       const L = Math.min(0.5, z + d - 0.2);
       const m = trs(cx, cy, z - L / 2, 0, 0, a, 0.7, ((Math.PI * rad) / n - BRICK.gap) / (BRICK.row - BRICK.gap), (L - BRICK.gap) / BRICK.len);
-      // brick part is along x by default; rotate so its long side runs along the depth
-      kit.brick.add(mul(M, m.multiply(trs(0, 0, 0, 0, Math.PI / 2, 0))), stoneColor(r, pal));
+      // brick part is along x by default; rotate so its long side runs along the depth and its face (+z, the
+      // side a card wall keeps) looks into the opening
+      kit.brick.add(mul(M, m.multiply(trs(0, 0, 0, 0, -Math.PI / 2, 0))), stoneColor(r, pal));
       z -= L;
     }
     // straight jambs below the spring
@@ -224,7 +225,7 @@ export function archBridge(kit, M, { w, h, d, archW, archH, seed = 3, pal = PALE
         let z2 = -0.2 - ((y / BRICK.row) % 2 ? 0.25 : 0);
         while (z2 > -d + 0.2) {
           const L = Math.min(0.5, z2 + d - 0.2);
-          const m = trs(o.x + side * (rad + 0.07), y + BRICK.row / 2, z2 - L / 2, 0, Math.PI / 2, 0, (L - BRICK.gap) / BRICK.len, 1, 0.7);
+          const m = trs(o.x + side * (rad + 0.07), y + BRICK.row / 2, z2 - L / 2, 0, -side * Math.PI / 2, 0, (L - BRICK.gap) / BRICK.len, 1, 0.7); // face into the opening
           kit.brick.add(mul(M, m), stoneColor(r, pal));
           z2 -= L;
         }
@@ -318,7 +319,7 @@ export function barrelVault(kit, { cx = 0, spring, r, z0, z1, seed = 1, pal = PA
       const zc = z - L / 2;
       if (skylight && Math.hypot(x - skylight.x, zc - skylight.z) < skylight.r && y > spring + r * 0.8) { z -= L; continue; }
       const m = trs(x, y, zc, 0, 0, a, 1, 1, 1)
-        .multiply(trs(0, 0, 0, 0, Math.PI / 2, 0, (L - BRICK.gap) / BRICK.len, (tang - BRICK.gap) / (BRICK.row - BRICK.gap), 1));
+        .multiply(trs(0, 0, 0, 0, -Math.PI / 2, 0, (L - BRICK.gap) / BRICK.len, (tang - BRICK.gap) / (BRICK.row - BRICK.gap), 1)); // face (+z) looks down into the vault
       kit.brick.add(m, stoneColor(rr, pal));
       z -= L;
     }
