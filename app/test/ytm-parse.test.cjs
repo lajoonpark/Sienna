@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { parseShelves, parseSearch, parsePlaylistSongs, continuation, artOf } = require('../electron/ytm-parse.cjs');
+const { parseShelves, shelfTitle, findAll, parseSearch, parsePlaylistSongs, continuation, artOf } = require('../electron/ytm-parse.cjs');
 const home = require('./fixtures/home.json'); // guest FEmusic_home, trimmed
 const search = require('./fixtures/search.json'); // guest search "lemon" with the songs filter, 8 rows
 const playlistBrowse = require('./fixtures/playlist-browse.json'); // guest browse VL<RDCLAK...>, 6 rows
@@ -17,6 +17,20 @@ test('home shelves come out with titles and playable items', () => {
       assert.ok(i.play.videoId || i.play.playlistId, 'play endpoint');
     }
   }
+});
+
+test('shelf names: "SIMILAR TO" + artist reads as one phrase, caption straplines stay out', () => {
+  assert.strictEqual(shelfTitle('Munn', 'SIMILAR TO'), 'Similar to Munn');
+  assert.strictEqual(shelfTitle('Munn', 'MORE FROM'), 'More from Munn');
+  assert.strictEqual(shelfTitle('Listen again', 'LAJOON PARK'), 'Listen again');
+  assert.strictEqual(shelfTitle('Quick picks', undefined), 'Quick picks');
+  // End to end: the fixture's second shelf ("Springtime") with a "SIMILAR TO" strapline added.
+  const withStrap = JSON.parse(JSON.stringify(home));
+  const header = findAll(withStrap, 'musicCarouselShelfBasicHeaderRenderer')[1];
+  header.strapline = { runs: [{ text: 'SIMILAR TO' }] };
+  const shelves = parseShelves(withStrap);
+  assert.deepStrictEqual(shelves.map((sh) => sh.title), ['Quick picks', 'Similar to Springtime']);
+  assert.strictEqual(shelves[1].strapline, 'SIMILAR TO');
 });
 
 test('quick picks rows are songs with artist and no play count', () => {
