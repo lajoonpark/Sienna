@@ -15,6 +15,12 @@ import { toon } from './materials.js';
 export const BRICK = { len: 0.5, row: 0.24, gap: 0.028, depth: 0.2 };
 const CELL = 8;       // metres
 const CELL_MIN = 150; // pieces a square needs to be a mesh of its own
+// Far squares of rounded pieces (bricks, blocks, flagstones: 108-300 triangles each) are drawn as plain
+// boxes (12): under the paint a rounded edge a few metres away reads the same, and the street and vaults
+// were most of the frame's triangles. A square is drawn rounded while the camera is within LOD_NEAR metres
+// of it (its bounding sphere), else boxed. Both meshes share one set of instance matrices and colours.
+const LOD_NEAR = 5;
+const lodPairs = []; // [hi, lo] InstancedMeshes, switched by updateLod
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -54,7 +60,8 @@ class Part {
     const groups = [], rest = [];
     for (const ids of cells.values()) { if (ids.length >= CELL_MIN) groups.push(ids); else rest.push(...ids); }
     if (rest.length) groups.push(rest);
-    return groups.map((ids) => {
+    const out = [];
+    groups.forEach((ids, g) => {
       const mesh = new THREE.InstancedMesh(this.geometry, this.material, ids.length);
       ids.forEach((id, i) => {
         mesh.setMatrixAt(i, this.matrices[id]);
@@ -63,8 +70,43 @@ class Part {
       mesh.castShadow = this.castShadow;
       mesh.receiveShadow = this.receiveShadow;
       mesh.computeBoundingSphere(); // of its instances: what the renderer culls it by
-      return mesh;
+      out.push(mesh);
+      // a square (not the leftovers spread over the whole street) of rounded pieces gets a boxed twin
+      const square = g < groups.length - (rest.length ? 1 : 0);
+      const lo = square && this.lowGeometry();
+      if (lo) {
+        const twin = new THREE.InstancedMesh(lo, this.material, ids.length);
+        twin.instanceMatrix = mesh.instanceMatrix;
+        twin.instanceColor = mesh.instanceColor;
+        twin.castShadow = this.castShadow;
+        twin.receiveShadow = this.receiveShadow;
+        twin.boundingSphere = mesh.boundingSphere.clone();
+        twin.visible = false; // until updateLod says the square is far
+        lodPairs.push([mesh, twin]);
+        out.push(twin);
+      }
     });
+    return out;
+  }
+  // a plain box the size of a rounded one (null: this part is not rounded)
+  lowGeometry() {
+    if (this.lo !== undefined) return this.lo;
+    const p = this.geometry.type === 'RoundedBoxGeometry' ? this.geometry.parameters : null;
+    this.lo = p ? new THREE.BoxGeometry(p.width, p.height, p.depth) : null;
+    return this.lo;
+  }
+}
+
+// Rounded near the camera, boxed further off (see LOD_NEAR). Call once a frame before drawing.
+// Only squares that change switch, so a still camera changes nothing (the painter sees no new frame).
+const _cam = new THREE.Vector3(), _ctr = new THREE.Vector3();
+export function updateLod(camera) {
+  camera.getWorldPosition(_cam);
+  for (const [hi, lo] of lodPairs) {
+    if (!hi.parent) continue;
+    _ctr.copy(hi.boundingSphere.center).applyMatrix4(hi.matrixWorld);
+    const near = _cam.distanceTo(_ctr) - hi.boundingSphere.radius < LOD_NEAR;
+    if (hi.visible !== near) { hi.visible = near; lo.visible = !near; }
   }
 }
 

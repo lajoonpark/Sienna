@@ -6,7 +6,7 @@ import { outDir, sandboxArgs } from './safe.mjs';
 const S = outDir(process.argv[2], 'sienna-hold-check');
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
   timeout: 60000,
 });
 const find = async (test) => { for (;;) { const w = app.windows().find(test); if (w) return w; await new Promise((r) => setTimeout(r, 500)); } };

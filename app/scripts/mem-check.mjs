@@ -3,14 +3,14 @@
 // so the numbers are per process like Activity Monitor's, though Linux under xvfb renders on the CPU (its GPU
 // process is not a Mac's): compare before/after on the same machine, not with a Mac.
 //   npm run build && xvfb-run -a node scripts/mem-check.mjs [out_dir]
-//   (SIENNA_SETTLE_S=40, SIENNA_CLOSED_S=60; SIENNA_MINI_RELEASE_S=20 lets the closed sample show the mini window let go of)
+//   (SIENNA_DPR=2 pretends a Retina screen; SIENNA_SETTLE_S=40, SIENNA_CLOSED_S=60; SIENNA_MINI_RELEASE_S=20 lets the closed sample show the mini window let go of)
 import { _electron as electron } from 'playwright';
 import { outDir, sandboxArgs } from './safe.mjs';
 const S = outDir(process.argv[2], 'sienna-mem-check');
 const SETTLE_S = Number(process.env.SIENNA_SETTLE_S || 40), CLOSED_S = Number(process.env.SIENNA_CLOSED_S || 60);
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, ...(process.env.SIENNA_DPR ? [`--force-device-scale-factor=${process.env.SIENNA_DPR}`] : []), '.'],
   env: { ...process.env, SIENNA_TEST: '1' },
   timeout: 60000,
 });

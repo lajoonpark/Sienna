@@ -1,5 +1,5 @@
-// Rough frame cost at a station: average frame time over a few seconds plus draw calls / triangles.
-// SwiftShader is CPU rendering, so absolute ms mean little; compare before/after on the same machine.
+// Rough frame cost at a station, step by step (profile(): each step waits for the GPU, so the steps of one
+// frame do not add up exactly to its total; scripts/frame-bench.mjs measures whole frames back to back).
 //   node scripts/perf-check.mjs [at] [dpr] [query]   e.g. node scripts/perf-check.mjs 0 2 "wc=3"
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -7,7 +7,7 @@ const at = Number(process.argv[2] ?? 0), dpr = Number(process.argv[3] ?? 1), q =
 const port = Number(process.env.SIENNA_PORT) || 5243;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
 const page = await b.newPage({ viewport: { width: 960, height: 600 }, deviceScaleFactor: dpr });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 const t0 = Date.now();

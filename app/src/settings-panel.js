@@ -389,6 +389,8 @@ export function createSettingsPanel({ music = null, onTour = null } = {}) {
   ], 61);
   settingRows(addPage('performance', 'Performance'), [
     { key: 'maxFps', label: 'Smoothness', hint: 'Frames per second at most. 30 runs cooler and saves battery.', opts: [['60 fps', 60], ['30 fps', 30]] },
+    { key: 'sharp', label: 'Sharpness', hint: 'How many pixels the shop is drawn with. Lighter runs cooler; the paint hides most of the difference.', opts: [['Full', 'full'], ['Balanced', 'balanced'], ['Light', 'light']] },
+    { key: 'autoCool', label: 'Auto cool-down', hint: 'Draw lighter while the Mac is warm or frames are slow, then go back.', opts: [['On', true], ['Off', false]] },
     { key: 'fps', label: 'Frame rate', hint: 'Show frames per second in the corner.', opts: [['Off', false], ['On', true]] },
   ], 79);
 

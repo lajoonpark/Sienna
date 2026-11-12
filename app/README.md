@@ -141,13 +141,22 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 - **Settings**: the SETTINGS word (top right) or **⌘,** (Ctrl+, elsewhere) opens a paper card
   (`src/settings-panel.js`, stored by `src/settings.js` in localStorage, shared with the mini window).
   A side rail picks a page: *Account*, *Look* (Painting, Cover art, Lettering), *Playback* (Start of a song),
-  *Performance* (Smoothness, Frame rate), *Shortcuts*, *Tour*. ↑/↓ or Tab move through the rail; it opens on
+  *Performance* (Smoothness, Sharpness, Auto cool-down, Frame rate), *Shortcuts*, *Tour*. ↑/↓ or Tab move through the rail; it opens on
   Account the first time, then where you left it. `?settings=<page>` opens a page for screenshots.
   *Painting* sets the look: Faint / Light / Medium / Heavy watercolour, or Brush strokes (default), which repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the
   old single pass; the others flatten shading into washes and let colour bleed (`LEVELS` in
   `src/watercolour.js`). `?wc=0..4` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays
-  when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Lettering* picks the font
+  when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Sharpness* sets how
+  many pixels the shop is drawn with (`src/quality.js`): Full (every Retina pixel), Balanced (default: 3/4 of the screen's
+  pixel ratio, never below 1, so 56% of Full's pixels on a Retina screen and the same as Full on a plain one) or Light
+  (half, never below 0.75); the window scales the picture up, and the paint hides most of the difference. `?sharp=full|balanced|light`
+  pins it. *Auto cool-down* (on by default) draws lighter for as long as needed: when macOS reports the Mac is warm
+  (`electron/power.cjs`, thermal state fair: one step lighter; serious or critical: Light and at most 30 fps) or when
+  frames take far longer than the cap allows while things move (one step lighter after 4 s; back up after 45 s of easy
+  frames, twice as long each time it had to drop again within a minute). It never goes sharper than the setting.
+  `SIENNA_THERMAL=serious npm run dev` or `?thermal=serious` pretends a warm Mac; test runs (`navigator.webdriver`) leave
+  it off unless `?cool=1`. The fps readout shows the level in use and *(cooling)* while it is lowered. *Lettering* picks the font
   (each choice is written in itself); it applies at once in both windows, without a reload (tags, signs and buttons repaint in place).
   *Frame rate* shows an fps readout. *Tour* > SHOW IT AGAIN starts the first-run tour from the door.
 - **First-run tour** (`src/tour.js`): on a new install, once the intro reaches home, torn paper notes in the shop
@@ -177,8 +186,30 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   away, `?tour=new` runs it as a new install, `?tour=<step>` shows one step unsaved (`&guest` for the guest welcome):
   `SIENNA_QUERY="at=home&tour=keys" node scripts/shot.mjs out 3`. Check: `node scripts/tour-check.mjs [out]`.
 - **Heat / battery**: the shop is drawn at that cap only while something moves (camera, input, flights,
-  lid); once still it drops to 12 fps (30 while a record spins on screen), and stops while the window is
-  hidden, minimised or covered (`src/pacer.js`; `node scripts/idle-check.mjs [rack]` checks it).
+  lid); once still it drops to 12 fps (30 while a record spins on screen). 4 s later, if nothing on screen animates
+  on its own (no record turning on the suitcase), it goes into deep idle: it only looks twice a second whether
+  anything changed (a cover arriving, the sun creeping) and the ragged border stops boiling, so nothing is drawn at
+  all; input, or a change it finds, brings the full rate back at once. It stops while the window is hidden,
+  minimised or covered (`src/pacer.js`; `node scripts/idle-check.mjs [rack]` prints B busy / i idle / d deep and what
+  was painted; `?deep=0` turns deep idle off, e.g. for `cache-check.mjs`).
+  **Lamps**: of the shop's 8 point lights only 5 are on at a time, the ones that light the view most (their falloff
+  at points straight ahead, with their reach in view), so every lit pixel loops over 5 lights, not 8
+  (`src/lightslots.js`; the count stays fixed so no shader compiles again; `?allLights` turns them all on to compare,
+  `?lights=N` sets the count). At night the stations look the same as with all 8; at home and the first table a little
+  faint light from the far end goes.
+  **Bricks**: rounded pieces (bricks, blocks, flagstones: 108-300 triangles each) in an 8 m square more than 5 m from
+  the camera are drawn as plain boxes (12), sharing the same instances (`updateLod` in `src/kit.js`): about a quarter
+  fewer triangles at home.
+  **Start**: the brush strokes placed from the shop's 31 views (~2.8 s of every start) are kept in IndexedDB under a
+  fingerprint of the scene, views and stroke settings (`src/strokecache.js`, `strokeFingerprint` in
+  `src/brushstrokes.js`); the next start reads them back (on the RX 550 the intro starts after 1.5 s instead of 5.7 s).
+  Any change to the street, shop or stroke settings bakes again. `?strokecache=0` skips it.
+  **Measuring**: `node scripts/frame-bench.mjs [at=home,0] [dpr=2] [query]` paints whole frames back to back on the GPU
+  and gives ms per frame, the JS cost of a still frame and of the scene's render call, draw calls and triangles;
+  `VARIANTS='[{},{"noPoint":true},{"noBricks":true},{"noOverlay":true}]'` switches parts off to see their share.
+  On the server's RX 550 at 1440x900 Retina, home: 89 ms a frame before these changes, 59 ms now (Balanced, 5 lamps,
+  boxed far bricks); Full sharpness 87 ms. `__siennaDebug.profile()` times each step (each waits for the GPU, so the
+  steps do not add up to a whole frame; `save` and `overlay` are the suitcase's).
   **Still frames**: a frame is painted again only as far as it differs from the one before. `src/still.js`
   writes down everything a frame is made from (where each visible thing is, colours, textures, lights,
   camera) and compares it with the last frame's; the painter (`Still frames` in `src/watercolour.js`) then
@@ -202,7 +233,8 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   position changes (and the newest just before it opens). The macOS volume is read (an `osascript` run)
   only while a window is on screen: every 3 s while Sienna has the keyboard, every 12 s while you are in
   another app, and at once when you come back.
-- **Memory**: the sun's 4096 px shadow map (128 MB of video memory) is let go of while the sun is down
+- **Memory**: `npm run build && xvfb-run -a node scripts/mem-check.mjs [out]` gives memory and CPU per process
+  (`SIENNA_DPR=2` pretends a Retina screen). The sun's 4096 px shadow map (128 MB of video memory) is let go of while the sun is down
   (`src/timeofday.js`). A resting cover's canvas is shrunk to a pixel once the picture is on the GPU
   (`slim` in `src/racks/common.js`, about 50 MB for a full shop). The mini window makes no travelling
   washes (it has no camera to travel).

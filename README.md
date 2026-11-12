@@ -36,9 +36,12 @@ web page and internal API, so a change on their side can break it.
   covers are painted to match. Settings can switch to a softer watercolour wash or turn cover
   painting off.
 - **Runs cool.** It only draws at full speed while something is moving. Once the shop is still it is
-  not drawn again at all: only the turning record's corner and the paper border are repainted. It
-  stops drawing while its window is hidden. Left in the menu bar it lets go of the mini player's window
-  after five minutes unused (the next ⌃⌥K loads it again).
+  not drawn again at all: only the turning record's corner and the paper border are repainted, and a few
+  seconds later even the border holds still. It stops drawing while its window is hidden. On a Retina
+  screen it draws fewer pixels than the screen has (Settings > Performance > Sharpness), and when the Mac
+  gets warm it draws lighter until it cools down. Left in the menu bar it lets go of the mini player's
+  window after five minutes unused (the next ⌃⌥K loads it again). The second start is quicker: the
+  brush strokes are kept from the first.
 
 ## Controls
 
@@ -125,6 +128,8 @@ node scripts/tour-check.mjs                # walk the first-run tour like a new 
 node scripts/tilt-check.mjs                # tour notes and Settings card lean with the cursor
 node scripts/tear-check.mjs                # torn paper edges never reach the text
 node scripts/account-check.mjs out_dir     # Settings rail + Account page: switch, sign out (fake store)
+node scripts/frame-bench.mjs home,0 2      # ms per whole frame on the GPU (Retina size)
+node scripts/idle-check.mjs                # drops to idle, then deep idle, wakes on input
 ```
 
 ## Not done yet

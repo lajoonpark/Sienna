@@ -5,6 +5,7 @@ const path = require('node:path');
 const { createYtm } = require('./ytm.cjs');
 const { createMini } = require('./mini.cjs');
 const { createShortcuts } = require('./shortcuts.cjs');
+const { createPower } = require('./power.cjs');
 const { lockSessions, lockAllContents, lockNavigation, isAppUrl, makeTrusted, UntrustedSender } = require('./security.cjs');
 const fs = require('node:fs');
 
@@ -128,6 +129,8 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();   // open on start
     createTray();
     mini = createMini({ onVisible: updateActive, trusted });
+    // how warm the Mac is and whether it runs on battery: the shop draws lighter when it heats up (src/quality.js)
+    createPower({ send: (s) => win?.webContents.send('power:state', s), guarded });
     // global shortcuts (Settings > Shortcuts): mini player, and the full app (also closes the mini player)
     createShortcuts({ mini: () => mini.toggle(), app: () => { mini.close(); openSienna(); } }, { trusted }).register();
     setTimeout(() => mini.prewarm(), 4000);

@@ -15,10 +15,11 @@ const port = Number(process.env.SIENNA_PORT) || 5246;
 const [vw, vh] = (process.env.SIENNA_VIEWPORT || '480x300').split('x').map(Number);
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
 const page = await b.newPage({ viewport: { width: vw, height: vh }, deviceScaleFactor: Number(process.env.SIENNA_DPR) || 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.goto(`http://127.0.0.1:${port}/index.html?at=${at}&${q}`, { waitUntil: 'commit', timeout: 0 });
+// deep=0: no deep idle (pacer.js), which holds the border's boil still; scripts/idle-check.mjs covers that
+await page.goto(`http://127.0.0.1:${port}/index.html?at=${at}&deep=0&${q}`, { waitUntil: 'commit', timeout: 0 });
 await page.waitForFunction(() => window.__siennaDebug?.state.settled && window.__siennaDebug.pacer, null, { timeout: 400000 });
 // a song on, so the record turns (the fake store plays at once)
 await page.evaluate(async () => { const d = window.__siennaDebug; const { shelves } = await d.music.shelves(); d.music.play(shelves[0].items[1]); });

@@ -7,7 +7,7 @@ const loads = process.argv.slice(2).map(Number);
 const port = Number(process.env.SIENNA_PORT) || 5247;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
 for (const ms of loads.length ? loads : [0, 3000, 30000]) {
   const page = await b.newPage({ viewport: { width: 900, height: 600 } });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));

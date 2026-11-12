@@ -8,7 +8,7 @@ const stations = (process.argv[2] ?? '0,1,2,3,4,5,6').split(',').map(Number), n 
 const port = Number(process.env.SIENNA_PORT) || 5243;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
 const W = 1170, H = 730;
 for (const at of stations) {
   const page = await b.newPage({ viewport: { width: W, height: H } });

@@ -6,7 +6,7 @@ const q = process.argv[2] ?? '';
 const port = Number(process.env.SIENNA_PORT) || 5245;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
 const page = await b.newPage({ viewport: { width: 320, height: 200 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto(`http://127.0.0.1:${port}/index.html?shelves=8&${q}`, { waitUntil: 'commit', timeout: 0 });

@@ -14,7 +14,7 @@ const port = Number(process.env.SIENNA_PORT) || 5248;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
 const FAST = process.env.SIENNA_GL !== 'swiftshader';
-const GL = FAST ? ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+const GL = FAST ? ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] : ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'];
 const b = await chromium.launch({ args: GL });
 const W = 1170, H = 730;
 let off = 0, total = 0;

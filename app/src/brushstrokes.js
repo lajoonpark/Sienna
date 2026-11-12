@@ -370,6 +370,37 @@ const flatTol = (d) => 0.015 + 0.006 * d;
 
 const FACES = (n) => (Math.abs(n.x) > Math.abs(n.y) && Math.abs(n.x) > Math.abs(n.z) ? (n.x > 0 ? 0 : 1) : Math.abs(n.y) > Math.abs(n.z) ? (n.y > 0 ? 2 : 3) : (n.z > 0 ? 4 : 5));
 
+// A fingerprint of what a bake would see: every solid, drawn mesh (its geometry's size, where it is, its
+// instances), the views, and how strokes are laid out. The stroke cache keeps a bake under it, so a
+// change to the street, the shop or this file's settings bakes again instead of reusing old strokes.
+const CACHE_VERSION = 1; // bump when `place` changes in a way the numbers below do not show
+export function strokeFingerprint(world, views) {
+  let h1 = 0x811c9dc5 ^ CACHE_VERSION, h2 = 0x9e3779b9;
+  const add = (v) => {
+    const x = Math.round(v * 4096) | 0;
+    h1 = Math.imul(h1 ^ x, 16777619) >>> 0;
+    h2 = Math.imul(h2 ^ (x >>> 7) ^ (x << 3), 2246822519) >>> 0;
+  };
+  world.updateMatrixWorld();
+  world.traverseVisible((o) => {
+    if (!o.isMesh || [].concat(o.material).every((m) => m.transparent || m.opacity < 1)) return;
+    const g = o.geometry;
+    add(g.attributes.position?.count ?? 0); add(g.index?.count ?? -1);
+    for (const e of o.matrixWorld.elements) add(e);
+    if (o.isInstancedMesh) {
+      add(o.count);
+      const a = o.instanceMatrix.array;
+      let sum = 0;
+      for (let i = 0; i < o.count * 16; i++) sum += a[i] * ((i % 13) + 1);
+      add(sum);
+    }
+  });
+  for (const v of views) { add(v.pos.x); add(v.pos.y); add(v.pos.z); add(v.target.x); add(v.target.y); add(v.target.z); add(v.fov ?? 70); }
+  add(BAKE_W); add(BAKE_H); add(BAKE_STRIDE); add(FARTHEST);
+  for (const l of LAYERS) for (const v of Object.values(l)) if (typeof v === 'number') add(v); else if (Array.isArray(v)) v.forEach(add);
+  return `${h1.toString(16)}${h2.toString(16)}`;
+}
+
 export function createBrushStrokes(renderer, refTexture, depthTexture) {
   const shared = {
     tRef: { value: refTexture },
@@ -543,6 +574,39 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     for (const o of hidden) o.visible = true;
     rt.dispose();
     mat.dispose();
+    upload();
+  }
+
+  // The placed strokes as plain arrays, and back (the stroke cache, strokecache.js): placing them from the
+  // shop's 31 views took ~2.8 s of every start.
+  function save() {
+    return {
+      rng: r.state,
+      layers: layers.map((part) => ({
+        count: part.count,
+        taken: Float64Array.from(part.taken),
+        buffers: Object.fromEntries(Object.entries(part.buffers).map(([k, buf]) => [k, buf.array.slice(0, part.count * buf.itemSize)])),
+      })),
+    };
+  }
+  function load(state) {
+    if (!state || state.layers?.length !== layers.length) return false;
+    for (let i = 0; i < layers.length; i++) {
+      const part = layers[i], s = state.layers[i];
+      if (s.count > part.layer.cap) return false;
+      for (const [k, buf] of Object.entries(part.buffers)) if (!s.buffers[k] || s.buffers[k].length !== s.count * buf.itemSize) return false;
+    }
+    r.state = state.rng;
+    layers.forEach((part, i) => {
+      const s = state.layers[i];
+      part.count = s.count;
+      part.taken = new Set(s.taken);
+      for (const [k, buf] of Object.entries(part.buffers)) buf.array.set(s.buffers[k], 0);
+    });
+    upload();
+    return true;
+  }
+  function upload() {
     for (const part of layers) {
       part.geo.instanceCount = part.count;
       part.mesh.visible = part.count > 0;
@@ -553,6 +617,8 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
   return {
     scene,
     bake,
+    save,
+    load,
     get counts() { return layers.map((l) => l.count); },
     get caps() { return layers.map((l) => l.buffers.aPos.count); },
     setSize(w, h) {

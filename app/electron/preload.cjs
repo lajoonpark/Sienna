@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('sienna', {
   signOut: () => ipcRenderer.invoke('ytm:signOut'),
   onState: (cb) => ipcRenderer.on('ytm:state', (_e, s) => cb(s)),
   onAccount: (cb) => ipcRenderer.on('ytm:account', (_e, signedIn) => cb(signedIn)),   // signed in, out or switched
+  // how warm the computer is, and battery (electron/power.cjs): { thermal: 'nominal'|'fair'|'serious'|'critical'|'unknown', battery }
+  power: {
+    get: () => ipcRenderer.invoke('power:get'),
+    onChange: (cb) => ipcRenderer.on('power:state', (_e, s) => cb(s)),
+  },
   // keyboard shortcuts (electron/shortcuts.cjs): { search, mini, app, failed, defaults }
   keys: {
     get: () => ipcRenderer.invoke('keys:get'),

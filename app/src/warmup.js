@@ -13,9 +13,10 @@
 //                 not upload vertex buffers; the suitcase's first draw uploaded ~240 of them)
 export function warmUp(renderer, root, camera, scene = root, target = null, { draw = false } = {}) {
   // compile() only counts visible lights (and the draw only draws visible meshes), and both run
-  // synchronously, so hidden things are shown just for the call and hidden again before any frame
+  // synchronously, so hidden things are shown just for the call and hidden again before any frame.
+  // Not lights: how many are on is part of every shader, and lightslots.js keeps that count fixed.
   const hidden = [];
-  root.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+  root.traverse((o) => { if (!o.visible && !o.isLight) { hidden.push(o); o.visible = true; } });
   let ready;
   const prevTarget = renderer.getRenderTarget();
   try {

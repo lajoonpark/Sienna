@@ -8,7 +8,7 @@ const S = outDir(process.argv[2], 'sienna-capture');
 const query = process.argv[3] || 'lemon';
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
   timeout: 60000,
 });
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);

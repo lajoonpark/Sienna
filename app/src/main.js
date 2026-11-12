@@ -3,6 +3,8 @@ import { buildStreet } from './street.js';
 import { createIntroLight } from './introlight.js';
 import { lampWake } from './env.js';
 import { buildShop } from './shop.js';
+import { updateLod } from './kit.js';
+import { createLightSlots } from './lightslots.js';
 import { WATERCOLOUR } from './style.js';
 import { createWatercolour, renderOverlay } from './watercolour.js';
 import { createSky } from './sky.js';
@@ -18,6 +20,7 @@ import { createSettingsPanel } from './settings-panel.js';
 import { createTour } from './tour.js';
 import { settings } from './settings.js';
 import { createPacer } from './pacer.js';
+import { createQuality } from './quality.js';
 import { createMusic } from './music.js';
 import { createPlayer } from './suitcase/player.js';
 import { startSong } from './suitcase.js';
@@ -31,7 +34,9 @@ const shotMode = params.has('shot');
 // The screen keeps its picture between frames (preserveDrawingBuffer), so the painter can repaint just the
 // part of it that changed: the suitcase's corner, the boiling border (watercolour.js, `Still frames`).
 const renderer = new THREE.WebGLRenderer({ antialias: !WATERCOLOUR, preserveDrawingBuffer: shotMode || WATERCOLOUR });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Settings > Performance > Sharpness, lowered while the Mac is warm or frames are slow (quality.js)
+const quality = createQuality();
+renderer.setPixelRatio(quality.pixelRatio());
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
@@ -101,6 +106,9 @@ const shop = buildShop();
 scene.add(shop);
 // furniture that a station's rack replaces: shown until a rack stands there
 const furniture = shop.userData.stationFurniture ?? {};
+// only the lamps that can light what you see are on (lightslots.js)
+const lightSlots = createLightSlots(scene, params.has('lights') ? { slots: Number(params.get('lights')) } : {}); // ?lights=N: N slots
+if (params.has('allLights')) for (const l of lightSlots.lights) l.visible = true;
 const timeOfDay = createTimeOfDay({ scene, sun, hemi, sky });
 // The plant room's skylight beam is a see-through open cylinder (shop.js). From inside it washes the
 // whole frame in pale planes (and veils the spinner), so it is gone whenever the camera is inside the plant
@@ -361,6 +369,8 @@ window.__siennaDebug = {
   get scene() { return scene; },
   get lastFrame() { return { t: curT }; }, // the moment last drawn (scripts/cache-check.mjs repaints it whole)
   get pacer() { return pacer; },
+  quality,
+  lightSlots,
   camera,
   THREE, // checks (scripts/spinner-clip-check.mjs)
   // ms per render step, GPU work included (each step waits for the GPU); shadows: also redraw the shadow map
@@ -369,9 +379,13 @@ window.__siennaDebug = {
     const out = {};
     for (let r = 0; r < runs; r++) {
       let last = performance.now();
+      const seen = new Map(); // a step name met twice in one frame (the suitcase's own wash) is timed as name#2
       const sync = (name) => {
         gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
         const now = performance.now();
+        const n = (seen.get(name) ?? 0) + 1;
+        seen.set(name, n);
+        if (n > 1) name = `${name}#${n}`;
         (out[name] ??= []).push(now - last);
         last = now;
       };
@@ -640,7 +654,7 @@ function tickFps() {
   fpsStat.worst = Math.max(fpsStat.worst, now - fpsStat.last);
   fpsStat.last = now; fpsStat.n++;
   if (now - fpsStat.since < 500) return;
-  fpsBox.textContent = `${Math.round(fpsStat.n * 1000 / (now - fpsStat.since))} fps · worst ${Math.round(fpsStat.worst)} ms`;
+  fpsBox.textContent = `${Math.round(fpsStat.n * 1000 / (now - fpsStat.since))} fps · worst ${Math.round(fpsStat.worst)} ms · ${quality.level}${quality.reason ? ' (cooling)' : ''}`;
   fpsStat.n = 0; fpsStat.since = now; fpsStat.worst = 0;
 }
 
@@ -720,6 +734,8 @@ function frame(t, dtOverride, draw = true) {
   // at a station (or flying to one) the side words step back so the racks stay reachable
   menu.update(dt, cursorX01, !pinnedPose && nav.at !== AT_HOME);
   if (!draw) return;
+  updateLod(camera); // far squares of bricks and flagstones as plain boxes (kit.js)
+  if (!params.has('allLights')) lightSlots.update(camera); // ?allLights keeps every lamp on (to compare)
   updateShadows(t);
   if (painter) {
     // cheaper paint while the camera travels (?motion=1 pins it on, to compare in screenshots)
@@ -729,15 +745,30 @@ function frame(t, dtOverride, draw = true) {
     barsK = painter.bars ?? 0;
     const il = introLight.update({ cine: barsK, door: nav.doorOpen(t), camZ: c.pos.z, sunE: sunNow.e });
     painter.setGrade?.(il.grade, il.vignette);
+    painter.setBoilHeld?.(!!pacer?.deep);
+    const whole = painter.stats.full;
     painter.render(scene, camera, t, suitcase.overlay);
+    // something changed while nothing was moving (a cover arrived, the sun crept): full rate for a moment
+    if (painter.stats.full !== whole && pacer?.deep) pacer.kick();
   } else { renderer.render(scene, camera); renderOverlay(renderer, suitcase.overlay); }
 }
 
 addEventListener('resize', () => {
+  renderer.setPixelRatio(quality.pixelRatio()); // (a move to a screen with another pixel ratio)
   renderer.setSize(innerWidth, innerHeight);
   painter?.setSize();
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
+});
+// Sharpness changed, or the cool-down stepped in or out: the same picture with more or fewer pixels
+quality.onChange(() => {
+  const r = quality.pixelRatio();
+  if (renderer.getPixelRatio() !== r) {
+    renderer.setPixelRatio(r);
+    renderer.setSize(innerWidth, innerHeight);
+    painter?.setSize();
+  }
+  pacer?.kick();
 });
 
 // ---- frame pacing (see pacer.js): full rate only while something moves ----
@@ -758,12 +789,14 @@ renderer.domElement.addEventListener('webglcontextrestored', () => { painter?.in
 
 // Deterministic time for screenshots: ?shot, then window.__seek(seconds).
 // brush strokes get placed from every spot the camera visits (nothing in the old looks pays for this)
-painter?.bakeStrokes(scene, paintViews(HOME, STATIONS));
+// (kept between runs: the second start reads them back instead of ~3 s of placing, see strokecache.js)
+const strokesIn = painter?.bakeStrokesCached(scene, paintViews(HOME, STATIONS)) ?? Promise.resolve();
 
 if (shotMode) {
   // let shelves, covers and fonts arrive, then settle all animation (big dt) before the frame is captured
   const waitFor = async (cond, ms) => { const t0 = performance.now(); while (!cond() && performance.now() - t0 < ms) await new Promise((r) => setTimeout(r, 50)); };
   window.__seek = async (t) => {
+    await strokesIn;
     await waitFor(() => shelvesLoaded, 20000);
     await new Promise((r) => setTimeout(r, 300));
     await Promise.all([suitcase.ready(), menu.ready(), ...racks.map((r) => r?.ready())]);
@@ -825,11 +858,12 @@ if (shotMode) {
 } else {
   // Compile the whole scene (hidden parts too) and the suitcase overlay in the background first, and
   // only then start the clock, so the intro never stops for a shader. Capped at 4 s just in case.
+  // The strokes are always in first (read back, or placed: as before the cache, the intro waits for them).
   const warmed = Promise.all([
     warmUp(renderer, scene, camera, scene, painter?.target ?? null),
     warmUp(renderer, suitcase.overlay.scene, suitcase.overlay.camera, suitcase.overlay.scene, painter?.target ?? null, { draw: true }),
   ]);
-  Promise.race([warmed, new Promise((r) => setTimeout(r, 4000))]).catch(() => {}).then(() => {
+  Promise.all([strokesIn, Promise.race([warmed, new Promise((r) => setTimeout(r, 4000))])]).catch(() => {}).then(() => {
     const start = performance.now() - (Number(params.get('t')) || 0) * 1000;
     pacer = createPacer({
       renderer,
@@ -837,6 +871,7 @@ if (shotMode) {
       busy: () => nav.intro || !nav.settled || spread.busy || suitcase.flying || suitcase.tray.active || suitcase.over || suitcase.suitcase.lidMoving,
       // a spinning record on screen wants a smooth turn; otherwise only lanterns and the boil move (Brush strokes: only the ragged border boils; the older looks: all of it)
       idleFps: () => (player?.playerState === 1 && suitcase.tucked < 0.5 ? 30 : 12),
+      quality,
     });
     pacer.start();
   });

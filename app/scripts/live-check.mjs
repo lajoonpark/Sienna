@@ -11,7 +11,7 @@ const server = await createServer({ server: { port, host: '127.0.0.1', strictPor
 await server.listen();
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
   env: { ...process.env, SIENNA_DEV_URL: `http://127.0.0.1:${port}/search-lab.html`, SIENNA_DUMP: '1' },
   timeout: 60000,
 });

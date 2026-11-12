@@ -4,7 +4,8 @@
 import * as THREE from 'three';
 import { paperTexture } from './paint.js';
 import { settings } from './settings.js';
-import { createBrushStrokes } from './brushstrokes.js';
+import { createBrushStrokes, strokeFingerprint } from './brushstrokes.js';
+import { loadStrokes, saveStrokes } from './strokecache.js';
 import { createWatcher } from './still.js';
 
 const BOIL_FPS = 8; // edges re-wobble at a hand-drawn frame rate instead of every frame
@@ -381,6 +382,9 @@ export function renderOverlay(renderer, overlay) {
   renderer.autoClear = auto;
 }
 
+// 2x MSAA from 1.5 pixels per CSS pixel up (Sharpness Balanced or Full on a Retina screen), else 4x
+const msaaFor = (renderer) => (renderer.getPixelRatio() >= 1.5 ? 2 : 4);
+
 // { card: true } turns the unpainted border into a deckle-edged card and makes everything beyond it
 // transparent (for the small frameless window; the renderer needs alpha: true).
 // level: fixed strength; left out, it follows Settings > Painting live (unless ?wc= pins it).
@@ -393,7 +397,7 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
     type: THREE.HalfFloatType,
     // hi-dpi pixels are small enough that 2x MSAA reads the same under the paint, at half the memory traffic
-    samples: renderer.getPixelRatio() >= 2 ? 2 : 4,
+    samples: msaaFor(renderer),
     depthTexture: new THREE.DepthTexture(size.x, size.y),
   });
 
@@ -651,6 +655,7 @@ void main() {
   const canPatch = !card && !!renderer.getContextAttributes?.()?.preserveDrawingBuffer;
   let valid = false;      // the passes hold a whole picture of the last frame
   let lastBoil = -1;
+  let boilHeld = false;   // setBoilHeld: the border stops boiling (deep idle)
   let capBox = null;      // { x, y, w, h } in drawing-buffer px (y up): where worldT holds the world under the overlay
   const stats = { full: 0, overlay: 0, border: 0, skipped: 0 }; // frames by how much was painted (for checks)
   function invalidate() { valid = false; capBox = null; }
@@ -792,17 +797,38 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
   }
   if (follow) settings.on('paint', setLevel);
 
+  // While the first, cached bake is being read, later bakes (a rack revealed) wait for it: strokes are
+  // placed in order, each skipping spots an earlier one took.
+  let firstBake = null;
   function bakeStrokes(world, views) {
+    if (firstBake) { firstBake.then(() => bakeStrokes(world, views)); return; }
     strokeWorld = world;
     strokeViews.push(...views);
     if (brush) brush.strokes.bake(world, views);
     invalidate(); // new strokes: the same world is painted differently now
+  }
+  // The shop's own views, at start: read back from the stroke cache (strokecache.js) when the shop is the
+  // same as when they were placed, else placed now and kept for next time. -> resolves when they are in.
+  function bakeStrokesCached(world, views) {
+    if (!brush || firstBake) { bakeStrokes(world, views); return Promise.resolve(); }
+    strokeWorld = world;
+    strokeViews.push(...views); // (so the first frame does not place strokes of its own meanwhile)
+    const strokes = brush.strokes, fp = strokeFingerprint(world, views);
+    const done = loadStrokes(fp).then((state) => {
+      if (brush?.strokes !== strokes) return; // rebuilt meanwhile: that placed them from strokeViews
+      if (!(state && strokes.load(state))) { strokes.bake(world, views); saveStrokes(fp, strokes.save()); }
+      invalidate();
+    }).catch(() => {}).finally(() => { firstBake = null; });
+    firstBake = done;
+    return done;
   }
 
   return {
     // Brush mode: views ([{ pos, target, fov }]) the camera will see, so strokes get placed there, now
     // (not during a frame). In the other modes they are only kept, for when brush mode is switched on.
     bakeStrokes,
+    // the same, for the shop's own views at start: kept between runs (strokecache.js); -> Promise
+    bakeStrokesCached,
     // cinema bars (0 = none, 1 = full ~2.2:1 letterbox), painted on the sheet inside the ragged border
     setBars(k) { material.uniforms.bars.value = Math.max(0, Math.min(1, k)); },
     get bars() { return material.uniforms.bars.value; },
@@ -833,7 +859,8 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
         scene.matrixWorldAutoUpdate = autoWorld;
       };
 
-      const boil = Math.floor(t * BOIL_FPS) % 64;
+      // deep idle (pacer.js): the border holds its last shape, so a still shop draws nothing
+      const boil = boilHeld && lastBoil >= 0 ? lastBoil : Math.floor(t * BOIL_FPS) % 64;
       u.borderSeed.value = boil * 1.37;
       u.seed.value = brush || L?.still ? 0 : u.borderSeed.value; // dry paint does not boil, but the sheet's ragged border does
       u.near.value = camera.near;
@@ -881,8 +908,10 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
         // keep what is under the overlay, so that frames in which only the overlay moves can redraw it alone
         saveUnder(overlay, rect);
         wholeTarget();
+        sync?.('save');
         renderer.setRenderTarget(target);
         renderOverlay(renderer, overlay);
+        sync?.('overlay');
         u.overlayOn.value = overlay ? 1 : 0;
         u.overBox.value.set(2, 2, 2, 2);
         if (rect && rect.right > rect.left) {
@@ -922,6 +951,8 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     setSize() {
       const s = renderer.getDrawingBufferSize(new THREE.Vector2());
       invalidate();
+      // a new pixel ratio (Sharpness, cool-down) may want another MSAA count: three makes it again on next use
+      if (target.samples !== msaaFor(renderer)) { target.dispose(); target.samples = msaaFor(renderer); }
       target.setSize(s.x, s.y);
       material.uniforms.resolution.value.copy(s);
       // a new pixel ratio (window moved to another screen) changes the wash scale: rebuild
@@ -936,6 +967,8 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     setLevel,
     // the camera is travelling (intro, flights): paint with the cheap half-size washes until it stops
     setMotion(on) { motion = !!on; },
+    // hold the border's boil still (pacer.js deep idle); let go and it boils on from the clock
+    setBoilHeld(on) { boilHeld = !!on; },
     get level() { return level; },
     // the next frame is painted whole (something changed that the painter cannot see for itself)
     invalidate,
