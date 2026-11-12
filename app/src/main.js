@@ -658,6 +658,7 @@ function tickFps() {
   fpsStat.n = 0; fpsStat.since = now; fpsStat.worst = 0;
 }
 
+const FOVEA = params.has('fovea') ? Number(params.get('fovea')) : 0.45; // reach of full detail, share of the height
 let barsK = 1; // the bars' last value, so a skip mid-way never makes them jump back up
 function frame(t, dtOverride, draw = true) {
   // wall-clock time: a slow frame rate must not stretch flights, so allow a long step (nav and racks cope)
@@ -746,6 +747,8 @@ function frame(t, dtOverride, draw = true) {
     const il = introLight.update({ cine: barsK, door: nav.doorOpen(t), camZ: c.pos.z, sunE: sunNow.e });
     painter.setGrade?.(il.grade, il.vignette);
     painter.setBoilHeld?.(!!pacer?.deep);
+    // full paint detail around where you look (the eased cursor), cheaper toward the corners (?fovea=0: off)
+    painter.setFovea?.((tilt.x + 1) / 2, 1 - (tilt.y + 1) / 2, FOVEA);
     const whole = painter.stats.full;
     painter.render(scene, camera, t, suitcase.overlay);
     // something changed while nothing was moving (a cover arrived, the sun crept): full rate for a moment

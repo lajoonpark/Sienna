@@ -6,8 +6,13 @@ import { paperTexture } from './paint.js';
 import { settings } from './settings.js';
 import { createBrushStrokes, strokeFingerprint } from './brushstrokes.js';
 import { loadStrokes, saveStrokes } from './strokecache.js';
+import { packStrokes } from './strokepack.js';
+const EXPORT_STROKES = new URLSearchParams(globalThis.location?.search ?? '').has('bakeexport');
 import { createWatcher } from './still.js';
 
+// The brush strokes are laid at this share of the CSS-pixel size (they are soft marks; the final pass reads
+// them smoothly). ?brushscale=0.75 to try others.
+const BRUSH_SCALE = Number(new URLSearchParams(globalThis.location?.search ?? '').get('brushscale')) || 0.75;
 const BOIL_FPS = 8; // edges re-wobble at a hand-drawn frame rate instead of every frame
 // The ragged paper border: how far its edge wanders, and how wide the paint fades out along it (shares
 // of the picture's height). Past BORDER_REACH from the sheet's edge the border never shows, so a frame in
@@ -182,6 +187,7 @@ uniform sampler2D tOver;  // brush mode: the suitcase overlay's own wash, inside
 uniform float overlayOn;
 uniform vec4 overBox;
 uniform float grainAmt;
+uniform vec3 fovea;       // where you look (uv x, y) and how far full detail reaches (share of the height); z 0 = everywhere
 varying vec2 vUv;
 float ovMask = 0.0;
 
@@ -234,20 +240,34 @@ void main() {
     }
   }
 #endif
+  // Sharp only where you look (other-optimizations, C4): away from the cursor the wet pooling reads 4 taps
+  // instead of 8 and the colour edges are left to the depth edges, so the far corners cost about half.
+  float periph = fovea.z > 0.0 ? smoothstep(fovea.z, fovea.z * 1.7, length((vUv - fovea.xy) * vec2(aspect, 1.0))) : 0.0;
   vec3 sharp = washAt(uv);
   vec3 soft = sharp;
   float j = hash(gl_FragCoord.xy + seed) * 6.2831;
-  for (int i = 0; i < 8; i++) {
-    float a = j + float(i) * 0.7854;
-    soft += washAt(uv + vec2(cos(a), sin(a)) * px * 3.0);
+  if (periph < 0.999) {
+    for (int i = 0; i < 8; i++) {
+      float a = j + float(i) * 0.7854;
+      soft += washAt(uv + vec2(cos(a), sin(a)) * px * 3.0);
+    }
+    soft /= 9.0;
+  } else {
+    for (int i = 0; i < 4; i++) {
+      float a = j + float(i) * 1.5708;
+      soft += washAt(uv + vec2(cos(a), sin(a)) * px * 3.0);
+    }
+    soft /= 5.0;
   }
-  soft /= 9.0;
   vec3 col = mix(sharp, soft, 0.2);
 
   // 3. hard wash edges: where one wash meets another, pigment dries darker at the rim
-  float lx = lum(washAt(uv + vec2(px.x * 2.0, 0.0))) - lum(washAt(uv - vec2(px.x * 2.0, 0.0)));
-  float ly = lum(washAt(uv + vec2(0.0, px.y * 2.0))) - lum(washAt(uv - vec2(0.0, px.y * 2.0)));
-  float cEdge = smoothstep(0.03, 0.16, length(vec2(lx, ly)));
+  float cEdge = 0.0;
+  if (periph < 0.999) {
+    float lx = lum(washAt(uv + vec2(px.x * 2.0, 0.0))) - lum(washAt(uv - vec2(px.x * 2.0, 0.0)));
+    float ly = lum(washAt(uv + vec2(0.0, px.y * 2.0))) - lum(washAt(uv - vec2(0.0, px.y * 2.0)));
+    cEdge = smoothstep(0.03, 0.16, length(vec2(lx, ly))) * (1.0 - periph);
+  }
   float d = depthAt(uv);
   float dx = depthAt(uv + vec2(px.x * 1.5, 0.0)) - depthAt(uv - vec2(px.x * 1.5, 0.0));
   float dy = depthAt(uv + vec2(0.0, px.y * 1.5)) - depthAt(uv - vec2(0.0, px.y * 1.5));
@@ -429,6 +449,7 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
       overlayOn: { value: 0 },
       overBox: { value: new THREE.Vector4(2, 2, 2, 2) },
       grainAmt: { value: 1 },
+      fovea: { value: new THREE.Vector3(0.5, 0.5, 0) },
     },
     depthTest: false,
     depthWrite: false,
@@ -505,7 +526,7 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
   const strokeViews = [];
   let strokeWorld = null;
   function makeBrush() {
-    const scale = washScale();
+    const scale = washScale() * BRUSH_SCALE;
     const ws = washSize(renderer.getDrawingBufferSize(new THREE.Vector2()), scale);
     const refT = new THREE.WebGLRenderTarget(ws.x, ws.y, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, depthBuffer: false });
     const paintT = new THREE.WebGLRenderTarget(ws.x, ws.y, { type: THREE.HalfFloatType, depthBuffer: false });
@@ -524,6 +545,7 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
       strokes,
       render(pan, camera, sync) {
         strokes.setPan(pan.x, pan.y);
+        strokes.setFovea(material.uniforms.fovea.value);
         strokes.setCamera(camera);
         for (const [t, sc, name] of steps) { renderer.setRenderTarget(t); renderer.render(sc, postCam); sync?.(name); }
       },
@@ -661,7 +683,7 @@ void main() {
   function invalidate() { valid = false; capBox = null; }
   const last = { world: false, overlay: false, rest: false, shadows: false, valid: false }; // what the last frame found new (for checks)
   // everything else a frame depends on: the same values as last frame?
-  const key = new Float64Array(14);
+  const key = new Float64Array(15);
   function keySame(vals) {
     let same = true;
     for (let i = 0; i < key.length; i++) { const v = vals[i] ?? 0; if (key[i] !== v) { key[i] = v; same = false; } }
@@ -800,6 +822,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
   // While the first, cached bake is being read, later bakes (a rack revealed) wait for it: strokes are
   // placed in order, each skipping spots an earlier one took.
   let firstBake = null;
+  let exported = null;
   function bakeStrokes(world, views) {
     if (firstBake) { firstBake.then(() => bakeStrokes(world, views)); return; }
     strokeWorld = world;
@@ -817,6 +840,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     const done = loadStrokes(fp).then((state) => {
       if (brush?.strokes !== strokes) return; // rebuilt meanwhile: that placed them from strokeViews
       if (!(state && strokes.load(state))) { strokes.bake(world, views); saveStrokes(fp, strokes.save()); }
+      if (EXPORT_STROKES) exported = packStrokes(fp, strokes.save()); // scripts/bake-strokes.mjs
       invalidate();
     }).catch(() => {}).finally(() => { firstBake = null; });
     firstBake = done;
@@ -829,6 +853,8 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     bakeStrokes,
     // the same, for the shop's own views at start: kept between runs (strokecache.js); -> Promise
     bakeStrokesCached,
+    // ?bakeexport: the first bake, packed (strokepack.js), for scripts/bake-strokes.mjs
+    get strokeExport() { return exported; },
     // cinema bars (0 = none, 1 = full ~2.2:1 letterbox), painted on the sheet inside the ragged border
     setBars(k) { material.uniforms.bars.value = Math.max(0, Math.min(1, k)); },
     get bars() { return material.uniforms.bars.value; },
@@ -883,8 +909,9 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       const worldSame = !worldNew && !shadows;
       const overSame = !watchOver.changed(overlay?.scene ?? null, overlay?.camera ?? null);
       const g = u.grade.value;
+      const fv = u.fovea.value;
       const restSame = keySame([u.bars.value, g.x, g.y, g.z, u.vignette.value, camera.near, camera.far, overlay ? 1 : 0,
-        rect?.left, rect?.right, rect?.top, rect?.bottom, motion ? 1 : 0]);
+        rect?.left, rect?.right, rect?.top, rect?.bottom, motion ? 1 : 0, fv.x + fv.y * 7.31 + fv.z * 53.7]);
       const same = valid && worldSame && restSame;
       last.world = !worldSame; last.overlay = !overSame; last.rest = !restSame; last.shadows = shadows; last.valid = valid;
       const boiled = boil !== lastBoil;
@@ -969,6 +996,8 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     setMotion(on) { motion = !!on; },
     // hold the border's boil still (pacer.js deep idle); let go and it boils on from the clock
     setBoilHeld(on) { boilHeld = !!on; },
+    // where you look: uv x, y (0..1, y up) and the reach of full detail (share of the height; 0 = all of it)
+    setFovea(x, y, r) { material.uniforms.fovea.value.set(x, y, r); },
     get level() { return level; },
     // the next frame is painted whole (something changed that the painter cannot see for itself)
     invalidate,
@@ -978,7 +1007,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     get why() { return watchWorld.why; },
     get last() { return { ...last, saved: !!capBox }; },
     // strokes placed so far, per layer (Brush strokes), and how many their buffers hold
-    get strokes() { return brush ? { counts: brush.strokes.counts, caps: brush.strokes.caps } : null; },
+    get strokes() { return brush ? { counts: brush.strokes.counts, caps: brush.strokes.caps, scene: brush.strokes.scene } : null; },
     // where the world is drawn: warm-up compiles must use it too (it picks the shader's output variant)
     get target() { return target; },
   };

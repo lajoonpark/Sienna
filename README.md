@@ -130,7 +130,13 @@ node scripts/tear-check.mjs                # torn paper edges never reach the te
 node scripts/account-check.mjs out_dir     # Settings rail + Account page: switch, sign out (fake store)
 node scripts/frame-bench.mjs home,0 2      # ms per whole frame on the GPU (Retina size)
 node scripts/idle-check.mjs                # drops to idle, then deep idle, wakes on input
+node scripts/bake-strokes.mjs              # (other-optimizations) bake the brush strokes shipped in strokes/
 ```
+
+On the `other-optimizations` branch (experiments, see `app/README.md`): walls are flat cards, strokes are laid on a
+smaller canvas and fewer far away, full paint detail follows the cursor, the strokes ship pre-placed, and the hidden
+YouTube Music page skips pictures. Playing music without that page (it costs ~320 MB) would mean fetching the audio
+streams directly, which skips YouTube's ads and breaks whenever YouTube changes things, so it waits for a decision.
 
 ## Not done yet
 
