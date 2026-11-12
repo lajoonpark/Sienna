@@ -215,16 +215,19 @@ function shopFront(kit, root) {
   drainpipe(kit, M, 0.15, h);
   drainpipe(kit, M, w - 0.15, h);
 
-  // the wall is deep: line the openings so you never see into the gap
+  // the wall is deep: line the openings so you never see into the gap. The lining stands REVEAL_IN inside the
+  // opening: flush with it, its face lay exactly on the mortar backing's cut and the bricks' ends, and the two
+  // fought over every pixel there (the arches and jambs flickered whenever the camera moved).
   const reveal = toon('#e0c9a0');
+  const REVEAL_IN = 0.012;
   for (const o of [door, ...wins]) {
-    const r0 = o.w / 2, spring = o.y + o.h - r0;
+    const r0 = o.w / 2, spring = o.y + o.h - r0, ri = r0 - REVEAL_IN;
     const outer = new THREE.Shape();
     outer.moveTo(o.x - r0 - 0.08, o.y - 0.05); outer.lineTo(o.x + r0 + 0.08, o.y - 0.05); outer.lineTo(o.x + r0 + 0.08, spring);
     outer.absarc(o.x, spring, r0 + 0.08, 0, Math.PI, false); outer.closePath();
     const hole = new THREE.Path();
-    hole.moveTo(o.x - r0, o.y); hole.lineTo(o.x + r0, o.y); hole.lineTo(o.x + r0, spring);
-    hole.absarc(o.x, spring, r0, 0, Math.PI, false); hole.closePath();
+    hole.moveTo(o.x - ri, o.y); hole.lineTo(o.x + ri, o.y); hole.lineTo(o.x + ri, spring);
+    hole.absarc(o.x, spring, ri, 0, Math.PI, false); hole.closePath();
     outer.holes.push(hole);
     const g = new THREE.ExtrudeGeometry(outer, { depth: 0.5, bevelEnabled: false, curveSegments: 20 });
     g.translate(0, 0, -0.55);
