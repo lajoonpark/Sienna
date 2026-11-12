@@ -8,8 +8,10 @@
 // Each dab stands up off the canvas: the brush sheet holds a height, and the room's light, from the upper
 // left of the canvas, rakes across its ridges (after blendi's oil-paint demo, MIT: patch.gg/blendi/oil-paint).
 //
-// What has no dabs (records, the door, anything that moves, the gaps) shows the scene as drawn; crisp
-// things (covers, labels) and the suitcase overlay always do.
+// Wherever the placed dabs leave canvas showing (they are capped in size, and none are placed on mortar lines,
+// thin edges or rails), an under-coat of smaller dabs, worked out per pixel on the surface's own plane, fills
+// it (UNDER). What moves (records and their discs) has neither and shows the scene as drawn; crisp things
+// (covers, labels) and the suitcase overlay always do.
 //
 //   const oil = createOilPaint(renderer, strokes, sceneTarget)   // strokes = createBrushStrokes(...)
 //   oil.render(world, camera)       // dabs into oil.texture (premultiplied, linear)
@@ -31,6 +33,26 @@ const OIL_LAYERS = params.get('oillayers')?.split(',').map(Number) ?? [1, 1, 0];
 const MAX_SIZE = params.get('oilmax')?.split(',').map(Number) ?? [0.045, 0.11];
 // the share of each layer's strokes painted (coat, medium, fine); ?oilkeep=0.5,0.7,1
 const OIL_KEEP = params.get('oilkeep')?.split(',').map(Number) ?? [0.55, 0.7, 1];
+// A stroke's patch can be laid as up to this many dabs along and across (a dab is capped by MAX_SIZE, the patch
+// is not), STEP apart (shares of a dab's length and width: its paint fills about 0.8 of its quad along and
+// 0.6 across, so these overlap). Off (1 x 1) by default: the strokes overlap so much (each spot lies under
+// ~20 of them, placed from views at other distances) that filling every patch doubled the frame and still
+// left the edges, mortar and rails bare; the under-coat (UNDER) fills the canvas they leave instead.
+// ?oilsub=4,3  ?oilstep=0.6,0.5  (and ROW_SPAN, below)
+const [SUB_ALONG, SUB_ACROSS] = params.get('oilsub')?.split(',').map(Number) ?? [1, 1];
+const STEP = params.get('oilstep')?.split(',').map(Number) ?? [0.6, 0.5];
+// The under-coat: wherever the placed strokes leave canvas showing (mortar lines, the edges of boards, rails,
+// the street through the door), dabs pinned to the surface itself, worked out per pixel from where it is in
+// the world: a grid of dabs laid on the surface's plane, about this big on screen (share of its height),
+// each one colour (the scene where its middle lies) with the paint's ridges. The placed dabs go over it.
+// ?under=0.035 (size), ?under=0 for none
+const UNDER = params.get('under') === '0' ? new THREE.Vector2(0.035, 0) : new THREE.Vector2(Number(params.get('under')) || 0.035, 1);
+// Dabs are depth tested against the scene (its depth, brought down to the dabs' size), pulled this far toward
+// the eye (metres, plus a share of the distance) so a dab on its own face passes: the GPU then skips the
+// parts of dabs hidden behind something before working them out. ?oilbias=0.02,0.004
+const BIAS = params.get('oilbias')?.split(',').map(Number) ?? [0.02, 0.004];
+// how much of its row a stroke's patch spans across (1 = rows just touch); ?oilrow=1.5
+const ROW_SPAN = Number(params.get('oilrow')) || 1.5;
 const MAX_POINTS = 8;
 const ATLAS_COLS = 4, ATLAS_ROWS = 2;
 
@@ -150,6 +172,7 @@ attribute vec4 aTan;         // direction along the surface, random
 attribute vec4 aNor;         // surface normal, random
 attribute vec4 aShape;       // length and width fitted to the shape it sits on, and the room the shape leaves there (metres)
 attribute vec4 aCol;         // its object's paint, and how it is lit (1 lights, 0 glows, -1 never painted)
+attribute float sub;         // which of the stroke's dabs this quad is (SUB_ALONG along x SUB_ACROSS across)
 uniform sampler2D tDepth;
 uniform mat4 viewProj;
 uniform vec3 eye;
@@ -162,6 +185,10 @@ uniform vec2 shape;          // OIL_SHAPE: wider, shorter
 uniform int hiddenOwn;        // bit k: station furniture k is hidden (a rack stands there)
 uniform float keep;          // the share of this layer's strokes painted as dabs
 uniform vec2 maxSize;        // the most a dab may be across and along, in shares of the screen's height
+uniform float rowGap;        // this layer's rows on a surface, apart (shares of the stroke's length)
+const float ROW_SPAN = ${ROW_SPAN.toFixed(3)};
+const vec2 BIAS = vec2(${BIAS[0].toFixed(4)}, ${BIAS[1].toFixed(4)});
+const float STEP_ALONG = ${STEP[0].toFixed(3)}, STEP_ACROSS = ${STEP[1].toFixed(3)};
 varying vec2 vAtlas;
 varying vec3 vC1;
 varying vec3 vC2;
@@ -194,37 +221,66 @@ void main() {
   // a dab too small or too big on screen for this layer is not faded (oil does not go thin): it shrinks away
   float grow = smoothstep(minSize * 0.6, minSize, onScreen) * (1.0 - smoothstep(window.y, window.y * 1.5, onScreen));
   if (grow <= 0.02) return;
-  float bias = 0.05 + 0.012 * clipA.w;
-  vec2 ua = clamp(a, 0.0, 1.0);
+  grow = sqrt(grow);
+
+  // The patch of surface this stroke answers for: its fitted length along, its own row across (a little more,
+  // so the rows meet), never past the edges of the thing it is on (the room its face leaves round it,
+  // measured when it was placed).
+  float r1 = aNor.w, r2 = fract(aNor.w * 7.13);
+  float patchL = min(aShape.x * shape.y * (0.92 + 0.16 * r1), aShape.z) * grow;
+  float patchW = min(min(aShape.y * shape.x, max(aPos.w * rowGap * ROW_SPAN, aShape.y)), aShape.w) * grow;
+  // A dab is never bigger on the canvas than a brush that size could lay (far walls get broad dabs, not
+  // smears), and no wider than most of its length. So the patch is laid as a few dabs side by side and end to
+  // end, as many as it takes to leave no canvas showing, each overlapping the last.
+  float px = clipA.w * heightAt1m;
+  float dl = min(patchL, maxSize.y * px), dw = min(min(patchW, maxSize.x * px), dl * 0.75);
+  float nA = clamp(ceil((patchL - dl) / (dl * STEP_ALONG) - 0.05) + 1.0, 1.0, ${SUB_ALONG}.0);
+  float nC = clamp(ceil((patchW - dw) / (dw * STEP_ACROSS) - 0.05) + 1.0, 1.0, ${SUB_ACROSS}.0);
+  // (more than that is too many: the few there are grow until they meet)
+  if (${SUB_ALONG * SUB_ACROSS} > 1) {
+    dl = max(dl, patchL / (1.0 + STEP_ALONG * (nA - 1.0)));
+    dw = max(dw, patchW / (1.0 + STEP_ACROSS * (nC - 1.0)));
+  }
+  float si = mod(sub, ${SUB_ALONG}.0), sj = floor(sub / ${SUB_ALONG}.0);
+  if (si >= nA || sj >= nC) return;
+  // this dab's own hand: where in the patch, a little off true, its own load and its own brush
+  float h1 = fract(sin(sub * 12.9898 + aTan.w * 78.233) * 43758.5453), h2 = fract(h1 * 9.31 + aNor.w), h3 = fract(h1 * 4.77 + aTan.w * 3.1);
+  float ou = nA > 1.0 ? (si / (nA - 1.0) - 0.5) * (patchL - dl) + (h2 - 0.5) * 0.18 * dl : 0.0;
+  float ov = nC > 1.0 ? (sj / (nC - 1.0) - 0.5) * (patchW - dw) + (h3 - 0.5) * 0.14 * dw : 0.0;
+  vec3 side0 = cross(aNor.xyz, aTan.xyz);
+  vec3 P = aPos.xyz + aTan.xyz * ou + side0 * ov;
+  float turn = (h1 - 0.5) * 0.22;
+  vec3 tanD = aTan.xyz * cos(turn) + side0 * sin(turn);
+  float r3 = fract(aTan.w * 5.37 + h2), r4 = fract(aTan.w * 11.9 + h3);
+  // hidden here (behind something in front): no dab. Looked for at its own middle, so the dabs of a stroke
+  // half behind a post still paint the half that shows
+  vec4 clipP = viewProj * vec4(P, 1.0);
+  if (clipP.w < 0.15) return;
+  vec2 ua = clamp(clipP.xy / clipP.w * 0.5 + 0.5, 0.0, 1.0);
+  float bias = 0.05 + 0.012 * clipP.w;
   float seen = 0.0;
   for (int i = 0; i < 4; i++) {
     vec2 o = vec2(i < 2 ? -0.006 : 0.006, (i == 0 || i == 2) ? -0.009 : 0.009);
-    seen += step(clipA.w - bias, sceneDepth(clamp(ua + o, 0.0, 1.0))) * 0.25;
+    seen += step(clipP.w - bias, sceneDepth(clamp(ua + o, 0.0, 1.0))) * 0.25;
   }
   if (seen < 0.25) return;
-  grow = sqrt(grow);
-
-  float r1 = aNor.w, r2 = fract(aNor.w * 7.13), r3 = fract(aTan.w * 5.37), r4 = fract(aTan.w * 11.9);
-  // fatter and shorter than the stroke placed there, but never past the edges of the thing it is on: the room
-  // its face leaves round it (measured when it was placed) is the most it may cover
-  float len = min(aShape.x * shape.y * (0.8 + 0.2 * r1), aShape.z) * grow;
-  float wid = min(min(aShape.y * shape.x * (0.85 + 0.3 * r2), aShape.x * 0.75), aShape.w) * grow;
-  // never bigger on the canvas than a brush that size could lay (far walls get broad dabs, not smears)
-  float px = clipA.w * heightAt1m;
-  len = min(len, maxSize.y * px);
-  wid = min(wid, maxSize.x * px);
-  float bend = (fract(aNor.w * 11.3) - 0.5) * 0.5;
+  float len = dl * (0.92 + 0.16 * h3), wid = dw * (0.9 + 0.2 * h2);
+  float bend = (fract(aNor.w * 11.3 + h1) - 0.5) * 0.5;
   vec2 lp = vec2(position.x, position.y + bend * (position.x * position.x - 0.15));
-  vec3 side = cross(aNor.xyz, aTan.xyz);
+  vec3 side = cross(aNor.xyz, tanD);
   // (in its plane exactly: dabs are not depth tested, the fragment shader keeps them to their face)
-  vec3 world = aPos.xyz + aTan.xyz * lp.x * len + side * lp.y * wid;
+  vec3 world = P + tanD * lp.x * len + side * lp.y * wid;
   gl_Position = viewProj * vec4(world, 1.0);
   vDepth = gl_Position.w;
+  // tested against the scene's depth a little nearer than it lies (BIAS): its own face never hides it
+  vec3 toEye = eye - world;
+  vec4 nearer = viewProj * vec4(world + toEye * min(0.5, (BIAS.x + BIAS.y * vDepth) / max(length(toEye), 1e-3)), 1.0);
+  gl_Position.z = nearer.z / nearer.w * gl_Position.w;
   vPlane = abs(dot(aPos.xyz - eye, aNor.xyz));
 
   // its paint, lit where it lies
-  vec3 c = lit > 0.5 ? aCol.rgb * shopLight(aPos.xyz, aNor.xyz) : aCol.rgb;
-  if (fogRange.y > 0.0) c = mix(c, fogColor, smoothstep(fogRange.x, fogRange.y, clipA.w));
+  vec3 c = lit > 0.5 ? aCol.rgb * shopLight(P, aNor.xyz) : aCol.rgb;
+  if (fogRange.y > 0.0) c = mix(c, fogColor, smoothstep(fogRange.x, fogRange.y, clipP.w));
   // no two loads alike: a little lighter or darker, leaning warm or cool, as if the brush was not rinsed
   c *= (0.9 + 0.2 * r3) * mix(vec3(1.05, 1.0, 0.93), vec3(0.94, 1.0, 1.07), r4);
   vC1 = c;
@@ -232,13 +288,13 @@ void main() {
   vC2 = r2 > 0.5 ? c * vec3(1.16, 1.1, 1.0) + 0.012 : c * vec3(0.8, 0.84, 0.92);
 
   // which way it runs on the canvas, for the light raking across its ridges
-  vec4 clipB = viewProj * vec4(aPos.xyz + aTan.xyz * len * 0.5, 1.0);
-  vec2 along = (clipB.xy / clipB.w - clipA.xy / clipA.w) * vec2(aspect, 1.0);
+  vec4 clipB = viewProj * vec4(P + tanD * len * 0.5, 1.0);
+  vec2 along = (clipB.xy / clipB.w - clipP.xy / clipP.w) * vec2(aspect, 1.0);
   along = dot(along, along) > 1e-10 ? normalize(along) : vec2(1.0, 0.0);
   vec2 across = vec2(-along.y, along.x);
-  float flip = fract(aTan.w * 3.1) > 0.5 ? -1.0 : 1.0;
+  float flip = fract(aTan.w * 3.1 + h2) > 0.5 ? -1.0 : 1.0;
   vAxis = vec4(along, across * flip);
-  float cell = floor(aTan.w * 97.0);
+  float cell = floor(fract(aTan.w + h1) * 97.0);
   vec2 id = vec2(mod(cell, ${ATLAS_COLS}.0), mod(floor(cell / ${ATLAS_COLS}.0), ${ATLAS_ROWS}.0));
   vec2 q = vec2(uv.x, flip > 0.0 ? uv.y : 1.0 - uv.y);
   vAtlas = (id + q) / vec2(${ATLAS_COLS}.0, ${ATLAS_ROWS}.0);
@@ -252,6 +308,7 @@ uniform sampler2D tScene;     // the scene as drawn (linear)
 uniform vec2 clipRange;
 uniform vec2 screen;         // size of the target the dabs are drawn into
 uniform float impasto;
+uniform vec2 agree;          // for checks (scripts/oil-cover-check.mjs): x 0 = no plane cut, y 0 = no colour check
 varying vec2 vAtlas;
 varying vec3 vC1;
 varying vec3 vC2;
@@ -263,6 +320,10 @@ float sceneDepth(vec2 uv) {
   return (2.0 * clipRange.x * clipRange.y) / (clipRange.y + clipRange.x - z * (clipRange.y - clipRange.x));
 }
 void main() {
+#ifdef COUNT
+  // (scripts/oil-cover-check.mjs: how many dab fragments a pixel works out)
+  gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); return;
+#endif
   vec4 t = texture2D(tAtlas, vAtlas);   // paint, streak, slope along, slope across
   if (t.r < 0.3) discard;
   // Its own face only, to about a centimetre: what is drawn at this pixel must lie on the dab's plane (the
@@ -271,12 +332,12 @@ void main() {
   vec2 uv = gl_FragCoord.xy / screen;
   float off = vPlane * abs(sceneDepth(uv) / vDepth - 1.0);
   float tol = 0.006 + 0.0015 * vDepth;
-  float own = 1.0 - smoothstep(tol, tol * 1.8, off);
+  float own = agree.x < 0.5 ? 1.0 : 1.0 - smoothstep(tol, tol * 1.8, off);
   if (own <= 0.0) discard;
   // and only where the scene agrees it is this paint: a dab stops where something it does not know about
   // is drawn on its surface (a lit window, glass, a sign), as a careful hand paints round it
   vec3 there = sqrt(max(texture2D(tScene, uv).rgb, 0.0)), mine = sqrt(max(vC1, 0.0));
-  own *= 1.0 - smoothstep(0.26, 0.4, length(there - mine));
+  if (agree.y > 0.5) own *= 1.0 - smoothstep(0.26, 0.4, length(there - mine));
   if (own <= 0.0) discard;
   // the paint stands up off the canvas, and the room's light, from the upper left, rakes across it
   vec2 g = vAxis.xy * (t.b - 0.5) * 0.5 + vAxis.zw * (t.a - 0.5) * 0.5;
@@ -284,7 +345,144 @@ void main() {
   vec3 col = mix(vC1, vC2, smoothstep(0.52, 0.78, t.g));
   col *= 1.0 + rake * 2.5 * impasto;
   col += vec3(1.0, 0.97, 0.9) * pow(max(rake, 0.0), 2.0) * 1.6 * impasto * (0.3 + dot(col, vec3(0.3, 0.5, 0.2)));
-  gl_FragColor = vec4(max(col, 0.0), smoothstep(0.3, 0.62, t.r) * own);
+  float a = smoothstep(0.3, 0.62, t.r) * own;
+  gl_FragColor = vec4(max(col, 0.0), a);
+}
+`;
+
+// The under-coat (see UNDER) and the scene's depth (see depthDown), in one pass.
+const underFragment = /* glsl */ `
+uniform sampler2D tDepth;
+uniform sampler2D tScene;
+uniform sampler2D tAtlas;
+uniform vec2 texel;          // one paint-target pixel, in uv
+uniform vec2 full;           // one scene pixel, in uv
+uniform mat4 projInv;
+uniform mat4 viewInv;
+uniform mat4 viewProj;
+uniform vec3 eye;
+uniform float heightAt1m;
+uniform float aspect;
+uniform vec2 under;          // dab size (share of the screen's height), on (1) or off (0)
+uniform float impasto;
+varying vec2 vUv;
+const float COLS = ${ATLAS_COLS}.0, ROWS = ${ATLAS_ROWS}.0;
+// A dab's quad, in cells (the paint fills about 0.85 of it along, 0.6 across), and how far off its cell's
+// middle it may sit: small enough that the painted part never reaches past the 2 x 2 cells nearest a pixel,
+// so only those four are looked at.
+const float LEN = 1.5, WID = 1.2, JITTER = 0.3;
+vec3 worldAt(vec2 uv) {
+  float z = texture2D(tDepth, uv).x * 2.0 - 1.0;
+  vec4 v = projInv * vec4(uv * 2.0 - 1.0, z, 1.0);
+  return (viewInv * vec4(v.xyz / v.w, 1.0)).xyz;
+}
+// (hashes without sine: cheaper, and the same on every GPU)
+float h21(vec2 p) { vec3 p3 = fract(p.xyx * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+vec2 h22(vec2 p) { vec3 p3 = fract(p.xyx * vec3(0.1031, 0.1030, 0.0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz) * p3.zy); }
+void main() {
+  // the depth, for the dabs' test
+  vec2 o = texel * 0.25;
+  gl_FragDepth = max(max(texture2D(tDepth, vUv + vec2(-o.x, -o.y)).x, texture2D(tDepth, vUv + vec2(o.x, -o.y)).x),
+                     max(texture2D(tDepth, vUv + vec2(-o.x, o.y)).x, texture2D(tDepth, vUv + vec2(o.x, o.y)).x));
+  gl_FragColor = vec4(0.0);
+  if (under.y < 0.5) return;
+  vec4 here = texture2D(tScene, vUv);
+  float z0 = texture2D(tDepth, vUv).x;
+  // the sky, crisp things (alpha 0) and things that move (alpha 0.99, materials.js unpinned): as drawn
+  if (z0 >= 0.99999 || here.a < 0.995) return;
+  // where this pixel is, and which way its surface faces (from the nearer neighbour each way, so an edge
+  // does not bend it)
+  vec3 P = worldAt(vUv);
+  vec3 px1 = worldAt(vUv + vec2(full.x, 0.0)) - P, px0 = P - worldAt(vUv - vec2(full.x, 0.0));
+  vec3 py1 = worldAt(vUv + vec2(0.0, full.y)) - P, py0 = P - worldAt(vUv - vec2(0.0, full.y));
+  vec3 dx = dot(px1, px1) < dot(px0, px0) ? px1 : px0, dy = dot(py1, py1) < dot(py0, py0) ? py1 : py0;
+  vec3 N = normalize(cross(dx, dy));
+  float dist = length(P - eye);
+  // the surface's grid: on the plane of the axis it faces most (so it holds still as the camera moves)
+  vec3 an = abs(N);
+  int ax = an.x > an.y && an.x > an.z ? 0 : an.y > an.z ? 1 : 2;
+  vec3 U = ax == 0 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0), V = ax == 1 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+  vec3 W = ax == 0 ? vec3(1.0, 0.0, 0.0) : ax == 1 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+  vec2 q = vec2(dot(P, U), dot(P, V));
+  // its cells: about UNDER of the screen's height wherever they are, a power of two in metres, so they only
+  // ever halve or double (and then dab by dab, not all at once)
+  float oct = log2(max(under.x * dist * heightAt1m, 1e-4) / 0.05);
+  float o0 = floor(oct);
+  float bestR = -1.0;
+  vec4 bestT = vec4(0.0);
+  vec2 bestC = vec2(0.0), bestA = vec2(1.0, 0.0);
+  float bestS = 1.0;
+  float fbOff = 1e9, fbS = 1.0;
+  vec2 fbC = q, fbA = vec2(1.0, 0.0);
+  for (int k = 0; k < 2; k++) {   // this octave and the next
+    float ok = o0 + float(k), s = 0.05 * exp2(ok);
+    // (the sheet's level for a dab this size on screen: no shimmer, no blur)
+    float lod = max(0.0, log2(256.0 * dist * heightAt1m * texel.y / (s * LEN)));
+    for (int layer = 0; layer < 2; layer++) {   // two grids, half a cell apart
+      vec2 shift = layer == 1 ? vec2(0.5) : vec2(0.0);
+      vec2 g = q / s + shift;
+      vec2 base = floor(g - 0.5);
+      for (int c = 0; c < 4; c++) {
+        vec2 cell = base + vec2(float(c & 1), float(c >> 1));
+        vec2 id = cell + vec2(float(layer) * 31.7 + ok * 7.1, float(ax) * 13.3);
+        float r = h21(id + 5.3);
+        if (r < bestR) continue;   // under one already found
+        vec2 j = h22(id);
+        vec2 cen = cell + 0.5 + (j - 0.5) * JITTER;
+        // which way it runs: mostly one way per grid, as a hand lays them (no trig: a slope, normalised)
+        vec2 al = normalize(vec2(1.0, (j.y - j.x) * 0.6 + (layer == 1 ? 0.5 : -0.35))), ac = vec2(-al.y, al.x);
+        vec2 d = g - cen;
+        float u = dot(d, al) / LEN + 0.5, v = dot(d, ac) / WID + 0.5;
+        // (the nearest dab, in case none has paint here: its colour, without its ridges, fills the hole)
+        vec2 qc = (cen - shift) * s;
+        float off = max(abs(u - 0.5) * LEN, abs(v - 0.5) * WID);
+        if (bestR < 0.0 && off < fbOff) { fbOff = off; fbC = qc; fbA = al; fbS = s; }
+        if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) continue;
+        // the octave where its middle is: it is there for the near half of that octave's dabs and the far half
+        // of the next one's, so the cells halve and double dab by dab (log2 of a ratio this near 1, by series)
+        vec3 C = P + U * (qc.x - q.x) + V * (qc.y - q.y);
+        C -= W * dot(C - P, N) / max(abs(dot(W, N)), 0.3) * sign(dot(W, N));
+        float x = length(C - eye) / dist - 1.0;
+        float f = oct + 1.442695 * x * (1.0 - 0.5 * x) - ok;   // in [-1, 1) where it may be shown
+        if (f >= 1.0 || f < -1.0) continue;
+        float h = h21(id + 9.1);
+        if (f >= 0.0 ? h < f : h >= 1.0 + f) continue;
+        float cellA = floor(h21(id + 4.4) * 97.0);
+        vec2 aid = vec2(mod(cellA, COLS), mod(floor(cellA / COLS), ROWS));
+        vec4 t = textureLod(tAtlas, (aid + vec2(u, v)) / vec2(COLS, ROWS), lod);
+        if (t.r < 0.3) continue;
+        bestR = r; bestT = t; bestC = qc; bestA = al; bestS = s;
+      }
+    }
+  }
+  if (bestR < 0.0) { bestC = fbC; bestA = fbA; bestS = fbS; bestT = vec4(0.5); }
+  // its colour: the scene where its middle lies, if that is this same surface (else this pixel's own)
+  vec3 C = P + U * (bestC.x - q.x) + V * (bestC.y - q.y);
+  C -= W * dot(C - P, N) / max(abs(dot(W, N)), 0.3) * sign(dot(W, N));
+  vec4 cc = viewProj * vec4(C, 1.0);
+  vec2 cuv = cc.xy / cc.w * 0.5 + 0.5;
+  vec3 col = here.rgb;
+  if (cc.w > 0.1 && cuv.x > 0.0 && cuv.x < 1.0 && cuv.y > 0.0 && cuv.y < 1.0) {
+    vec3 Q = worldAt(cuv);
+    vec4 there = texture2D(tScene, cuv);
+    if (abs(dot(Q - C, N)) < 0.01 + 0.004 * dist && there.a > 0.5) col = mix(here.rgb, there.rgb, 0.85);
+  }
+  float r3 = h21(bestC * 3.1), r4 = h21(bestC * 5.7 + 1.0);
+  col *= (0.93 + 0.14 * r3) * mix(vec3(1.04, 1.0, 0.95), vec3(0.95, 1.0, 1.05), r4);
+  vec3 col2 = r3 > 0.5 ? col * vec3(1.16, 1.1, 1.0) + 0.012 : col * vec3(0.8, 0.84, 0.92);
+  // which way it runs on the screen, for the light raking across its ridges
+  vec3 Dw = U * bestA.x + V * bestA.y;
+  Dw -= N * dot(Dw, N);
+  vec4 cb = viewProj * vec4(C + Dw * bestS * 0.5, 1.0);
+  vec2 along = (cb.xy / cb.w - cc.xy / cc.w) * vec2(aspect, 1.0);
+  along = dot(along, along) > 1e-10 ? normalize(along) : vec2(1.0, 0.0);
+  vec2 across = vec2(-along.y, along.x);
+  vec2 gr = along * (bestT.b - 0.5) * 0.5 + across * (bestT.a - 0.5) * 0.5;
+  float rake = 0.5 * gr.x - 0.7 * gr.y;
+  col = mix(col, col2, smoothstep(0.52, 0.78, bestT.g));
+  col *= 1.0 + rake * 2.5 * impasto;
+  col += vec3(1.0, 0.97, 0.9) * pow(max(rake, 0.0), 2.0) * 1.6 * impasto * (0.3 + dot(col, vec3(0.3, 0.5, 0.2)));
+  gl_FragColor = vec4(max(col, 0.0), 1.0);
 }
 `;
 
@@ -366,7 +564,27 @@ function bakeAtlas(renderer) {
 // sceneTarget: the painter's scene target (its depth tells each dab which surface it is on)
 export function createOilPaint(renderer, strokes, sceneTarget) {
   const atlas = bakeAtlas(renderer);
-  const paintT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+  const paintT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: true });
+  // The first pass into the paint target: the under-coat (UNDER, below), and the scene's depth into the
+  // target's own: for each of its pixels the farthest of the scene's under it (so where an edge splits a pixel
+  // a dab is not held back; its fragment shader keeps it to its face).
+  const depthDown = new THREE.ShaderMaterial({
+    uniforms: {
+      tDepth: { value: sceneTarget.depthTexture }, tScene: { value: sceneTarget.texture }, tAtlas: { value: atlas.texture },
+      texel: { value: new THREE.Vector2(1, 1) }, full: { value: new THREE.Vector2(1, 1) },
+      projInv: { value: new THREE.Matrix4() }, viewInv: { value: new THREE.Matrix4() },
+      viewProj: strokes.shared.viewProj, eye: strokes.shared.eye, heightAt1m: strokes.shared.heightAt1m, aspect: strokes.shared.aspect,
+      under: { value: UNDER }, impasto: { value: IMPASTO },
+    },
+    vertexShader: quadVertex,
+    fragmentShader: underFragment,
+    depthTest: true, depthFunc: THREE.AlwaysDepth, depthWrite: true, blending: THREE.NoBlending,
+  });
+  const depthQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), depthDown);
+  depthQuad.frustumCulled = false;
+  const depthScene = new THREE.Scene();
+  depthScene.add(depthQuad);
+  const flatCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const light = {
     hemiSky: { value: new THREE.Color() }, hemiGround: { value: new THREE.Color() }, hemiUp: { value: new THREE.Vector3(0, 1, 0) },
     sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunCol: { value: new THREE.Color() }, sunMatrix: { value: new THREE.Matrix4() },
@@ -385,17 +603,29 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
     screen: { value: new THREE.Vector2(1, 1) },
     shape: { value: new THREE.Vector2(...OIL_SHAPE) },
     impasto: { value: IMPASTO },
+    agree: { value: new THREE.Vector2(1, 1) },
   };
   const scene = new THREE.Scene();
-  // Each layer's own quad, one segment long: an oil dab is short enough to bend on 4 corners, and every corner
-  // works out the dab's light again (a coat stroke's 3 segments made that 8 times). The placed strokes'
-  // attributes are shared, not copied; the instance count follows them (render).
+  // Each stroke's dabs: SUB_ALONG x SUB_ACROSS quads, one segment long each (an oil dab is short enough to bend
+  // on 4 corners, and every corner works out the dab's light again); the ones a stroke does not need are
+  // dropped in the vertex shader before any of that. The placed strokes' attributes are shared, not copied;
+  // the instance count follows them (render).
+  const quads = SUB_ALONG * SUB_ACROSS;
+  const pos = new Float32Array(quads * 12), uvs = new Float32Array(quads * 8), subs = new Float32Array(quads * 4), index = [];
+  const unit = new THREE.PlaneGeometry(1, 1, 1, 1);
+  for (let k = 0; k < quads; k++) {
+    pos.set(unit.getAttribute('position').array, k * 12);
+    uvs.set(unit.getAttribute('uv').array, k * 8);
+    subs.fill(k, k * 4, k * 4 + 4);
+    for (const i of unit.index.array) index.push(i + k * 4);
+  }
+  unit.dispose();
   const geos = strokes.parts.map(({ geo }) => {
     const g = new THREE.InstancedBufferGeometry();
-    const plane = new THREE.PlaneGeometry(1, 1, 1, 1);
-    g.index = plane.index;
-    g.setAttribute('position', plane.getAttribute('position'));
-    g.setAttribute('uv', plane.getAttribute('uv'));
+    g.setIndex(index);
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    g.setAttribute('sub', new THREE.BufferAttribute(subs, 1));
     for (const k of ['aPos', 'aTan', 'aNor', 'aShape', 'aCol']) g.setAttribute(k, geo.getAttribute(k));
     g.instanceCount = 0;
     return g;
@@ -409,8 +639,9 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
         ...strokes.shared, ...light, ...own,
         window: { value: new THREE.Vector2(...layer.window) },
         keep: { value: OIL_KEEP[i] ?? 1 },
+        rowGap: { value: layer.rowGap },
       },
-      transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+      transparent: true, depthTest: true, depthWrite: false, depthFunc: THREE.LessEqualDepth, side: THREE.DoubleSide,
       blending: THREE.NormalBlending,
     });
     const mesh = new THREE.Mesh(geo, mat);
@@ -479,18 +710,24 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
   return {
     texture: paintT.texture,
     target: paintT,
+    sceneTarget,
+    strokes,
     scene,
+    materials,
     // the dabs, into the paint target (cleared clear)
     render(world, camera, sync) {
       updateLights(world);
       strokes.parts.forEach(({ geo }, i) => { geos[i].instanceCount = geo.instanceCount; });
       strokes.setCamera(camera);
+      depthDown.uniforms.projInv.value.copy(camera.projectionMatrixInverse);
+      depthDown.uniforms.viewInv.value.copy(camera.matrixWorld);
       renderer.setRenderTarget(paintT);
       const prev = renderer.getClearAlpha(), col = renderer.getClearColor(new THREE.Color());
       renderer.setClearColor(0x000000, 0);
       renderer.clear(true, false, false);
       const auto = renderer.autoClear;
       renderer.autoClear = false;
+      renderer.render(depthScene, flatCam);
       renderer.render(scene, camera);
       renderer.autoClear = auto;
       renderer.setClearColor(col, prev);
@@ -502,6 +739,8 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
       const x = Math.max(1, Math.round(full.x * k)), y = Math.max(1, Math.round(full.y * k));
       paintT.setSize(x, y);
       own.screen.value.set(x, y);
+      depthDown.uniforms.texel.value.set(1 / x, 1 / y);
+      depthDown.uniforms.full.value.set(1 / full.x, 1 / full.y);
       strokes.setSize(x, y);
     },
     finalMaterial(u) {
@@ -519,6 +758,8 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
     dispose() {
       atlas.dispose();
       paintT.dispose();
+      depthDown.dispose();
+      depthQuad.geometry.dispose();
       for (const m of materials) m.dispose();
       for (const g of geos) g.dispose();
     },

@@ -4,7 +4,7 @@ A 3D vinyl shop for YouTube Music (free, open source). Electron + Three.js.
 
 The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over the street, a little piazza, and the Sienna shop. The door swings open on its own, the camera walks into the shop, and the view tilts with the cursor. All scenery is procedural.
 
-**Look:** painted, through a screen pass (`src/watercolour.js`): oil paint by default on branch `oil-paint` (`src/oilpaint.js`: opaque dabs on the brush strokes' places, each with its object's own paint, lit live, with impasto ridges; full bleed, no border), brush strokes pinned to the world's surfaces (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Look > Painting). The brush and watercolour looks have a ragged paper border. `?style=flat` shows the old flat toon look.
+**Look:** painted, through a screen pass (`src/watercolour.js`): oil paint by default on branch `oil-paint` (`src/oilpaint.js`: opaque dabs on the brush strokes' places, each with its object's own paint, lit live, with impasto ridges, over an under-coat of smaller dabs so no canvas is left bare; full bleed, no border), brush strokes pinned to the world's surfaces (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Look > Painting). The brush and watercolour looks have a ragged paper border. `?style=flat` shows the old flat toon look.
 
 **Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Look > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots. A change applies live in both windows, with no reload: `FONT`/`fontReady` are live exports, CSS uses `var(--sienna-font)`, and everything painted into a canvas or texture (tags, rack signs, the shop sign, button plates, menu words, search bar, album-spread stickers) registers a repaint with `onLettering(owner, draw)` in `src/style.js`, which runs once the new face has loaded. New lettered paint must register too. Check: `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out` (mini window, no reload) and `node scripts/tour-check.mjs out`.
 
@@ -166,10 +166,25 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   pixel of the bake (320 x 200) get no dab and show as drawn. Records (`userData.noStrokes` on a rack's Sleeve) get no strokes in any look, since they
   move (a rack revealed mid-session used to pin strokes to its records). Coat and medium layers only, about half the coat's strokes
   (they are wider): `?oillayers=1,1,0`, `?oilkeep=0.55,0.7,1`, `?oilshape=2.2,1.0` (width, length), `?oilmax=`,
-  `?oilscale=1` (dab px per CSS px), `?dabwidth=`. No wash, bleed or border passes; the last pass lays the dabs over
-  the scene, crisp things and the suitcase as drawn, a faint canvas weave. RX 550 @2x (frame-bench): home 48.6 ->
-  27.0 ms, station 0 38.9 -> 20.3, station 3 45.5 -> 23.2 against Brush strokes; the scene pass is still drawn
-  whole. Brush strokes repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the
+  `?oilscale=1` (dab px per CSS px), `?dabwidth=`. The placed dabs are capped in size on screen (`MAX_SIZE`), so
+  they leave about half the canvas bare, and none are placed on mortar lines, thin edges or rails; an **under-coat**
+  fills it (`UNDER`, `?under=0.035` dab size as a share of the screen's height, `?under=0` off). It is worked out
+  per pixel in the first pass into the paint target: the pixel's world position and facing come from the scene's
+  depth, and dabs are laid on a grid on the plane of the axis that surface faces most (two grids half a cell apart,
+  only the 2 x 2 cells nearest looked at), cells a power of two in metres that halve and double dab by dab with
+  distance; each dab is one colour (the scene where its middle lies, if that is the same surface) with the brush
+  sheet's ridges, and a pixel no dab reaches takes the nearest dab's colour. Things that move (records, their
+  discs: `unpinned()` in `src/materials.js`, alpha 0.99 in the scene buffer) get no under-coat, as it is pinned to
+  the world. Filling each stroke's patch with more placed dabs instead (`?oilsub=4,3`, `?oilstep=`, `?oilrow=`)
+  doubled the frame (each spot lies under ~20 strokes placed from views at other distances) and still left the
+  edges bare. Dabs are depth tested against the scene (its depth brought down to the paint target, a few cm
+  nearer: `?oilbias=`), so the GPU skips their hidden parts. Check coverage with `node scripts/oil-cover-check.mjs
+  [out] [stations] [dpr] [query]`: the share of the paintable picture no dab reaches, a magenta map of it, the frame
+  time, and the overdraw (`VARIANTS='[{"count":1}]'`). No wash, bleed or border passes; the last pass lays the dabs
+  over the scene, crisp things and the suitcase as drawn, a faint canvas weave. RX 550 @2x (frame-bench), against
+  Brush strokes: home 48.6 -> 27.0 ms before the under-coat, 39.5 with it; station 0 38.9 -> 20.3 / 24 before,
+  29-30 with it; station 3 45.5 -> 23.2 / 24 before, 27 with it (bare canvas at home 52% -> 0%). The scene pass is
+  still drawn whole. Brush strokes repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the
   old single pass; the others flatten shading into washes and let colour bleed (`LEVELS` in
   `src/watercolour.js`). `?wc=0..5` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays

@@ -63,6 +63,20 @@ export function keepSharp(m) {
   return m;
 }
 
+// Things that move (records, their discs): flagged (alpha 0.99 in the scene buffer, too little for the other
+// looks to notice) so Oil paint's under-coat, which is pinned to the world, does not slide over them as they
+// go. They show as drawn there, like everything the strokes are not pinned to.
+export const UNPINNED_ALPHA = 0.99;
+export function unpinned(m) {
+  const before = m.onBeforeCompile, key = m.customProgramCacheKey?.bind(m);
+  m.onBeforeCompile = (shader, r) => {
+    before?.call(m, shader, r);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>\n  gl_FragColor.a = min(gl_FragColor.a, ${UNPINNED_ALPHA});`);
+  };
+  m.customProgramCacheKey = () => `unpinned-${key ? key() : m.type}`;
+  return m;
+}
+
 export function crisp(params) {
   // a little self-light so paper and covers stay readable in the shop's warm, dim corners
   const m = new THREE.MeshLambertMaterial({ emissive: '#ffffff', emissiveMap: params.map, emissiveIntensity: 0.35, ...params });

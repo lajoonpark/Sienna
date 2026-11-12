@@ -887,6 +887,8 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     bakeStrokesCached,
     // ?bakeexport: the first bake, packed (strokepack.js), for scripts/bake-strokes.mjs
     get strokeExport() { return exported; },
+    // Oil paint's dabs (oilpaint.js), for checks (scripts/oil-cover-check.mjs); null in the other looks
+    get oil() { return brush?.oil ?? null; },
     // cinema bars (0 = none, 1 = full ~2.2:1 letterbox), painted on the sheet inside the ragged border
     setBars(k) { material.uniforms.bars.value = Math.max(0, Math.min(1, k)); },
     get bars() { return material.uniforms.bars.value; },
