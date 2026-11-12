@@ -92,6 +92,13 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   in front of the tower, shrinking just as much, so it looks the same size in the same spot but never
   cuts into the tower's corner (`CLEAR` in `spinner.js`). Check:
   `node scripts/spinner-clip-check.mjs [out] [tower angles]` (`SHOTS=1` saves every settled hover).
+  The tower's paint turns with it: its brush strokes and oil dabs are placed in the tower's own frame
+  (`userData.strokeTurn` on the turning group = the box it fills; tagged `TURN_TAG` in `aCol.w`; drawn through
+  `turnM`, `STROKE_FRAME` in `src/brushstrokes.js`), and the oil under-coat lays its grid in that frame wherever a
+  pixel lies in the box. When its rack is baked, the tower is turned a quarter at a time (for the bake only) so
+  every side gets strokes from nearly square on (`TURN_FACING`; ~+60 ms on that bake, RX 550). One turning thing at
+  a time. Check: `node scripts/spin-paint-check.mjs [out] [turns] [dpr]` (bare share on the tower per angle, and how
+  well the paint's pattern follows it: correlation ~0.6 at 0.35 rad; ~0.05 when the dabs were pinned to the world).
   At the courtyard stall, hovering a crate makes all its records float up in front of you, spread
   out so every cover shows; the one under the cursor grows and comes forward with its tag.
 - **Albums** (`src/spread.js`, any rack): pressing an album's record fans its songs out of the sleeve

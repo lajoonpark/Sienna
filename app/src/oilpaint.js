@@ -1,6 +1,7 @@
 // Oil paint (Settings > Painting > Oil paint): the shop painted in thick, opaque dabs of oil paint.
 //
-// The strokes are the brush-stroke look's (brushstrokes.js: same places, pinned to the world), but each one
+// The strokes are the brush-stroke look's (brushstrokes.js: same places, pinned to the world; the spinner's turn
+// with it, STROKE_FRAME), but each one
 // is loaded with its own paint instead of reading the rendered picture: the colour of the object under it,
 // recorded when it was placed (aCol), lit right here by the shop's own lights (sky, sun with its shadow,
 // the lamps that are on, fog) the same way the toon materials light themselves. So one dab is one decisive
@@ -19,6 +20,7 @@
 //   oil.finalMaterial(uniforms)     // the last pass, sharing the painter's uniforms
 import * as THREE from 'three';
 import { GLASS_ALPHA } from './materials.js';
+import { STROKE_FRAME, TURN_TAG } from './brushstrokes.js';
 
 const params = new URLSearchParams(globalThis.location?.search ?? '');
 // dabs are drawn at this many drawing-buffer px per CSS px (1 = one per CSS px); ?oilscale= to try others
@@ -198,6 +200,7 @@ varying vec4 vAxis;
 varying float vDepth;
 varying float vPlane;        // how far its plane is from the eye, along its normal
 ${LIGHT}
+${STROKE_FRAME}
 float sceneDepth(vec2 uv) {
   float z = textureLod(tDepth, uv, 0.0).x * 2.0 - 1.0;
   return (2.0 * clipRange.x * clipRange.y) / (clipRange.y + clipRange.x - z * (clipRange.y - clipRange.x));
@@ -205,19 +208,22 @@ float sceneDepth(vec2 uv) {
 void main() {
   gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
   vAtlas = vec2(0.0); vC1 = vC2 = vec3(0.0); vAxis = vec4(0.0); vDepth = 0.0; vPlane = 0.0;
-  // how it is lit (aCol.w = lit + 10 x the station furniture it is on)
-  float ownK = floor((aCol.a + 1.5) / 10.0);
-  float lit = aCol.a - 10.0 * ownK;
+  // where it is now (on the spinner, it goes round with it: brushstrokes.js STROKE_FRAME)
+  if (!strokeFrame()) return;
+  // how it is lit (aCol.w = lit + 10 x the station furniture it is on, + TURN_TAG on the spinner)
+  float w = aCol.a < ${TURN_TAG / 2}.0 ? aCol.a : aCol.a - ${TURN_TAG}.0;
+  float ownK = floor((w + 1.5) / 10.0);
+  float lit = w - 10.0 * ownK;
   if (lit < -0.5) return;
   // on furniture a rack has replaced: gone with it (else it floats on the rack)
   if (ownK > 0.5 && ((hiddenOwn >> int(ownK)) & 1) == 1) return;
   // oil dabs are fatter than the strokes placed for them: fewer are needed to cover (and each costs)
   if (fract(aTan.w * 13.7 + aNor.w * 3.3) > keep) return;
-  vec4 clipA = viewProj * vec4(aPos.xyz, 1.0);
+  vec4 clipA = viewProj * vec4(sPos, 1.0);
   if (clipA.w < 0.15) return;
   vec2 a = clipA.xy / clipA.w * 0.5 + 0.5;
   if (a.x < -0.5 || a.x > 1.5 || a.y < -0.5 || a.y > 1.5) return;
-  if (dot(aNor.xyz, eye - aPos.xyz) <= 0.0) return;
+  if (dot(sNor, eye - sPos) <= 0.0) return;
   float onScreen = aPos.w / (clipA.w * heightAt1m);
   float minSize = window.x * mix(1.0, farGrow.z, smoothstep(farGrow.x, farGrow.y, clipA.w));
   // a dab too small or too big on screen for this layer is not faded (oil does not go thin): it shrinks away
@@ -249,10 +255,10 @@ void main() {
   float h1 = fract(sin(sub * 12.9898 + aTan.w * 78.233) * 43758.5453), h2 = fract(h1 * 9.31 + aNor.w), h3 = fract(h1 * 4.77 + aTan.w * 3.1);
   float ou = nA > 1.0 ? (si / (nA - 1.0) - 0.5) * (patchL - dl) + (h2 - 0.5) * 0.18 * dl : 0.0;
   float ov = nC > 1.0 ? (sj / (nC - 1.0) - 0.5) * (patchW - dw) + (h3 - 0.5) * 0.14 * dw : 0.0;
-  vec3 side0 = cross(aNor.xyz, aTan.xyz);
-  vec3 P = aPos.xyz + aTan.xyz * ou + side0 * ov;
+  vec3 side0 = cross(sNor, sTan);
+  vec3 P = sPos + sTan * ou + side0 * ov;
   float turn = (h1 - 0.5) * 0.22;
-  vec3 tanD = aTan.xyz * cos(turn) + side0 * sin(turn);
+  vec3 tanD = sTan * cos(turn) + side0 * sin(turn);
   float r3 = fract(aTan.w * 5.37 + h2), r4 = fract(aTan.w * 11.9 + h3);
   // hidden here (behind something in front): no dab. Looked for at its own middle, so the dabs of a stroke
   // half behind a post still paint the half that shows
@@ -269,7 +275,7 @@ void main() {
   float len = dl * (0.92 + 0.16 * h3), wid = dw * (0.9 + 0.2 * h2);
   float bend = (fract(aNor.w * 11.3 + h1) - 0.5) * 0.5;
   vec2 lp = vec2(position.x, position.y + bend * (position.x * position.x - 0.15));
-  vec3 side = cross(aNor.xyz, tanD);
+  vec3 side = cross(sNor, tanD);
   // (in its plane exactly: dabs are not depth tested, the fragment shader keeps them to their face)
   vec3 world = P + tanD * lp.x * len + side * lp.y * wid;
   gl_Position = viewProj * vec4(world, 1.0);
@@ -278,10 +284,10 @@ void main() {
   vec3 toEye = eye - world;
   vec4 nearer = viewProj * vec4(world + toEye * min(0.5, (BIAS.x + BIAS.y * vDepth) / max(length(toEye), 1e-3)), 1.0);
   gl_Position.z = nearer.z / nearer.w * gl_Position.w;
-  vPlane = abs(dot(aPos.xyz - eye, aNor.xyz));
+  vPlane = abs(dot(sPos - eye, sNor));
 
   // its paint, lit where it lies
-  vec3 c = lit > 0.5 ? aCol.rgb * shopLight(P, aNor.xyz) : aCol.rgb;
+  vec3 c = lit > 0.5 ? aCol.rgb * shopLight(P, sNor) : aCol.rgb;
   if (fogRange.y > 0.0) c = mix(c, fogColor, smoothstep(fogRange.x, fogRange.y, clipP.w));
   // no two loads alike: a little lighter or darker, leaning warm or cool, as if the brush was not rinsed
   c *= (0.9 + 0.2 * r3) * mix(vec3(1.05, 1.0, 0.93), vec3(0.94, 1.0, 1.07), r4);
@@ -367,6 +373,10 @@ uniform float heightAt1m;
 uniform float aspect;
 uniform vec2 under;          // dab size (share of the screen's height), on (1) or off (0)
 uniform float impasto;
+uniform mat4 turnM;          // the spinner (brushstrokes.js STROKE_FRAME): its frame -> world, and back
+uniform mat4 turnInv;
+uniform vec3 turnBox;        // the box it fills in its frame: half width, bottom, top
+uniform float turnOn;
 varying vec2 vUv;
 const float COLS = ${ATLAS_COLS}.0, ROWS = ${ATLAS_ROWS}.0;
 // A dab's quad, in cells (the paint fills about 0.85 of it along, 0.6 across), and how far off its cell's
@@ -399,7 +409,18 @@ void main() {
   vec3 py1 = worldAt(vUv + vec2(0.0, full.y)) - P, py0 = P - worldAt(vUv - vec2(0.0, full.y));
   vec3 dx = dot(px1, px1) < dot(px0, px0) ? px1 : px0, dy = dot(py1, py1) < dot(py0, py0) ? py1 : py0;
   vec3 N = normalize(cross(dx, dy));
-  float dist = length(P - eye);
+  // On the spinner, the grid is laid in its own frame, so the dabs go round with it: everything below is
+  // worked out there (toL), and taken back to the world (toW) to be looked up in the picture.
+  mat4 toW = mat4(1.0), toL = mat4(1.0);
+  if (turnOn > 0.5) {
+    vec3 L = (turnInv * vec4(P, 1.0)).xyz;
+    if (abs(L.x) < turnBox.x && abs(L.z) < turnBox.x && L.y > turnBox.y && L.y < turnBox.z) { toW = turnM; toL = turnInv; }
+  }
+  mat4 VP = viewProj * toW;
+  vec3 E = (toL * vec4(eye, 1.0)).xyz;
+  P = (toL * vec4(P, 1.0)).xyz;
+  N = normalize(mat3(toL) * N);
+  float dist = length(P - E);
   // the surface's grid: on the plane of the axis it faces most (so it holds still as the camera moves)
   vec3 an = abs(N);
   int ax = an.x > an.y && an.x > an.z ? 0 : an.y > an.z ? 1 : 2;
@@ -444,7 +465,7 @@ void main() {
         // of the next one's, so the cells halve and double dab by dab (log2 of a ratio this near 1, by series)
         vec3 C = P + U * (qc.x - q.x) + V * (qc.y - q.y);
         C -= W * dot(C - P, N) / max(abs(dot(W, N)), 0.3) * sign(dot(W, N));
-        float x = length(C - eye) / dist - 1.0;
+        float x = length(C - E) / dist - 1.0;
         float f = oct + 1.442695 * x * (1.0 - 0.5 * x) - ok;   // in [-1, 1) where it may be shown
         if (f >= 1.0 || f < -1.0) continue;
         float h = h21(id + 9.1);
@@ -461,11 +482,11 @@ void main() {
   // its colour: the scene where its middle lies, if that is this same surface (else this pixel's own)
   vec3 C = P + U * (bestC.x - q.x) + V * (bestC.y - q.y);
   C -= W * dot(C - P, N) / max(abs(dot(W, N)), 0.3) * sign(dot(W, N));
-  vec4 cc = viewProj * vec4(C, 1.0);
+  vec4 cc = VP * vec4(C, 1.0);
   vec2 cuv = cc.xy / cc.w * 0.5 + 0.5;
   vec3 col = here.rgb;
   if (cc.w > 0.1 && cuv.x > 0.0 && cuv.x < 1.0 && cuv.y > 0.0 && cuv.y < 1.0) {
-    vec3 Q = worldAt(cuv);
+    vec3 Q = (toL * vec4(worldAt(cuv), 1.0)).xyz;
     vec4 there = texture2D(tScene, cuv);
     if (abs(dot(Q - C, N)) < 0.01 + 0.004 * dist && there.a > 0.5) col = mix(here.rgb, there.rgb, 0.85);
   }
@@ -475,7 +496,7 @@ void main() {
   // which way it runs on the screen, for the light raking across its ridges
   vec3 Dw = U * bestA.x + V * bestA.y;
   Dw -= N * dot(Dw, N);
-  vec4 cb = viewProj * vec4(C + Dw * bestS * 0.5, 1.0);
+  vec4 cb = VP * vec4(C + Dw * bestS * 0.5, 1.0);
   vec2 along = (cb.xy / cb.w - cc.xy / cc.w) * vec2(aspect, 1.0);
   along = dot(along, along) > 1e-10 ? normalize(along) : vec2(1.0, 0.0);
   vec2 across = vec2(-along.y, along.x);
@@ -579,6 +600,7 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
       projInv: { value: new THREE.Matrix4() }, viewInv: { value: new THREE.Matrix4() },
       viewProj: strokes.shared.viewProj, eye: strokes.shared.eye, heightAt1m: strokes.shared.heightAt1m, aspect: strokes.shared.aspect,
       under: { value: UNDER }, impasto: { value: IMPASTO },
+      turnM: strokes.shared.turnM, turnInv: strokes.shared.turnInv, turnBox: strokes.shared.turnBox, turnOn: strokes.shared.turnOn,
     },
     vertexShader: quadVertex,
     fragmentShader: underFragment,
@@ -661,14 +683,16 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
   const v = new THREE.Vector3(), w = new THREE.Vector3();
   function gather(world) {
     if (found && frame - foundAt < 120) return found;
-    found = { hemi: [], sun: [], points: [], owners: [] };
+    found = { hemi: [], sun: [], points: [], owners: [], turner: null };
     world.traverse((o) => {
       if (o.userData.ownStrokes) found.owners.push(o);
+      if (o.userData.strokeTurn) found.turner = o;
       if (o.isHemisphereLight) found.hemi.push(o);
       else if (o.isDirectionalLight) found.sun.push(o);
       else if (o.isPointLight) found.points.push(o);
     });
     foundAt = frame;
+    strokes.setTurner(found.turner); // (the spinner, once its rack is built)
     return found;
   }
   const shown = (o) => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
