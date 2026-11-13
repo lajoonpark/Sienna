@@ -19,7 +19,7 @@
 //   oil.render(world, camera)       // dabs into oil.texture (premultiplied, linear)
 //   oil.finalMaterial(uniforms)     // the last pass, sharing the painter's uniforms
 import * as THREE from 'three';
-import { GLASS_ALPHA } from './materials.js';
+import { GLASS_ALPHA, OWN_ALPHA } from './materials.js';
 import { STROKE_FRAME, TURN_TAG } from './brushstrokes.js';
 
 const params = new URLSearchParams(globalThis.location?.search ?? '');
@@ -344,7 +344,10 @@ void main() {
   if (own <= 0.0) discard;
   // and only where the scene agrees it is this paint: a dab stops where something it does not know about
   // is drawn on its surface (a lit window, glass, a sign), as a careful hand paints round it
-  vec3 there = sqrt(max(texture2D(tScene, uv).rgb, 0.0)), mine = sqrt(max(vC1, 0.0));
+  vec4 drawn = texture2D(tScene, uv);
+  // never over the decor spines (materials.js ownColour): a dab wider than a spine would cover its neighbours
+  if (abs(drawn.a - ${OWN_ALPHA.toFixed(4)}) < 0.0012) discard;
+  vec3 there = sqrt(max(drawn.rgb, 0.0)), mine = sqrt(max(vC1, 0.0));
   if (agree.y > 0.5) own *= 1.0 - smoothstep(0.26, 0.4, length(there - mine));
   if (own <= 0.0) discard;
   // the paint stands up off the canvas, and the room's light, from the upper left, rakes across it
@@ -488,7 +491,9 @@ void main() {
   vec4 cc = VP * vec4(C, 1.0);
   vec2 cuv = cc.xy / cc.w * 0.5 + 0.5;
   vec3 col = here.rgb;
-  if (cc.w > 0.1 && cuv.x > 0.0 && cuv.x < 1.0 && cuv.y > 0.0 && cuv.y < 1.0) {
+  // (the decor spines, materials.js ownColour: each pixel keeps its own colour; only the ridges are laid on)
+  bool ownCol = abs(here.a - ${OWN_ALPHA.toFixed(4)}) < 0.0012;
+  if (!ownCol && cc.w > 0.1 && cuv.x > 0.0 && cuv.x < 1.0 && cuv.y > 0.0 && cuv.y < 1.0) {
     float tol = 0.01 + 0.004 * dist;
     vec3 sum = vec3(0.0);
     float wsum = 0.0;

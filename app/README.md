@@ -189,7 +189,14 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   door's panes and fanlight, the display windows and lantern panes are flagged with `glass()` in `src/materials.js`
   (alpha `GLASS_ALPHA` 0.993 in the scene buffer; a see-through pane keeps its colour blending and only sets the
   alpha it leaves, so the flag holds over the room behind), and the last pass shows those pixels as drawn, with what
-  is seen through them. New glass should use `glass()`. Glows (halos, washes, the intro's beams: `GLOW_BLENDING`)
+  is seen through them. New glass should use `glass()`; the pendants' bulbs are glass too, and each shade has a
+  warm lining under it (the hall's green shades, lit from that close, glowed lime and got greenish dabs round the
+  light). **The decor record sleeves** (shelf spines, crates, face-out sleeves in `src/interior.js`) are their own
+  kit part, `kit.sleeve` (`src/kit.js`): no strokes are placed on them (`userData.noStrokes`) and they are flagged
+  with `ownColour()` (alpha `OWN_ALPHA` 0.997), so the under-coat keeps each pixel's own colour (ridges only) and
+  placed dabs stop at them. A dab is wider than a 1-2 cm spine, so it took a neighbour's colour and swapped as the
+  camera moved (Lajoon, 2026-11-13: they flickered). Shelf spines also sit a few mm in or out of line, since flush
+  fronts of leaning neighbours overlapped in one plane and z-fought. Glows (halos, washes, the intro's beams: `GLOW_BLENDING`)
   add their light but leave the scene's alpha alone, so a glow cannot wipe out the glass, record or crisp flag under
   it. Filling each stroke's patch with more placed dabs instead (`?oilsub=4,3`, `?oilstep=`, `?oilrow=`)
   doubled the frame (each spot lies under ~20 strokes placed from views at other distances) and still left the

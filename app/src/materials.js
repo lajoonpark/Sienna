@@ -77,6 +77,22 @@ export function unpinned(m) {
   return m;
 }
 
+// Rows of thin things side by side, each its own colour (the decor record spines on the shelves and in the
+// crates, interior.js): flagged (alpha OWN_ALPHA in the scene buffer) so Oil paint's under-coat keeps each
+// pixel's own colour instead of the colour read at its dab's middle, and placed dabs stop at them. A dab is
+// wider than a spine, so it took a neighbour's colour and switched as the camera moved: the dabs there
+// flickered (Lajoon, 2026-11-13). The under-coat's ridges stay, so they still read as painted.
+export const OWN_ALPHA = 0.997;
+export function ownColour(m) {
+  const before = m.onBeforeCompile, key = m.customProgramCacheKey?.bind(m);
+  m.onBeforeCompile = (shader, r) => {
+    before?.call(m, shader, r);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>\n  gl_FragColor.a = min(gl_FragColor.a, ${OWN_ALPHA});`);
+  };
+  m.customProgramCacheKey = () => `own-${key ? key() : m.type}`;
+  return m;
+}
+
 // Glass (windows, the door's panes, lantern panes): flagged (alpha GLASS_ALPHA in the scene buffer, as little
 // as unpinned's for the other looks) so Oil paint lays no dab on it, neither the placed ones nor the under-coat,
 // and it shows as drawn, with whatever is seen through it: dabs make glass look worse (Lajoon, 2026-11-12).
