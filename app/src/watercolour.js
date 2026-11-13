@@ -432,6 +432,8 @@ export function createWatercolour(renderer, { card = false, unpainted = UNPAINTE
       seed: { value: 0 },
       borderSeed: { value: 0 },
       bars: { value: 0 },
+      wipe: { value: 0 },     // 0..2: the paint wipe hiding a long trip's cut (oilpaint.js paintWipe)
+      wipeSeed: { value: 0 },
       grade: { value: new THREE.Vector3(1, 1, 1) },
       vignette: { value: 0 },
       near: { value: 0.1 },
@@ -775,7 +777,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     renderer.getDrawingBufferSize(full);
     const d = Math.ceil(BORDER_REACH * full.y) + 2;
     // (the cinema bars have a boiling edge too, anywhere in the picture)
-    if (!canPatch || material.uniforms.bars.value > 0.001 || 2 * d >= Math.min(full.x, full.y)) {
+    if (!canPatch || material.uniforms.bars.value > 0.001 || material.uniforms.wipe.value > 0.001 || 2 * d >= Math.min(full.x, full.y)) {
       renderer.setRenderTarget(null);
       renderer.render(post, postCam);
       return;
@@ -831,6 +833,8 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     get oil() { return brush?.oil ?? null; },
     // cinema bars (0 = none, 1 = full ~2.2:1 letterbox), painted on the sheet inside the ragged border
     setBars(k) { material.uniforms.bars.value = Math.max(0, Math.min(1, k)); },
+    // the paint wipe over the 3D picture on a long trip (nav.js): 0 none, 0..1 going on, 1..2 coming off
+    setWipe(k, seed = 0) { material.uniforms.wipe.value = Math.max(0, Math.min(2, k)); material.uniforms.wipeSeed.value = seed; },
     get bars() { return material.uniforms.bars.value; },
     // intro grade ([r, g, b] multiplier) and vignette 0..1 (introlight.js)
     setGrade(rgb, vig = 0) { material.uniforms.grade.value.set(rgb[0], rgb[1], rgb[2]); material.uniforms.vignette.value = vig; },
@@ -884,7 +888,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       const overSame = !watchOver.changed(overlay?.scene ?? null, overlay?.camera ?? null);
       const g = u.grade.value;
       const fv = u.fovea.value;
-      const restSame = keySame([u.bars.value, g.x, g.y, g.z, u.vignette.value, camera.near, camera.far, overlay ? 1 : 0,
+      const restSame = keySame([u.bars.value, u.wipe.value, g.x, g.y, g.z, u.vignette.value, camera.near, camera.far, overlay ? 1 : 0,
         rect?.left, rect?.right, rect?.top, rect?.bottom, motion ? 1 : 0, fv.x + fv.y * 7.31 + fv.z * 53.7]);
       const same = valid && worldSame && restSame;
       last.world = !worldSame; last.overlay = !overSame; last.rest = !restSame; last.shadows = shadows; last.valid = valid;

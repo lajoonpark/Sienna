@@ -552,11 +552,66 @@ uniform vec2 resolution;
 uniform vec2 paperOffset;
 uniform float overlayOn;
 uniform float bars;
+uniform float wipe;
+uniform float wipeSeed;
 uniform vec3 grade;
 uniform float vignette;
 uniform float borderSeed;
 varying vec2 vUv;
 ${NOISE}
+// The paint wipe that hides the cut on a long trip (nav.js JUMP_TRIP): WIPE_BANDS broad loaded-brush strokes
+// pulled across the picture left to right, one under the other, each a little behind or ahead of the last.
+// wipe 0..1: the strokes go on (their heads cross the screen); 1..2: they are dragged off the right-hand edge
+// (their dry tails cross it), the way the brush was going. -> rgb of the paint, a = how much it covers.
+#define WIPE_BANDS 5
+vec4 paintWipe(vec2 q, float aspect) {
+  vec4 outc = vec4(0.0);
+  // the shop's own colours: cream plaster, ochre, terracotta, sage, honey
+  const vec3 P0 = vec3(0.93, 0.86, 0.72), P1 = vec3(0.84, 0.62, 0.36), P2 = vec3(0.76, 0.43, 0.28);
+  const vec3 P3 = vec3(0.60, 0.65, 0.49), P4 = vec3(0.90, 0.75, 0.50);
+  for (int i = 0; i < WIPE_BANDS; i++) {
+    float fi = float(i);
+    float r1 = hash(vec2(fi, wipeSeed)), r2 = hash(vec2(fi + 7.1, wipeSeed)), r3 = hash(vec2(fi + 3.3, wipeSeed + 1.0));
+    float bandH = 1.0 / float(WIPE_BANDS);
+    // the stroke's middle wanders a little and its width breathes along its length, so neighbours overlap
+    // (wide enough that two neighbours wandering apart still meet: no gap while it covers the cut)
+    float cy = (fi + 0.5) * bandH + (r1 - 0.5) * bandH * 0.3 + (noise(vec2(q.x * 1.3, fi * 5.0 + wipeSeed)) - 0.5) * bandH * 0.3;
+    float hw = bandH * (1.05 + 0.15 * noise(vec2(q.x * 2.1 + fi, wipeSeed)));
+    float dy = (q.y - cy) / hw;
+    // its edges are bristle tracks running along it, each giving out at its own point: streaky, not spiky
+    float edge = 1.0 - smoothstep(0.84, 0.98, abs(dy) + (noise(vec2(q.x * 2.2 + fi * 2.0, q.y * 200.0)) - 0.5) * 0.32);
+    if (edge <= 0.0) continue;
+    // where along the screen the brush is: the head leads, the tail follows a screen and a half behind
+    float lag = r2 * 0.22;
+    float span = aspect + 0.6;
+    float head = (clamp(wipe, 0.0, 1.0) * (1.0 + 0.22) - lag) * span - 0.3;
+    float tail = (clamp(wipe - 1.0, 0.0, 1.0) * (1.0 + 0.22) - lag) * span - 0.3;
+    float ragHead = (noise(vec2(q.y * 30.0, fi)) - 0.5) * 0.12 + dy * dy * 0.08;
+    float on = smoothstep(0.0, 0.02, head - q.x - ragHead);
+    // the tail is dry: it breaks into bristle tracks before it lets go
+    float bristle = noise(vec2(q.x * 3.0, q.y * 90.0 + fi * 13.0));
+    float off = wipe > 1.0 ? smoothstep(0.0, 0.18, q.x - tail - bristle * 0.25) : 1.0;
+    float a = edge * on * off;
+    if (a <= 0.0) continue;
+    vec3 c = i == 0 ? P0 : i == 1 ? P1 : i == 2 ? P2 : i == 3 ? P3 : P4;
+    // a second colour picked up on the brush, streaking through part of the stroke
+    vec3 c2 = i == 0 ? P1 : i == 1 ? P2 : i == 2 ? P4 : i == 3 ? P0 : P3;
+    float mixIn = smoothstep(0.55, 0.8, noise(vec2(q.x * 0.9 + fi * 4.0, q.y * 14.0 + wipeSeed)));
+    c = mix(c, c2, mixIn * (0.35 + 0.3 * r3));
+    // bristle tracks: fine ridges along the stroke, lit from above (the canvas's own light, as on the dabs)
+    float yb = q.y * 260.0 + fi * 17.0;
+    float h0 = noise(vec2(q.x * 1.6 + fi * 3.0, yb)) * 0.65 + noise(vec2(q.x * 5.0, yb * 0.31)) * 0.35;
+    float h1 = noise(vec2(q.x * 1.6 + fi * 3.0, yb + 0.9)) * 0.65 + noise(vec2(q.x * 5.0, (yb + 0.9) * 0.31)) * 0.35;
+    float rake = h1 - h0;
+    c *= 0.84 + 0.26 * h0;
+    c += vec3(1.0, 0.97, 0.9) * max(rake, 0.0) * 0.22 - c * max(-rake, 0.0) * 0.18;
+    // a thicker ridge of paint along each side of the stroke, thinner (darker, the canvas tooth) in its middle
+    c *= 1.0 + 0.1 * smoothstep(0.6, 0.92, abs(dy)) - 0.05 * (1.0 - smoothstep(0.0, 0.5, abs(dy)));
+    outc.rgb = mix(outc.rgb, c, a);
+    outc.a = max(outc.a, a);
+  }
+  return outc;
+}
 vec3 toSRGB(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 void main() {
   float aspect = resolution.x / resolution.y;
@@ -570,6 +625,14 @@ void main() {
   if (overlayOn > 0.5) keep = max(keep, step(texture2D(tDepth, vUv).x, 0.99999));
   col = mix(col, base.rgb, keep);
   col = toSRGB(clamp(col, 0.0, 1.0));
+  // the paint wipe of a long trip, under the suitcase (overlay pixels keep the overlay) and under the canvas's
+  // weave, which shows through it like through the rest of the paint
+  if (wipe > 0.001 && wipe < 1.999) {
+    vec4 w = paintWipe(vUv * vec2(aspect, 1.0), aspect);
+    float under = overlayOn > 0.5 ? step(0.99999, texture2D(tDepth, vUv).x) : 1.0;
+    col = mix(col, w.rgb, w.a * under);
+    keep *= 1.0 - w.a * under;
+  }
   // the canvas: its weave shows faintly through the thinner paint and in the gaps
   vec2 cq = gl_FragCoord.xy + paperOffset * 512.0;
   float weave = (sin(cq.x * 1.9) * sin(cq.y * 1.9 + 1.3)) * 0.5 + 0.5;
@@ -812,7 +875,7 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
         fragmentShader: finalFragment,
         uniforms: {
           tScene: u.tScene, tDepth: u.tDepth, tPaper: u.tPaper, resolution: u.resolution, paperOffset: u.paperOffset,
-          overlayOn: u.overlayOn, bars: u.bars, grade: u.grade, vignette: u.vignette, borderSeed: u.borderSeed,
+          overlayOn: u.overlayOn, bars: u.bars, wipe: u.wipe, wipeSeed: u.wipeSeed, grade: u.grade, vignette: u.vignette, borderSeed: u.borderSeed,
           tPaint: { value: paintT.texture },
         },
         depthTest: false, depthWrite: false,

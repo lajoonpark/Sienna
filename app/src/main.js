@@ -743,6 +743,8 @@ function frame(t, dtOverride, draw = true) {
     // painted cinema bars while the intro plays; a skip wipes them off with the flight home
     painter.setBars?.(pinnedPose ? 0 : nav.intro ? introBars(t) : nav.phase === 'fly' && !nav.introDone ? Math.min(barsK, Math.max(0, 1 - nav.progress / 0.6)) : 0);
     barsK = painter.bars ?? 0;
+    // a long trip's cut hides under a paint wipe (nav.js JUMP)
+    painter.setWipe?.(pinnedPose ? 0 : nav.wipe, nav.wipeSeed);
     const il = introLight.update({ cine: barsK, door: nav.doorOpen(t), camZ: c.pos.z, sunE: sunNow.e });
     painter.setGrade?.(il.grade, il.vignette);
     painter.setBoilHeld?.(!!pacer?.deep);

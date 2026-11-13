@@ -207,6 +207,13 @@ const SHORT = {
 
 const FLIGHT_TAU = 0.22;   // how long a flight that is interrupted keeps its momentum (s)
 const LOOK_AHEAD = 2.4;
+// A trip longer than JUMP_TRIP metres (home to the glasshouse or the garden: 27-43 m) is not flown all the way
+// (Lajoon, 2026-11-13: 43 m in 4.4 s felt far too fast, and a slower or shorter way round was not wanted): the
+// camera walks the first walkIn metres, broad oil strokes are pulled across the picture (oilpaint.js
+// paintWipe), the camera cuts while they cover it, and they are dragged off the right-hand edge as it walks
+// the last walkOut metres into the new section. t1 + t2 seconds in all.
+const JUMP_TRIP = 20;
+const JUMP = { walkIn: 3.5, walkOut: 4.5, t1: 1.15, t2: 1.4, cover: 0.42, hold: 0.08, uncover: 0.5 };
 const FAR_TRIP = 11;       // metres: a flight this long goes through other rooms, and looks where it is going
 const PACE_MAX = 12;       // m/s: cruising pace along a straight path
 const PACE_LATERAL = 25;   // m/s2 of sideways acceleration a bend may ask for
@@ -308,6 +315,30 @@ export function createNav({ home, stations, startAt = null }) {
     for (let i = 1; i <= N; i++) U.push(U[i - 1] + (slow[i - 1] + slow[i]) / 2);
     const total = U[N];
     if (durOverride == null) dur = clamp(dur * Math.pow(total / N, 0.6), 1.2, maxDur);
+    // a long trip: walk in, cut under the paint, walk out (JUMP)
+    let jump = null;
+    if (durOverride == null && len > JUMP_TRIP) {
+      const s1 = JUMP.walkIn / len, s2 = 1 - JUMP.walkOut / len;
+      dur = JUMP.t1 + JUMP.t2;
+      jump = {
+        s1, s2,
+        // path fraction e seconds in: speeding up to the cut, slowing down after it
+        sAt(e) {
+          if (e < JUMP.t1) { const x = e / JUMP.t1; return s1 * x * x; }
+          const x = clamp01((e - JUMP.t1) / JUMP.t2);
+          return s2 + (1 - s2) * (1 - (1 - x) ** 2);
+        },
+        // 0..1 the paint goes on (the brush lands fast and slows), 1..2 it is dragged off, faster and faster
+        wipe(e) {
+          const a = e - (JUMP.t1 - JUMP.cover);
+          if (a <= 0) return 0;
+          if (a < JUMP.cover) return 1 - (1 - a / JUMP.cover) ** 2;
+          const b = e - JUMP.t1 - JUMP.hold;
+          if (b <= 0) return 1;
+          return Math.min(2, 1 + (b / JUMP.uncover) ** 2);
+        },
+      };
+    }
     // eased progress p (0..1 of the flight's time) -> fraction s of the path
     const sOf = (p) => {
       const target = clamp01(p) * total;
@@ -317,7 +348,7 @@ export function createNav({ home, stations, startAt = null }) {
       return (lo + (target - U[lo]) / span) / N;
     };
     return {
-      wps, curve, len, dur, aimFrom, aimTo, sOf,
+      wps, curve, len, dur, aimFrom, aimTo, sOf, jump,
       // Camera at path fraction s. The view pans smoothly from the old station's view to the new one;
       // in the middle of the trip it also turns toward the direction of travel (so it looks down the
       // aisle and through the arches), but only when that is a sensible turn: backing away from a rack
@@ -369,6 +400,9 @@ export function createNav({ home, stations, startAt = null }) {
   const last = { pos: V(0, 0, 0), yaw: 0, pitch: 0, ok: false };
   const vel = V(0, 0, 0), scratch = V(0, 0, 0);
   let wYaw = 0, wPitch = 0;
+  // the paint wipe (0..2, see JUMP) and the seed that varies its strokes from trip to trip; a wipe cut short by a
+  // new flight runs on by itself (wipeCarry): back off the way it came if it had not covered yet, else off the edge
+  let wipeNow = 0, wipeCarry = 0, wipeSeed = 0;
   let sections = [];
 
   const setAim = (pos, yaw, pitch) => {
@@ -399,6 +433,8 @@ export function createNav({ home, stations, startAt = null }) {
 
   function begin(plan, extra) {
     const mom = phase === 'rest' ? null : { v: vel.clone(), yaw: wYaw, pitch: wPitch };
+    wipeCarry = wipeNow;
+    if (plan.jump) wipeSeed = (wipeSeed + 1.618) % 50;
     flight = { plan, e: 0, mom, ...extra };
     phase = 'fly';
   }
@@ -538,9 +574,11 @@ export function createNav({ home, stations, startAt = null }) {
       if (t >= T.enter - 0.3) introDone = true;
       if (t >= T.enter) { phase = 'rest'; at = AT_HOME; setRest(AT_HOME); pose.fov = BASE_FOV; tiltK = 1; }
     } else if (phase === 'fly') {
+      const e0 = flight.e;
       flight.e += dt;
       const tau = clamp01(flight.e / flight.plan.dur);
-      flight.plan.at(flight.plan.sOf(smooth01(tau)), tmp);
+      const jmp = flight.plan.jump;
+      flight.plan.at(jmp ? jmp.sAt(flight.e) : flight.plan.sOf(smooth01(tau)), tmp);
       if (flight.mom) {
         // keep a little of the old motion so the turn-around is not a sudden stop; gone after ~0.8 s
         const e = flight.e;
@@ -550,6 +588,8 @@ export function createNav({ home, stations, startAt = null }) {
         tmp.pitch += flight.mom.pitch * m;
       }
       setAim(tmp.pos, tmp.yaw, tmp.pitch);
+      // the cut: no speed is read from the jump (an interruption just after it carries no momentum)
+      if (jmp && e0 < JUMP.t1 && flight.e >= JUMP.t1) last.ok = false;
       // a skipped intro eases its lens back to the normal one on the way home
       pose.fov = flight.fov0 == null ? BASE_FOV : lerp(flight.fov0, BASE_FOV, smooth01(tau));
       if (skipFlight && tau > 0.6) introDone = true;
@@ -559,6 +599,10 @@ export function createNav({ home, stations, startAt = null }) {
       tiltK += (tiltFor() - tiltK) * (1 - Math.exp(-3 * Math.min(dt, 0.2)));
     }
     if (phase === 'rest' || phase === 'frozen') pose.fov = BASE_FOV;
+    // the wipe: this flight's own, else whatever an interrupted one left, running on
+    if (wipeCarry > 0 && wipeCarry < 2) wipeCarry = wipeCarry < 1 ? Math.max(0, wipeCarry - dt / 0.25) : Math.min(2, wipeCarry + dt / JUMP.uncover);
+    const own = phase === 'fly' && flight?.plan.jump ? flight.plan.jump.wipe(flight.e) : 0;
+    wipeNow = own > 0 && own < 2 ? own : wipeCarry > 0 && wipeCarry < 2 ? wipeCarry : 0;
     track(dt);
     return pose;
   }
@@ -586,6 +630,8 @@ export function createNav({ home, stations, startAt = null }) {
     get progress() { return flight ? (flight.p ?? clamp01(flight.e / flight.plan.dur)) : 1; },
     get sections() { return sections.slice(); },
     get waypoints() { return flight ? flight.plan.wps : null; },
+    get wipe() { return wipeNow; },          // 0..2: the paint wipe of a long trip (JUMP), for the painter
+    get wipeSeed() { return wipeSeed; },
     // for the route check and the debug console
     route, plan: (a, b) => { const w = route(a, b); return makePlan(w, aimAt(a), aimAt(b)); },
   };
