@@ -119,7 +119,10 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 - **The suitcase** (`src/suitcase/`): the player, bottom left. A watercolour leather case with a
   record player: the record spins with the cover on its label, the tonearm creeps in as the song
   plays, the knob is volume (drag it or scroll; scrolling down is quieter), the buttons are back / play / skip / like, and
-  dragging the record scrubs. A paper tag beside it shows the song with a seekable progress line.
+  dragging the record scrubs. A paper tag beside it shows the song with a seekable progress line
+  (`createCaption` in `src/controls.js`, also used in the mini window). Long names never run off it: the
+  title steps down from 27 to 21 px, then wraps onto a second line (cut with … only past that), and the
+  artist · album line steps from 19 to 15 px before it is cut; the full text is in the hover tooltip.
   Under Brush strokes it gets only a light touch of the paint (paper grain, glazed darks, a wobbly edge) and
   no wobble or wash inside, since its own textures are already brushed: washed, it went blurry and its
   sharp button icons slid off their caps. `?overwash=0..1` gives it that share of the shop's wash back
