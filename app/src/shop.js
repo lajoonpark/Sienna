@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { createKit, trs, mul, BRICK } from './kit.js';
 import { brickWall, plasterPanel, lunetteShape, archHole, barrelVault, voussoirs, flagstones, PALETTES } from './masonry.js';
-import { blk, rod, pottedPlant } from './details.js';
+import { blk, rod, pottedPlant, railPlanter, postIvy, bougainvillea } from './details.js';
 import { recordShelf, binTable, crateOfRecords, turntable, speaker, armchair, sofa, rug, floorLamp, hangingPlant, trailingIvy, floorTree, spiralStair, pendant, ladder } from './interior.js';
 import { cafeSet, stringLights } from './props.js';
 import { toon } from './materials.js';
@@ -173,6 +173,10 @@ function gallery(kit, out) {
   trailingIvy(kit, frame([-inner, y + 0.95, front], [0, 0, -1], [1, 0, 0]), 0.2, front - back - 0.2, 0, 81);
   trailingIvy(kit, frame([inner, y + 0.95, back], [0, 0, 1], [-1, 0, 0]), 0.2, front - back - 0.2, 0, 82);
   trailingIvy(kit, frame([-inner, y + 0.95, back], [1, 0, 0], [0, 0, 1]), 0.2, inner * 2 - 0.2, 0, 83);
+  // planter boxes over the back rail, facing home; ivy up the posts that frame the view
+  for (const x of [-2.5, 0, 2.5]) railPlanter(kit, frame([x, y + 0.95, back], [1, 0, 0], [0, 0, 1]), 0.95, 84 + x);
+  for (const [x, z] of [[-inner, front], [inner, front], [-2.45, back], [2.45, back]]) postIvy(kit, I, x, z, y + 0.9, 0.07, 85 + x * 3 + z);
+  pottedPlant(kit, I, 4.7, y + 0.03, -2.85, 1.0, 99, 'fern');
   // shelves up on the gallery, low enough for the vault
   // the middle of the left wing (z -4.6..-7.4) is the floor-lean rack's; its stand-in shelf lives
   // in a station group, the dressing at both ends stays either way
@@ -318,6 +322,9 @@ export function buildShop() {
     crateOfRecords(kit, mul(C, trs(1.6, 0, 0.75, 0, 0.1, 0)), 0.7, 0.55, 112);
   }
   floorTree(kit, trs(-4.6, 0, -9.7), 2.4, 121);
+  pottedPlant(kit, I, 4.7, 0, -9.95, 1.4, 126, 'monstera'); // behind the counter
+  pottedPlant(kit, I, 2.65, 0, -10.1, 1.0, 127, 'snake');
+  pottedPlant(kit, I, 3.55, 0, -1.0, 1.0, 128, 'fern'); // by the door
   crateOfRecords(kit, trs(-3.9, 0, -9.0, 0, -0.3, 0), 0.7, 0.55, 122);
   crateOfRecords(kit, trs(-3.95, 0.3, -9.05, 0, -0.2, 0), 0.7, 0.55, 123);
   floorTree(kit, trs(-4.7, 0, -0.95), 1.9, 124);
@@ -325,9 +332,17 @@ export function buildShop() {
   // pendants down the middle, plants hanging from the vault
   for (const z of [-3.0, -6.0, -8.6]) out.push(...pendant(kit, trs(0, 0, z), 8.9, 3.6, { shade: '#3f6e6a' }));
   const vaultY = (x) => HALL.spring + Math.sqrt(HALL.x ** 2 - x ** 2);
-  [[-2.4, -3.6], [2.4, -4.8], [-2.6, -7.8], [2.6, -6.6], [-1.3, -9.4], [1.5, -2.2]].forEach(([x, z], i) => {
+  // over the floor, in twos and threes at different heights
+  [[-2.4, -3.6, 'pothos'], [2.4, -4.8, 'fern'], [-2.6, -7.8, 'pearls'], [2.6, -6.6, 'pothos'], [-1.3, -9.4, 'fern'], [1.5, -2.2, 'pearls'],
+    [-3.0, -4.3, 'fern'], [3.0, -5.5, 'pearls'], [-3.2, -7.0, 'pothos']].forEach(([x, z, kind], i) => {
     const top = vaultY(x);
-    hangingPlant(kit, trs(x, top, z), top - 5.4 + (i % 3) * 0.4, 130 + i);
+    hangingPlant(kit, trs(x, top, z), top - 5.4 + (i % 3) * 0.4, 130 + i, kind);
+  });
+  // over the gallery wings (above head height up there) and in front of the back arch
+  [[-4.4, -3.2, 'pothos', 5.5], [4.4, -3.6, 'fern', 5.4], [-4.5, -8.6, 'pearls', 5.6], [4.3, -8.0, 'pothos', 5.4],
+    [-1.0, -10.0, 'pearls', 5.2], [1.1, -9.9, 'fern', 5.0]].forEach(([x, z, kind, bottom], i) => {
+    const top = vaultY(x);
+    hangingPlant(kit, trs(x, top, z), top - bottom, 140 + i, kind);
   });
 
   // ---- lounge ------------------------------------------------------------
@@ -351,7 +366,11 @@ export function buildShop() {
     });
     speaker(kit, frame([VX - 0.3, 0, v.z0 - 0.35], [0, 0, 1], [-1, 0, 0]));
     speaker(kit, frame([VX - 0.3, 0, v.z1 + 0.25], [0, 0, 1], [-1, 0, 0]));
-    hangingPlant(kit, trs(1.6, VSPRING + Math.sqrt(VX ** 2 - 1.6 ** 2), zc - 0.8), 1.6, 145);
+    const vy = (x) => VSPRING + Math.sqrt(VX ** 2 - x ** 2);
+    hangingPlant(kit, trs(1.6, vy(1.6), zc - 0.8), 1.6, 145, 'pothos');
+    hangingPlant(kit, trs(-1.8, vy(1.8), zc + 1.0), 1.3, 146, 'pearls');
+    hangingPlant(kit, trs(1.9, vy(1.9), zc + 1.1), 1.0, 147, 'fern');
+    pottedPlant(kit, I, -2.75, 0, v.z1 + 0.45, 1.1, 148, 'monstera');
     out.push(...pendant(kit, trs(0, 0, zc), VSPRING + VX - 0.1, 2.0, { shade: '#c4673d' }));
   }
 
@@ -368,6 +387,13 @@ export function buildShop() {
       crateOfRecords(k, trs(VX - 1.0, 0, v.z1 + 0.6, 0, 0.3, 0), 0.6, 0.5, 165);
       crateOfRecords(k, trs(VX - 1.0, 0.3, v.z1 + 0.62, 0, 0.2, 0), 0.6, 0.5, 166);
     });
+    // plants trailing off the top of the left shelf, and two hanging over the aisle
+    for (const [dz, kind] of [[0.5, 'bush'], [1.8, 'fern'], [3.2, 'bush']]) pottedPlant(kit, I, -VX + 0.42, 2.95, v.z0 - dz, 0.55, 155 + dz, kind);
+    trailingIvy(kit, frame([-VX + 0.62, 2.95, v.z0 - 0.15], [0, 0, -1], [1, 0, 0]), 0.1, 1.0, 0, 157);
+    trailingIvy(kit, frame([-VX + 0.62, 2.95, v.z0 - 0.15], [0, 0, -1], [1, 0, 0]), 2.7, 3.6, 0, 158);
+    const vy = (x) => VSPRING + Math.sqrt(VX ** 2 - x ** 2);
+    hangingPlant(kit, trs(-1.6, vy(1.6), v.z0 - 0.9), 1.4, 167, 'pothos');
+    hangingPlant(kit, trs(-1.4, vy(1.4), v.z1 + 1.0), 1.7, 168, 'pearls');
     for (let k = 0; k < 4; k++) crateOfRecords(kit, trs(-VX + 0.75, 0, v.z0 - 0.5 - k * 0.9, 0, Math.PI / 2 + (k % 2) * 0.1, 0), 0.6, 0.5, 160 + k);
     out.push(...pendant(kit, trs(0, 0, zc), VSPRING + VX - 0.1, 2.3, { shade: '#e8b23a' }));
   }
@@ -391,11 +417,12 @@ export function buildShop() {
     for (let k = 0; k < 12; k++) {
       const s = k % 2 ? 1 : -1;
       const z = v.z0 - 0.4 - Math.floor(k / 2) * 0.62;
-      pottedPlant(kit, I, s * (VX - 0.5 - r() * 0.5), 0, z, 0.9 + r() * 0.8, 180 + k, ['bush', 'lemon', 'bush', 'geranium'][k % 4]);
+      pottedPlant(kit, I, s * (VX - 0.5 - r() * 0.5), 0, z, 0.9 + r() * 0.8, 180 + k, ['fern', 'lemon', 'monstera', 'geranium', 'snake', 'bush'][k % 6]);
     }
     floorTree(kit, trs(-VX + 0.6, 0, v.z1 + 0.6), 2.5, 191);
     floorTree(kit, trs(VX - 0.6, 0, v.z0 - 0.6), 2.2, 192);
-    for (const [x, z] of [[-1.7, v.z0 - 0.7], [1.8, zc + 0.3], [-1.9, v.z1 + 1.0]]) hangingPlant(kit, trs(x, VSPRING + Math.sqrt(VX ** 2 - x ** 2), z), 1.3, 195 + x);
+    [[-1.7, v.z0 - 0.7, 1.3], [1.8, zc + 0.3, 1.3], [-1.9, v.z1 + 1.0, 1.3], [1.9, v.z0 - 0.6, 1.0], [-1.6, zc + 0.2, 1.7], [1.7, v.z1 + 0.6, 1.6]]
+      .forEach(([x, z, drop], i) => hangingPlant(kit, trs(x, VSPRING + Math.sqrt(VX ** 2 - x ** 2), z), drop, 195 + i, ['pothos', 'fern', 'pearls'][i % 3]));
   }
 
   // ---- courtyard ---------------------------------------------------------
@@ -407,6 +434,12 @@ export function buildShop() {
     stationFurniture('courtyard', (k) => { for (let q = 0; q < 3; q++) crateOfRecords(k, trs(2.9, q * 0.3, zc + 1.0, 0, 0.1 * q - 0.1, 0), 0.7, 0.55, 203 + q); });
     pottedPlant(kit, I, 3.6, 0, COURT.z1 + 0.6, 1.4, 206, 'geranium');
     pottedPlant(kit, I, -3.7, 0, COURT.z1 + 0.6, 1.6, 207, 'bush');
+    pottedPlant(kit, I, -3.95, 0, COURT.z1 + 2.0, 1.5, 208, 'monstera');
+    pottedPlant(kit, I, 3.9, 0, COURT.z0 - 0.75, 1.2, 209, 'fern');
+    pottedPlant(kit, I, -3.9, 0, COURT.z0 - 0.7, 1.1, 210, 'snake');
+    // bougainvillea over the arch in from the shop and round the fountain's blind arch
+    bougainvillea(kit, frame([COURT.x, 0, COURT.z0], [-1, 0, 0], [0, 0, -1]), { x: COURT.x, y: 0, w: 3.2, h: 3.9 }, 211);
+    bougainvillea(kit, frame([-COURT.x, 0, COURT.z1], [1, 0, 0], [0, 0, 1]), { x: COURT.x, y: 0.9, w: 1.6, h: 2.3 }, 212);
     root.add(stringLights(kit, [-COURT.x, 4.4, COURT.z0 - 0.3], [COURT.x, 4.4, COURT.z1 + 0.5], { orderBase: 0.2, n: 16 }));
     root.add(stringLights(kit, [COURT.x, 4.6, COURT.z0 - 0.3], [-COURT.x, 4.4, COURT.z1 + 0.5], { orderBase: 0.22, n: 16 }));
   }

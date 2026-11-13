@@ -12,6 +12,8 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { toon, ownColour } from './materials.js';
 
+// the unit chain link (kit.link): ring radius and wire radius before scaling
+export const LINK = { r: 0.5, tube: 0.12 };
 export const BRICK = { len: 0.5, row: 0.24, gap: 0.028, depth: 0.2 };
 const CELL = 8;       // metres
 const CELL_MIN = 150; // pieces a square needs to be a mesh of its own
@@ -152,8 +154,13 @@ export function createKit() {
     // downsampled depth, so dabs from the wall behind laid over them and only bits of each rod showed, the
     // bits sliding as the camera moved (Lajoon, 2026-11-13). Now each pixel of one keeps its own colour.
     wire: new Part(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), ownColour(white())),
+    // chain links (details.js chain: the hanging plants' brass chains), an oval ring in the xy plane scaled to
+    // size; thin like the wires, so flagged ownColour the same way
+    link: new Part(new THREE.TorusGeometry(LINK.r, LINK.tube, 3, 8), ownColour(white()), { castShadow: false }),
     ball: new Part(new THREE.IcosahedronGeometry(0.5, 1), white()), // fruit, flowers, leaves (scaled)
     leaf: new Part(new THREE.SphereGeometry(0.5, 7, 5), white()),
+    // small many-of pieces (string-of-pearls beads, fern leaflets, bougainvillea): 20 triangles, not a leaf's 60
+    bead: new Part(new THREE.IcosahedronGeometry(0.5, 0), white()),
     cone: new Part(new THREE.ConeGeometry(0.5, 1, 4), white()),
     pot: new Part(new THREE.CylinderGeometry(0.5, 0.36, 1, 12), white()),
     disc: new Part(new THREE.CylinderGeometry(0.5, 0.5, 1, 16), white()),

@@ -2,7 +2,7 @@
 // (x right, y up, +z towards the viewer/front of the piece).
 import * as THREE from 'three';
 import { trs, mul } from './kit.js';
-import { blk, rod } from './details.js';
+import { blk, rod, chain, fernFronds, BRASS } from './details.js';
 import { rng } from './rand.js';
 import { glass } from './materials.js';
 
@@ -140,22 +140,51 @@ export function floorLamp(kit, M) {
   return bulb;
 }
 
-// A hanging plant on a cord: pot plus trailing vines. Hangs from y = 0 down by `drop`.
-export function hangingPlant(kit, M, drop, seed) {
+// A hanging plant on brass chains (Lajoon, 2026-11-13: chains, not cords): a plate and hook at y = 0, one chain
+// down by `drop` to a ring, three short chains from the ring to the pot's rim. kind: 'pothos' (trailing vines),
+// 'pearls' (string-of-pearls strands, long) or 'fern' (arching fronds); left out, the seed picks one.
+const HANGING = ['pothos', 'fern', 'pearls'];
+export function hangingPlant(kit, M, drop, seed, kind) {
   const r = rng(seed);
-  rod(kit, M, [0, 0, 0], [0, -drop, 0], 0.006, '#2b2622');
-  for (const a of [0, 2.1, 4.2]) rod(kit, M, [0, -drop, 0], [Math.cos(a) * 0.14, -drop - 0.22, Math.sin(a) * 0.14], 0.004, '#2b2622');
+  kind = kind ?? HANGING[Math.floor(r() * HANGING.length)];
+  kit.disc.add(mul(M, trs(0, -0.005, 0, 0, 0, 0, 0.13, 0.02, 0.13)), BRASS);
+  chain(kit, M, [0, -0.01, 0], [0, -drop + 0.02, 0], { phase: r() * Math.PI });
+  // the ring the three short chains hang from, lying flat
+  kit.link.add(mul(M, trs(0, -drop, 0, Math.PI / 2, 0, 0, 0.075, 0.075, 0.05)), BRASS);
+  const rimY = -drop - 0.21;
+  for (const a of [0, 2.1, 4.2]) chain(kit, M, [Math.cos(a) * 0.03, -drop, Math.sin(a) * 0.03], [Math.cos(a) * 0.14, rimY, Math.sin(a) * 0.14], { link: 0.045, width: 0.027, wire: 0.007, phase: a });
   kit.pot.add(mul(M, trs(0, -drop - 0.3, 0, 0, 0, 0, 0.3, 0.2, 0.3)), ['#c4673d', '#e0d6c4', '#d9b38a'][Math.floor(r() * 3)]);
-  for (let i = 0; i < 26; i++) {
+  const P = mul(M, trs(0, -drop - 0.2, 0)); // the pot's top
+  // a low mound of foliage over the rim
+  const mound = kind === 'pearls' ? 0 : 26;
+  for (let i = 0; i < mound; i++) {
     const a = r() * Math.PI * 2, rad = r() * 0.16;
-    kit.leaf.add(mul(M, trs(Math.cos(a) * rad, -drop - 0.15 + r() * 0.1, Math.sin(a) * rad, r() * 2, r() * 6, r() * 2, 0.14, 0.05, 0.1)), C.setHSL(0.28 + r() * 0.06, 0.45, 0.3 + r() * 0.14).clone());
+    kit.leaf.add(mul(P, trs(Math.cos(a) * rad, 0.05 + r() * 0.1, Math.sin(a) * rad, r() * 2, r() * 6, r() * 2, 0.14, 0.05, 0.1)), C.setHSL(0.28 + r() * 0.06, 0.45, 0.3 + r() * 0.14).clone());
   }
-  for (let v = 0; v < 8; v++) {
-    const a = r() * Math.PI * 2;
-    const len = 4 + Math.floor(r() * 9);
-    for (let k = 0; k < len; k++) {
-      const t = k / len;
-      kit.leaf.add(mul(M, trs(Math.cos(a) * (0.16 + t * 0.08), -drop - 0.3 - k * 0.075, Math.sin(a) * (0.16 + t * 0.08), r() * 2, r() * 6, r() * 2, 0.08, 0.04, 0.07)), C.setHSL(0.28 + r() * 0.05, 0.45, 0.32 + r() * 0.12).clone());
+  if (kind === 'fern') fernFronds(kit, P, r, { n: 18, len: 0.6, droop: 0.55 });
+  else if (kind === 'pearls') {
+    // string of pearls: a cushion of beads over the rim, then long strands of beads straight down
+    for (let i = 0; i < 70; i++) {
+      const a = r() * Math.PI * 2, rad = Math.sqrt(r()) * 0.15;
+      kit.bead.add(mul(P, trs(Math.cos(a) * rad, 0.02 + r() * 0.05, Math.sin(a) * rad, 0, 0, 0, 0.026, 0.026, 0.026)), C.setHSL(0.25 + r() * 0.05, 0.38, 0.42 + r() * 0.12).clone());
+    }
+    for (let v = 0; v < 14; v++) {
+      const a = r() * Math.PI * 2;
+      let x = Math.cos(a) * (0.13 + r() * 0.03), z = Math.sin(a) * (0.13 + r() * 0.03);
+      const len = 10 + Math.floor(r() * 18);
+      for (let k = 0; k < len; k++) {
+        x += (r() - 0.5) * 0.012; z += (r() - 0.5) * 0.012;
+        kit.bead.add(mul(P, trs(x, -0.04 - k * 0.042, z, 0, 0, 0, 0.026, 0.026, 0.026)), C.setHSL(0.25 + r() * 0.05, 0.38, 0.42 + r() * 0.12).clone());
+      }
+    }
+  } else {
+    for (let v = 0; v < 8; v++) {
+      const a = r() * Math.PI * 2;
+      const len = 4 + Math.floor(r() * 9);
+      for (let k = 0; k < len; k++) {
+        const t = k / len;
+        kit.leaf.add(mul(P, trs(Math.cos(a) * (0.16 + t * 0.08), -0.1 - k * 0.075, Math.sin(a) * (0.16 + t * 0.08), r() * 2, r() * 6, r() * 2, 0.08, 0.04, 0.07)), C.setHSL(0.28 + r() * 0.05, 0.45, 0.32 + r() * 0.12).clone());
+      }
     }
   }
 }

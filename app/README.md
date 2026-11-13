@@ -10,9 +10,9 @@ The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over
 
 **Name:** the app was called Cadence until 2026-11-08. On first launch, `electron/main.cjs` moves the old `cadence-app` data folder (YouTube Music sign-in, settings) to `sienna-app`, and `src/settings.js` carries over the old `cadence.settings` key. Env vars are `SIENNA_*` (were `CADENCE_*`).
 
-**Everything is real geometry**, with no brick textures. `src/kit.js` collects thousands of bricks, flagstones, roof tiles and shutter slats into a few instanced meshes. `src/masonry.js` lays brick walls course by course around openings, builds arches with voussoirs, barrel vaults, stucco with patches of exposed brick, and paving. `src/details.js` has windows, louvred shutters, doors, balconies, lanterns, eaves and pots. `src/props.js` has street life, and `src/interior.js` has shop furniture.
+**Everything is real geometry**, with no brick textures. `src/kit.js` collects thousands of bricks, flagstones, roof tiles and shutter slats into a few instanced meshes. `src/masonry.js` lays brick walls course by course around openings, builds arches with voussoirs, barrel vaults, stucco with patches of exposed brick, and paving. `src/details.js` has windows, louvred shutters, doors, balconies, lanterns, eaves, pots and plants (bush, geranium, lemon, monstera, fern, snake plant; rail planters, ivy up posts, bougainvillea over arches) and `chain()`, the brass link chains the hanging plants hang from. `src/props.js` has street life, and `src/interior.js` has shop furniture.
 
-**The shop** (`src/shop.js`) is a row of brick vaults going back, one per category zone (`ZONES`): the big hall with crate-digging tables and a U-shaped gallery with a spiral stair, the listening lounge, the stacks, the plant room under a skylight, and an open courtyard with a lemon tree.
+**The shop** (`src/shop.js`) is a row of brick vaults going back, one per category zone (`ZONES`): the big hall with crate-digging tables and a U-shaped gallery with a spiral stair, the listening lounge, the stacks, the plant room under a skylight, and an open courtyard with a lemon tree. Plants are everywhere: hanging pothos, ferns and string-of-pearls on brass chains (`hangingPlant()` in `src/interior.js`) in every room, planters on the gallery rail, bougainvillea over the courtyard arches.
 
 **Time of day** follows the viewer's clock (`src/timeofday.js`): sky, sun, shadows and fog blend through night, blue hour, sunset, golden hour and day. Lamps are always there and switch on one by one at dusk with a short flicker (`src/env.js`). Windows light up through the evening.
 
@@ -200,8 +200,8 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   placed dabs stop at them. A dab is wider than a 1-2 cm spine, so it took a neighbour's colour and swapped as the
   camera moved (Lajoon, 2026-11-13: they flickered). Shelf spines also sit a few mm in or out of line, since flush
   fronts of leaning neighbours overlapped in one plane and z-fought. **Thin rods** (`rod()` in `src/details.js` with
-  radius up to `THIN_ROD` 3.6 cm: gallery top rails and balusters, lamp and plant cords, wires) go to `kit.wire`,
-  flagged `ownColour()` the same way (they keep their strokes for the other looks). They are thinner than a dab and
+  radius up to `THIN_ROD` 3.6 cm: gallery top rails and balusters, lamp cords, wires) go to `kit.wire`,
+  flagged `ownColour()` the same way, as do the hanging plants' chain links (`kit.link`) (they keep their strokes for the other looks). They are thinner than a dab and
   often than Oil paint's downsampled depth, so dabs from the wall behind were laid over them and only part of each
   rod showed, that part sliding as the camera moved (Lajoon, 2026-11-13). Glows (halos, washes, the intro's beams: `GLOW_BLENDING`)
   add their light but leave the scene's alpha alone, so a glow cannot wipe out the glass, record or crisp flag under

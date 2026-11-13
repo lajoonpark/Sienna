@@ -2,7 +2,7 @@
 // face at z = 0): windows with louvred shutters, doors, balconies, lanterns, eaves, drainpipes,
 // flower boxes and pots. Small repeated parts go through the instanced kit.
 import * as THREE from 'three';
-import { trs, mul } from './kit.js';
+import { trs, mul, LINK } from './kit.js';
 import { toon, glass as flagGlass } from './materials.js';
 import { rng } from './rand.js';
 import { registerLamp, registerWindow, glowMesh } from './env.js';
@@ -27,7 +27,33 @@ export function rod(kit, M, a, b, radius, color, part = radius <= THIN_ROD ? 'wi
   kit[part].add(mul(M, m), color);
 }
 
-export const SHUTTER_COLORS = ['#5d7a52', '#3f6e6a', '#7a4a30', '#6a86a0', '#8a9a5b', '#a0553a'];
+// A chain of interlocking oval links from local point a to b (kit.link), each link turned 90 degrees about the
+// chain from the one before. link = outer length, width = outer width, wire = wire thickness (metres).
+export const BRASS = '#c9a85a';
+const _chQ = new THREE.Quaternion(), _chT = new THREE.Quaternion(), _chM = new THREE.Matrix4(), _chY = new THREE.Vector3(0, 1, 0);
+export function chain(kit, M, a, b, { link = 0.065, width = 0.038, wire = 0.009, color = BRASS, phase = 0 } = {}) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
+  const dir = B.clone().sub(A);
+  const len = dir.length();
+  dir.normalize();
+  const outer = 2 * (LINK.r + LINK.tube);
+  const s = new THREE.Vector3(width / outer, link / outer, wire / (2 * LINK.tube));
+  // links overlap by their wire at both ends: the next one's end passes through this one's hole
+  const pitch = link - 2 * (2 * LINK.tube * s.y) - wire * 0.5;
+  const n = Math.max(1, Math.round((len - link) / pitch) + 1);
+  const step = n > 1 ? (len - link) / (n - 1) : 0;
+  _chQ.setFromUnitVectors(_chY, dir);
+  const base = new THREE.Color(color), c = new THREE.Color();
+  for (let k = 0; k < n; k++) {
+    const p = A.clone().addScaledVector(dir, link / 2 + k * step);
+    _chT.setFromAxisAngle(_chY, phase + (k % 2) * Math.PI / 2);
+    _chM.compose(p, _chQ.clone().multiply(_chT), s);
+    // the turned links catch the light a little differently
+    kit.link.add(mul(M, _chM), c.copy(base).offsetHSL(0, 0, k % 2 ? -0.05 : 0.02));
+  }
+}
+
+export const SHUTTER_COLORS =['#5d7a52', '#3f6e6a', '#7a4a30', '#6a86a0', '#8a9a5b', '#a0553a'];
 const WOOD = ['#6b4a2c', '#5a3d24', '#7a5634', '#4f3a2a'];
 
 // One louvred shutter leaf. side: -1 = left leaf (hinged on the left edge), +1 = right.
@@ -233,6 +259,39 @@ export function pottedPlant(kit, M, x, y, z, size, seed, kind) {
     }
     return;
   }
+  if (kind === 'fern') {
+    // a Boston fern: a dense fountain of fronds
+    fernFronds(kit, mul(M, trs(x, y + ph, z)), r, { n: 22, len: 0.5 * size, droop: 0.35, rise: 0.22 * size });
+    return;
+  }
+  if (kind === 'snake') {
+    // snake plant: stiff upright blades, dark with lighter bands
+    for (let i = 0; i < 11; i++) {
+      const a = r() * Math.PI * 2, rad = r() * 0.1 * size, h = (0.45 + r() * 0.4) * size;
+      kit.leaf.add(mul(M, trs(x + Math.cos(a) * rad, y + ph + h / 2, z + Math.sin(a) * rad, (r() - 0.5) * 0.25, r() * 6, (r() - 0.5) * 0.25, 0.09 * size, h, 0.025 * size)), C.setHSL(0.3 + r() * 0.05, 0.42, i % 3 ? 0.22 + r() * 0.06 : 0.34).clone());
+    }
+    return;
+  }
+  if (kind === 'monstera') {
+    // monstera: leaves on long stalks, each a midrib of lobe pairs with gaps between (the splits)
+    const top = [x, y + ph, z];
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + r() * 0.5;
+      const out = (0.15 + r() * 0.25) * size, up = (0.35 + r() * 0.5) * size;
+      const E = [x + Math.cos(a) * out, y + ph + up, z + Math.sin(a) * out];
+      rod(kit, M, top, E, 0.012 * size, '#4f7a3a');
+      // leaf frame: x out along the midrib, y the leaf's face, tipped down a little more for the low ones
+      const L = mul(M, trs(...E, 0, -a, -0.35 - r() * 0.4));
+      const col = C.setHSL(0.31 + r() * 0.04, 0.5, 0.2 + r() * 0.08).clone();
+      const s = (0.85 + r() * 0.3) * size;
+      for (let k = 0; k < 4; k++) {
+        const u = (0.06 + k * 0.075) * s, w = (0.12 - Math.abs(k - 1.2) * 0.02) * s;
+        for (const side of [-1, 1]) kit.leaf.add(mul(L, trs(u, 0, side * w * 0.55, 0, side * 0.45, 0, 0.07 * s, 0.012 * s, w)), col);
+      }
+      kit.leaf.add(mul(L, trs(0.33 * s, 0, 0, 0, 0, 0, 0.09 * s, 0.012 * s, 0.07 * s)), col);
+    }
+    return;
+  }
   const n = kind === 'geranium' ? 30 : 45;
   for (let i = 0; i < n; i++) {
     const a = r() * Math.PI * 2;
@@ -244,6 +303,100 @@ export function pottedPlant(kit, M, x, y, z, size, seed, kind) {
       const a = r() * Math.PI * 2;
       kit.ball.add(mul(M, trs(x + Math.cos(a) * 0.18 * size, y + ph + (0.32 + r() * 0.15) * size, z + Math.sin(a) * 0.18 * size, 0, 0, 0, 0.09 * size, 0.08 * size, 0.09 * size)), r() > 0.3 ? '#d63a2f' : '#e86a8a');
     }
+  }
+}
+
+// Fern fronds arching out of a pot top (local frame P, y up): each frond rises a little, curves out and droops,
+// with pairs of leaflets along it that get smaller towards the tip. Shared by the hanging and potted ferns.
+export function fernFronds(kit, P, r, { n = 16, len = 0.55, droop = 0.4, rise = 0.12 } = {}) {
+  for (let f = 0; f < n; f++) {
+    const a = (f / n) * Math.PI * 2 + r() * 0.4;
+    const L = len * (0.7 + r() * 0.4);
+    const F = mul(P, trs(0, 0, 0, 0, a, 0));
+    const pts = 11;
+    for (let i = 1; i <= pts; i++) {
+      const t = i / pts;
+      const x = 0.04 + t * L, y = rise * Math.sin(Math.PI * t * 0.9) - droop * L * t * t;
+      // slope of the frond here: leaflets lie along it
+      const dy = rise * Math.PI * 0.9 * Math.cos(Math.PI * t * 0.9) / L - 2 * droop * t;
+      const tilt = Math.atan(dy);
+      const size = 1 - t * 0.6;
+      const col = C.setHSL(0.27 + r() * 0.05, 0.5, 0.36 + r() * 0.12).clone();
+      for (const side of [-1, 1]) {
+        kit.bead.add(mul(F, trs(x, y, side * 0.035 * size, 0, side * 0.5, tilt, 0.06 * size, 0.012, 0.075 * size)), col);
+      }
+    }
+  }
+}
+
+// Bougainvillea grown up beside an arch and over it (wall frame M: face at z = 0, +z out of the wall; o = the
+// opening {x, y, w, h}): a woody stem up one side, then a thick band of leaves and magenta bracts along the
+// arch's outside, with sprays falling from the top.
+export function bougainvillea(kit, M, o, seed = 1) {
+  const r = rng(seed);
+  const r0 = o.w / 2, spring = o.y + o.h - r0;
+  const side = r() > 0.5 ? 1 : -1;
+  const sx = o.x + side * (r0 + 0.45);
+  rod(kit, M, [sx, 0, 0.08], [sx - side * 0.1, spring, 0.1], 0.03, '#6b4a2c');
+  const bract = () => C.setHSL(0.89 + r() * 0.05, 0.75, 0.56 + r() * 0.12).clone();
+  const leaf = () => C.setHSL(0.27 + r() * 0.06, 0.45, 0.24 + r() * 0.14).clone();
+  const at = (u, rad, dz) => [o.x + Math.cos(u) * rad, spring + Math.sin(u) * rad, dz];
+  // up the stem side, then round the arch: u from the side's spring line over the top and a little down the far side
+  const u0 = side > 0 ? -0.15 : Math.PI + 0.15, u1 = side > 0 ? Math.PI * 0.85 : Math.PI * 0.15;
+  for (let y = 0.6; y < spring; y += 0.06) {
+    for (let k = 0; k < 3; k++) kit.bead.add(mul(M, trs(sx + (r() - 0.5) * 0.3, y, 0.1 + r() * 0.12, r() * 3, r() * 6, r() * 3, 0.12, 0.05, 0.09)), leaf());
+    if (y > spring * 0.55 && r() < 0.5) kit.bead.add(mul(M, trs(sx + (r() - 0.5) * 0.35, y, 0.18 + r() * 0.1, 0, 0, 0, 0.07, 0.06, 0.07)), bract());
+  }
+  for (let i = 0; i < 520; i++) {
+    const u = u0 + (u1 - u0) * r();
+    const rad = r0 + 0.12 + r() * 0.5;
+    const p = at(u, rad, 0.08 + r() * 0.22);
+    if (r() < 0.42) kit.bead.add(mul(M, trs(...p, 0, 0, 0, 0.065 + r() * 0.04, 0.055, 0.065)), bract());
+    else kit.bead.add(mul(M, trs(...p, r() * 3, r() * 6, r() * 3, 0.13, 0.05, 0.1)), leaf());
+  }
+  // sprays falling from over the arch
+  for (let v = 0; v < 9; v++) {
+    const u = Math.PI * (0.15 + r() * 0.7);
+    let [x, y] = at(u, r0 + 0.2 + r() * 0.3, 0);
+    const len = 4 + Math.floor(r() * 8);
+    for (let k = 0; k < len; k++) {
+      y -= 0.07; x += (r() - 0.5) * 0.05;
+      if (r() < 0.45) kit.bead.add(mul(M, trs(x, y, 0.25 + r() * 0.08, 0, 0, 0, 0.06, 0.05, 0.06)), bract());
+      else kit.bead.add(mul(M, trs(x, y, 0.22 + r() * 0.08, r() * 3, r() * 6, r() * 3, 0.11, 0.045, 0.08)), leaf());
+    }
+  }
+}
+
+// A planter box hooked over a railing's top rail (local frame: x along the rail, +z out over the drop, rail top
+// at y = 0): red geraniums and a fringe of trailing ivy over the front.
+export function railPlanter(kit, M, w, seed = 1) {
+  const r = rng(seed);
+  blk(kit, M, 0, -0.16, 0.16, w, 0.22, 0.22, '#c4673d');
+  blk(kit, M, 0, -0.05, 0.16, w + 0.03, 0.03, 0.25, '#b25a35');
+  for (const x of [-w / 2 + 0.08, w / 2 - 0.08]) blk(kit, M, x, -0.02, 0.04, 0.03, 0.06, 0.12, '#2b2a2e'); // hooks
+  for (let i = 0; i < 40 * w; i++) {
+    const x = (r() - 0.5) * (w - 0.08);
+    kit.leaf.add(mul(M, trs(x, -0.02 + r() * 0.14, 0.16 + (r() - 0.5) * 0.15, r() * 2, r() * 6, r() * 2, 0.12, 0.05, 0.1)), C.setHSL(0.27 + r() * 0.06, 0.45, 0.28 + r() * 0.14).clone());
+  }
+  for (let i = 0; i < 14 * w; i++) {
+    const x = (r() - 0.5) * (w - 0.1);
+    kit.ball.add(mul(M, trs(x, 0.12 + r() * 0.1, 0.16 + (r() - 0.5) * 0.12, 0, 0, 0, 0.08, 0.07, 0.08)), r() > 0.3 ? '#d63a2f' : '#e86a8a');
+  }
+  for (let x = -w / 2 + 0.05; x < w / 2; x += 0.1 + r() * 0.12) {
+    const len = 3 + Math.floor(r() * 8);
+    for (let k = 0; k < len; k++) kit.leaf.add(mul(M, trs(x + (r() - 0.5) * 0.05, -0.08 - k * 0.07, 0.29 + r() * 0.03, r() * 2, r() * 6, r() * 2, 0.09, 0.04, 0.08)), C.setHSL(0.28 + r() * 0.06, 0.45, 0.3 + r() * 0.12).clone());
+  }
+}
+
+// Ivy climbing a post from the floor (post centre x, z at y 0..h, radius rad): a vine winding up it.
+export function postIvy(kit, M, x, z, h, rad, seed = 1) {
+  const r = rng(seed);
+  let a = r() * 6.3;
+  for (let y = 0.15; y < h; y += 0.045) {
+    a += 0.12 + r() * 0.1;
+    const k = rad + 0.03 + r() * 0.05;
+    kit.leaf.add(mul(M, trs(x + Math.cos(a) * k, y, z + Math.sin(a) * k, r() * 2, r() * 6, r() * 2, 0.11, 0.045, 0.085)), C.setHSL(0.28 + r() * 0.06, 0.45, 0.26 + r() * 0.14).clone());
+    if (r() < 0.35) kit.leaf.add(mul(M, trs(x + Math.cos(a + 2) * k, y + 0.02, z + Math.sin(a + 2) * k, r() * 2, r() * 6, r() * 2, 0.1, 0.04, 0.08)), C.setHSL(0.28 + r() * 0.06, 0.45, 0.3 + r() * 0.12).clone());
   }
 }
 
