@@ -58,6 +58,10 @@ function beamTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+// 0 at the sheet (or nearer than NEAR_FADE[0] m), 1 from NEAR_FADE[1] m away, eased between
+const NEAR_FADE = [0.4, 3.0];
+const near = (d) => smooth(NEAR_FADE[0], NEAR_FADE[1], d);
+
 const glow = (map, color) => new THREE.MeshBasicMaterial({ map, color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide });
 
 // the grade at the two ends of the intro (multiplied into the painted picture)
@@ -101,12 +105,17 @@ export function createIntroLight(root) {
       const sp = door * (0.35 + 0.65 * night) * cine;
       spillMat.opacity = 1.0 * sp;
       spill.scale.x = 3.6 * (0.35 + 0.65 * door);
-      doorMat.opacity = 0.35 * sp;
+      // The doorway glow and the beams are sheets the camera walks through: close up one filled the whole
+      // picture (a flat orange wash the oil dabs, lit on their own, stood out of as grey) and the frame after
+      // passing it, it was gone (Lajoon, 2026-11-13). Each one dims away as the camera comes within NEAR_FADE
+      // metres of its sheet, so the light tones down instead of vanishing.
+      doorMat.opacity = 0.35 * sp * near(camZ - doorway.position.z);
       // beams only with the sun up, and only while the intro is on
       const sun = smooth(3, 14, sunE) * cine;
-      for (const b of beams) b.material.opacity = 0.42 * b.userData.a * sun;
-      spill.visible = doorway.visible = sp > 0.003;
-      beams.forEach((b) => { b.visible = sun > 0.003; });
+      for (const b of beams) b.material.opacity = 0.42 * b.userData.a * sun * near(Math.abs(camZ - b.position.z));
+      spill.visible = sp > 0.003;
+      doorway.visible = doorMat.opacity > 0.003;
+      beams.forEach((b) => { b.visible = b.material.opacity > 0.003; });
       // grade: cool out on the street, warm once through the door (z ~ 0), back to neutral by HOME
       const inside = smooth(1.5, -0.6, camZ);
       const settle = smooth(-0.6, -2.2, camZ);
