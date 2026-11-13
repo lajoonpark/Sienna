@@ -21,14 +21,18 @@ export const STATIONS = [
     cam: { pos: v(-3.8, 4.35, -6.0), target: v(-5.2, 3.4, -6.0) }, prefer: /forgotten/i },
   { id: 'counter', style: 'easel', room: 'hall', pos: v(4.0, 1.08, -8.85), rotY: 0,
     cam: { pos: v(4.0, 1.75, -7.3), target: v(4.0, 1.35, -8.85) }, prefer: /album|release/i },
-  { id: 'lounge', style: 'wall', room: 'lounge', pos: v(3.22, 0, -13), rotY: -H,
-    cam: { pos: v(0.5, 1.65, -13), target: v(3.2, 1.6, -13) }, prefer: /mix/i },
-  { id: 'stacks', style: 'tall', room: 'stacks', pos: v(3.05, 0, -17.5), rotY: -H,
-    cam: { pos: v(-0.3, 1.65, -17.5), target: v(3.0, 1.6, -17.5) }, prefer: /library|playlist/i },
-  { id: 'plants', style: 'spinner', room: 'plants', pos: v(0, 0, -22.4), rotY: 0,
-    cam: { pos: v(0, 1.75, -19.95), target: v(0, 1.08, -22.4) }, prefer: /similar|recommended|because/i },
-  { id: 'courtyard', style: 'crates', room: 'courtyard', pos: v(2.5, 0, -27.0), rotY: -0.4,
-    cam: { pos: v(1.89, 1.70, -25.30), target: v(2.54, 0.92, -27.09) }, prefer: null },
+  // the sunken lounge (floor -0.6): the record wall on its left
+  { id: 'lounge', style: 'wall', room: 'lounge', pos: v(-3.22, -0.6, -13.4), rotY: H,
+    cam: { pos: v(-0.5, 1.05, -13.4), target: v(-3.2, 1.0, -13.4) }, prefer: /mix/i },
+  // the stacks (floor -0.6, running sideways): the tall rack on the hall-side wall, facing -z
+  { id: 'stacks', style: 'tall', room: 'stacks', pos: v(6.1, -0.6, -11.25), rotY: Math.PI,
+    cam: { pos: v(6.1, 1.05, -14.25), target: v(6.1, 1.0, -11.3) }, prefer: /library|playlist/i },
+  // the glasshouse (floor +1.2), seen from the top of its stair
+  { id: 'plants', style: 'spinner', room: 'plants', pos: v(9.5, 1.2, -20.9), rotY: 0,
+    cam: { pos: v(9.5, 2.95, -18.45), target: v(9.5, 2.28, -20.9) }, prefer: /similar|recommended|because/i },
+  // the garden: the market stall faces the far wall, so you look back across the garden to the lounge window
+  { id: 'courtyard', style: 'crates', room: 'courtyard', pos: v(3.6, 0, -26.4), rotY: Math.PI - 0.35,
+    cam: { pos: v(4.12, 1.70, -28.13), target: v(3.57, 0.92, -26.31) }, prefer: null },
 ];
 
 // shelves -> [{ station, shelf }] in station order (only stations that got a shelf).

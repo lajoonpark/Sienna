@@ -102,6 +102,15 @@ scene.add(sky.dome);
 const street = buildStreet();
 const introLight = createIntroLight(street.root); // intro-only door spill, sun beams, grade (introlight.js)
 scene.add(street.root);
+// The street cannot be seen from the stacks, the glasshouse, the terrace or the garden (shop.js: walls all
+// round), but from there it lies in the view behind those walls whenever you look back toward the front of
+// the shop, and drawing it cost ~10 ms a frame (RX 550). So it is not drawn there, once the brush strokes are
+// in (they are placed with the whole scene to be seen).
+// Likewise the hall from inside the stacks, the glasshouse and the terrace (but not from the garden: you see
+// it through the lounge window).
+let streetCull = false;
+const streetHidden = (p) => p.x > 3.4 || p.z < -15.3;
+const hallHidden = (p) => (p.x > 3.9 && p.z > -15.3) || (p.x > 7.0 && p.z > -26.0);
 const shop = buildShop();
 scene.add(shop);
 // furniture that a station's rack replaces: shown until a rack stands there
@@ -110,15 +119,6 @@ const furniture = shop.userData.stationFurniture ?? {};
 const lightSlots = createLightSlots(scene, params.has('lights') ? { slots: Number(params.get('lights')) } : {}); // ?lights=N: N slots
 if (params.has('allLights')) for (const l of lightSlots.lights) l.visible = true;
 const timeOfDay = createTimeOfDay({ scene, sun, hemi, sky });
-// The plant room's skylight beam is a see-through open cylinder (shop.js). From inside it washes the
-// whole frame in pale planes (and veils the spinner), so it is gone whenever the camera is inside the plant
-// room or within ~2.5 m of its axis, and fades back in as you leave.
-let skylightBeam = null;
-shop.traverse((o) => {
-  if (!skylightBeam && o.isMesh && o.geometry?.type === 'CylinderGeometry' && o.material?.transparent
-    && o.material.side === THREE.DoubleSide && Math.abs(o.material.opacity - 0.12) < 1e-3) skylightBeam = o;
-});
-const beamOpacity = skylightBeam?.material.opacity ?? 0;
 
 // ---- where the camera is: intro -> home -> station (nav.js) ----
 // ?at=home / ?at=N start settled there with no intro; ?fly=from,to,p freezes a flight at fraction p.
@@ -678,14 +678,10 @@ function frame(t, dtOverride, draw = true) {
   // the intro's lens (nav.js SHOT) widens to BASE_FOV; a pinned ?cam keeps the normal one
   const fov = pinnedPose ? BASE_FOV : pose.fov ?? BASE_FOV;
   if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
-  if (skylightBeam) {
-    const d = Math.hypot(c.pos.x - skylightBeam.position.x, c.pos.z - skylightBeam.position.z);
-    // metres beyond the plant room's z range (0 inside it)
-    const outside = c.pos.z > -20 ? c.pos.z + 20 : c.pos.z < -24.2 ? -24.2 - c.pos.z : 0;
-    const f = THREE.MathUtils.smoothstep(d, 2.5, 3.5) * THREE.MathUtils.smoothstep(outside, 0, 1.2);
-    skylightBeam.material.opacity = beamOpacity * f;
-    skylightBeam.visible = f > 0.01;
-  }
+  const hideStreet = streetCull && !nav.intro && streetHidden(c.pos);
+  if (street.root.visible === hideStreet) street.root.visible = !hideStreet;
+  const hideHall = streetCull && !nav.intro && hallHidden(c.pos);
+  if (shop.userData.hall && shop.userData.hall.visible === hideHall) shop.userData.hall.visible = !hideHall;
   // Matrix4.lookAt uses the camera convention (looks down -z); Object3D.lookAt on a group would face the other way.
   rig.quaternion.setFromRotationMatrix(lookM.lookAt(c.pos, c.target, UP));
   for (const { pivot, side } of street.leaves) pivot.rotation.y = side * -nav.doorOpen(t) * DOOR_OPEN;
@@ -798,6 +794,7 @@ renderer.domElement.addEventListener('webglcontextrestored', () => { painter?.in
 // brush strokes get placed from every spot the camera visits (nothing in the old looks pays for this)
 // (kept between runs: the second start reads them back instead of ~3 s of placing, see strokecache.js)
 const strokesIn = painter?.bakeStrokesCached(scene, paintViews(HOME, STATIONS)) ?? Promise.resolve();
+strokesIn.then(() => { streetCull = true; });
 
 if (shotMode) {
   // let shelves, covers and fonts arrive, then settle all animation (big dt) before the frame is captured

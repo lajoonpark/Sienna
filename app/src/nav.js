@@ -1,7 +1,8 @@
 // Where the camera is and how it gets somewhere else: the intro (street, door, walk in), HOME just
 // inside the shop, and one camera spot per station (stations.js). Flights between them follow
-// waypoints along the central aisle (x = 0, through the arches) so the camera never goes through a
-// wall or a piece of furniture; the gallery is reached over its railing.
+// waypoints along the shop's one winding aisle (down into the lounge, sideways through the stacks, up the
+// glasshouse stair, out over the terrace and down into the garden) so the camera never goes through a wall
+// or a piece of furniture; the gallery is reached over its railing.
 //
 // nav.js knows nothing about three.js scenes or the DOM: update(t, dt) returns { pos, target } and
 // main.js points the camera rig at it.
@@ -131,29 +132,49 @@ export function paintViews(home, stations) {
     views.push({ pos: pose.pos.clone(), target: pose.target.clone(), fov: pose.fov + 12 });
   }
   views.push({ pos: home.pos, target: home.target });
-  for (const s of stations) {
+  // each station, and the way there and back: every waypoint of the route from home (the aisle winds through
+  // walls, so a straight line between home and a station would stand inside them), looking ahead and back
+  const { route } = createRouter(home, stations);
+  const seen = new Set();
+  stations.forEach((s, i) => {
     views.push({ pos: s.cam.pos, target: s.cam.target });
-    // on the way there and back
-    views.push({ pos: home.pos.clone().lerp(s.cam.pos, 0.5), target: home.target.clone().lerp(s.cam.target, 0.5) });
-    views.push({ pos: home.pos.clone().lerp(s.cam.pos, 0.5), target: home.pos });
-  }
+    const wps = route(AT_HOME, i);
+    for (let k = 1; k < wps.length - 1; k++) {
+      const key = wps[k].toArray().map((v) => v.toFixed(2)).join();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      views.push({ pos: wps[k], target: wps[k + 1] }, { pos: wps[k], target: wps[k - 1] });
+    }
+  });
   return views;
 }
 
 // ---- routes -----------------------------------------------------------------------------------
-// The shop is one long aisle (x = 0) with an arch in every cross wall, so a route is: leave the
-// station's camera spot, reach the aisle, ride the aisle to the other station's entry, step out to
-// its camera spot. Points are written in world coordinates (see shop.js for the walls).
+// The shop is one winding aisle with an arch or a doorway between each room and the next, so a route is:
+// leave the station's camera spot, reach the aisle, ride the aisle to the other station's entry, step out
+// to its camera spot. Points are written in world coordinates (see shop.js for the rooms and levels).
 //
-// The aisle ("spine") from the street inwards. Over the crate table the camera climbs (hump) so it
-// passes well above the sleeves; every other point is at eye height.
-const SPINE_ORDER = ['home', 'core', 'hump', 'hallEnd', 'lounge', 'stacks', 'plants', 'plantsA', 'plantsB', 'court'];
+// The aisle ("spine") from the street inwards, at eye height over each floor (hall 0, lounge and stacks
+// -0.6, glasshouse and terrace +1.2, garden 0). Over the crate table the camera climbs (hump) so it passes
+// well above the sleeves; down the lounge steps, up the glasshouse stair and down the terrace steps it
+// follows the treads.
+const SPINE_ORDER = ['home', 'core', 'hump', 'hallEnd', 'arch', 'steps', 'lounge', 'stacksIn', 'stacks', 'stacksEnd',
+  'stairFoot', 'stairMid', 'plants', 'plantsA', 'plantsB', 'door', 'terrace', 'stepsDown', 'court'];
 const SPINE_FIXED = {
   hump: [0, 2.8, -5.7],
-  hallEnd: [0, 1.75, -8.4],        // past the table and the bin tables; the lounge arch (z -10.5) is next
-  plantsA: [1.3, 2.3, -20.9],     // the plant room has its rack in the middle: pass it on the right, above the pots
-  plantsB: [1.3, 2.3, -23.0],
-  court: [0.3, 1.7, -24.8],        // just inside the courtyard arch (z -24 .. -24.5)
+  hallEnd: [0, 1.75, -8.4],        // past the table and the bin tables; the lounge arch (z -10.5 .. -11) is next
+  arch: [0, 1.72, -10.75],
+  steps: [0.1, 1.35, -11.5],       // down the three steps
+  stacksIn: [3.55, 1.05, -13.2],   // through the arch in the lounge's right wall
+  stacksEnd: [9.5, 1.05, -13.5],
+  stairFoot: [9.5, 1.15, -15.1],   // the stair's arch in the stacks' back wall
+  stairMid: [9.5, 2.05, -16.6],
+  plantsA: [10.8, 3.3, -20.0],     // the spinner stands in the middle: pass it on the right, above the bench plants
+  plantsB: [10.8, 3.3, -22.0],
+  door: [9.5, 2.95, -23.9],        // out through the glasshouse door
+  terrace: [9.5, 2.95, -25.4],
+  stepsDown: [9.5, 2.25, -26.9],
+  court: [8.8, 1.7, -28.3],        // at the foot of the terrace steps; the stall's camera spot is west of here
 };
 
 // How each station reaches the aisle. `near`: for trips inside the hall; `far`: for trips deeper in.
@@ -163,8 +184,9 @@ const ATTACH = {
   table:     { near: { join: 'core', pts: [] }, far: { join: 'core', pts: [] } },
   cubby:     { near: { join: 'core', pts: [P(2.7, 1.75, -5.6), P(1.9, 1.85, -4.7)] },
                far:  { join: 'hump', pts: [P(2.6, 2.2, -6.0), P(1.0, 2.8, -4.9)] } },
-  counter:   { near: { join: 'core', pts: [P(3.1, 1.8, -6.2), P(1.9, 1.85, -4.7)] },
-               far:  { join: 'hump', pts: [P(2.9, 2.2, -6.9), P(1.1, 2.8, -5.0)] } },
+  // first straight out from the counter, clear of the gallery post beside its camera spot (x 3.7, z -7.2)
+  counter:   { near: { join: 'core', pts: [P(3.95, 1.8, -6.7), P(3.1, 1.8, -6.2), P(1.9, 1.85, -4.7)] },
+               far:  { join: 'hump', pts: [P(3.95, 2.0, -6.7), P(2.9, 2.2, -6.6), P(1.1, 2.8, -5.0)] } },
   // up and over the railing (top rail y 3.95), then down toward the aisle
   gallery:   { near: { join: 'core', pts: [P(-3.0, 4.55, -5.4), P(-1.6, 3.1, -4.9)] },
                far:  { join: 'hump', pts: [P(-3.0, 4.55, -5.4), P(-1.2, 3.4, -4.6)] } },
@@ -178,13 +200,14 @@ const HALL = new Set(['home', 'table', 'cubby', 'counter', 'gallery']);
 const SHORT = {
   'home|table': [],
   'home|cubby': [P(2.2, 1.75, -2.9), P(3.0, 1.7, -4.5)],               // down the free strip between bin table and armchair
-  'home|counter': [P(2.2, 1.75, -2.9), P(3.0, 1.75, -4.6), P(3.2, 1.75, -6.0)],
+  'home|counter': [P(2.2, 1.75, -2.9), P(3.0, 1.75, -4.6), P(3.2, 1.75, -6.0), P(3.95, 1.75, -6.7)],
   'home|gallery': [P(-1.4, 2.9, -4.1), P(-3.0, 4.55, -5.5)],           // rises past the stair side, over the rail
   'cubby|counter': [],
 };
 
 const FLIGHT_TAU = 0.22;   // how long a flight that is interrupted keeps its momentum (s)
 const LOOK_AHEAD = 2.4;
+const FAR_TRIP = 11;       // metres: a flight this long goes through other rooms, and looks where it is going
 const PACE_MAX = 12;       // m/s: cruising pace along a straight path
 const PACE_LATERAL = 25;   // m/s2 of sideways acceleration a bend may ask for
 const PACE_ACCEL = 20;     // m/s2: how fast the pace may build up or drop along the path    // metres of path either side used to read the direction of travel
@@ -193,7 +216,9 @@ const PACE_ACCEL = 20;     // m/s2: how fast the pace may build up or drop along
 
 // nav = createNav({ home, stations, startAt }): startAt = null plays the intro; a station index or
 // AT_HOME starts settled there (no intro, doors open).
-export function createNav({ home, stations, startAt = null }) {
+// Routing between camera spots (used by the controller below and by paintViews): route(a, b) -> waypoints
+// from spot a to spot b (station indices, or AT_HOME); spine() -> the aisle's points in order.
+function createRouter(home, stations) {
   const idOf = (i) => (i === AT_HOME ? 'home' : stations[i].id);
   const camOf = (i) => (i === AT_HOME ? home : stations[i].cam);
   const stationIndex = (id) => stations.findIndex((s) => s.id === id);
@@ -204,9 +229,9 @@ export function createNav({ home, stations, startAt = null }) {
     switch (key) {
       case 'home': return home.pos.clone();
       case 'core': return (cam('table') ?? V(0, 1.82, -4.48)).clone();
-      case 'lounge': { const c = cam('lounge'); return V(0, c?.y ?? 1.65, c?.z ?? -13); }
-      case 'stacks': { const c = cam('stacks'); return V(0, c?.y ?? 1.7, c?.z ?? -17.5); }
-      case 'plants': return (cam('plants') ?? V(0, 1.6, -20.3)).clone();
+      case 'lounge': return V(0.3, 1.05, -13.2);
+      case 'stacks': { const c = cam('stacks'); return V(c?.x ?? 6.1, c?.y ?? 1.05, -13.5); }
+      case 'plants': return (cam('plants') ?? V(9.5, 2.95, -18.45)).clone();
       default: return V(...SPINE_FIXED[key]);
     }
   }
@@ -242,15 +267,25 @@ export function createNav({ home, stations, startAt = null }) {
     return dedupe([A.clone(), ...mid, B.clone()]);
   }
 
+  const spine = () => SPINE_ORDER.map(spinePoint);
+  return { idOf, camOf, stationIndex, route, spine, dedupe };
+}
+
+export function createNav({ home, stations, startAt = null }) {
+  const { idOf, camOf, stationIndex, route, dedupe } = createRouter(home, stations);
+
   // ---- a planned flight: a smooth curve through waypoints, and where the camera looks on the way ----
   function makePlan(wps, aimFrom, aimTo, durOverride) {
     const curve = new THREE.CatmullRomCurve3(wps, false, 'centripetal');
     const len = curve.getLength();
     // a long pan (turning round to face the new rack) takes time too
     const pan = Math.abs(angleDiff(aimFrom.yaw, aimTo.yaw));
-    let dur = durOverride ?? clamp(Math.max(0.9 + 0.075 * len, 0.7 + pan / 1.6), 1.2, 3.0);
+    // the longest trips (end to end of the winding shop, 40-odd metres) get up to 4.4 s instead of 3
+    const maxDur = 3.0 + clamp((len - 20) / 16, 0, 1.4);
+    let dur = durOverride ?? clamp(Math.max(0.9 + 0.075 * len, 0.7 + pan / 1.6), 1.2, maxDur);
     const pa = new THREE.Vector3(), pb = new THREE.Vector3(), dir = new THREE.Vector3();
     const reach = LOOK_AHEAD / Math.max(len, 0.01);
+    const far = len > FAR_TRIP;
     const yawEnd = aimFrom.yaw + angleDiff(aimFrom.yaw, aimTo.yaw); // pan the short way round, once
 
     // Slow into tight bends: the camera's pace along the path drops where the path curves sharply
@@ -272,7 +307,7 @@ export function createNav({ home, stations, startAt = null }) {
     const U = [0];
     for (let i = 1; i <= N; i++) U.push(U[i - 1] + (slow[i - 1] + slow[i]) / 2);
     const total = U[N];
-    if (durOverride == null) dur = clamp(dur * Math.pow(total / N, 0.6), 1.2, 3.0);
+    if (durOverride == null) dur = clamp(dur * Math.pow(total / N, 0.6), 1.2, maxDur);
     // eased progress p (0..1 of the flight's time) -> fraction s of the path
     const sOf = (p) => {
       const target = clamp01(p) * total;
@@ -299,6 +334,15 @@ export function createNav({ home, stations, startAt = null }) {
         const dy = horiz > 1e-4 ? angleDiff(baseYaw, yawOf(dir)) : 0;
         const compat = 1 - smooth01((Math.abs(dy) - 0.9) / 1.4);            // full up to ~50 deg off, none past ~130 deg
         const hz = smooth01((horiz - 0.2) / 0.6);
+        if (far) {
+          // a trip through other rooms (the shop winds: down into the lounge, sideways through the stacks, up the
+          // glasshouse stair): in the middle of it the camera looks where it is going, whatever the two
+          // stations face, and turns to the new station's view over the last fifth
+          const w = smooth01(s / 0.15) * (1 - smooth01((s - 0.8) / 0.2)) * hz;
+          out.yaw = baseYaw + dy * w;
+          out.pitch = lerp(basePitch, clamp(Math.atan2(dir.y, horiz) * 0.5, -0.3, 0.3), 0.8 * w);
+          return out;
+        }
         const wYaw = smooth01(s / 0.25) * (1 - smooth01((s - 0.72) / 0.28)) * compat * hz;
         const wPitch = smooth01(s / 0.25) * (1 - smooth01((s - 0.4) / 0.6)) * compat * hz;
         // lean toward the direction of travel by at most ~35 degrees, never a snap

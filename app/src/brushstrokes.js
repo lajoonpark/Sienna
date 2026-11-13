@@ -298,8 +298,8 @@ const LAYERS = [
   { segments: 3, cap: 150000, reach: 0.3, rowGap: 0.17, colGap: 0.8, widthRatio: 0.3, window: [0.16, 0.8], lods: [3.0, 4.2], gate: [0, 0], calm: [0.1, 0.22], power: 0.82, opacity: 0.94, rim: 0.2, clip: [1.6, 0.15, 0.3], slack: 1.4, mode: 'GROUND' },
   // medium strokes, where the picture has detail the coat could not hold
   { segments: 3, cap: 90000, reach: 0.14, rowGap: 0.55, colGap: 0.55, widthRatio: 0.33, window: [0.08, 0.24], lods: [1.6, 3.4], gate: [0.025, 0.09], opacity: 0.85, rim: 0.4, clip: [1.2, 0.08, 0.2], slack: 1.5, mode: 'CORRECT' },
-  // fine touches of opaque colour, the only marks that can put light back on a dark wash
-  { segments: 1, cap: 120000, reach: 0.05, rowGap: 0.5, colGap: 0.5, widthRatio: 0.29, window: [0.03, 0.1], lods: [0.8, 2.2], gate: [0.07, 0.18], opacity: 0.72, rim: 0.2, clip: [0.7, 0.1, 0.22], slack: 1, mode: 'TOUCH' },
+  // fine touches of opaque colour, the only marks that can put light back on a dark wash; cap 200000: the winding shop (2026-11-13) takes ~171k, 120000 left the rooms baked last without them
+  { segments: 1, cap: 200000, reach: 0.05, rowGap: 0.5, colGap: 0.5, widthRatio: 0.29, window: [0.03, 0.1], lods: [0.8, 2.2], gate: [0.07, 0.18], opacity: 0.72, rim: 0.2, clip: [0.7, 0.1, 0.22], slack: 1, mode: 'TOUCH' },
 ];
 const BASE_LENGTH = 0.1; // metres; stroke lengths are this times a power of two
 // far away, fewer and bigger marks (see farGrow in the vertex shader); ?fargrow=near,far,k to try others

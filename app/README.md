@@ -12,7 +12,7 @@ The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over
 
 **Everything is real geometry**, with no brick textures. `src/kit.js` collects thousands of bricks, flagstones, roof tiles and shutter slats into a few instanced meshes. `src/masonry.js` lays brick walls course by course around openings, builds arches with voussoirs, barrel vaults, stucco with patches of exposed brick, and paving. `src/details.js` has windows, louvred shutters, doors, balconies, lanterns, eaves, pots and plants (bush, geranium, lemon, monstera, fern, snake plant; rail planters, ivy up posts, bougainvillea over arches) and `chain()`, the brass link chains the hanging plants hang from. `src/props.js` has street life, and `src/interior.js` has shop furniture.
 
-**The shop** (`src/shop.js`) is a row of brick vaults going back, one per category zone (`ZONES`): the big hall with crate-digging tables and a U-shaped gallery with a spiral stair, the listening lounge, the stacks, the plant room under a skylight, and an open courtyard with a lemon tree. Plants are everywhere: hanging pothos, ferns and string-of-pearls on brass chains (`hangingPlant()` in `src/interior.js`) in every room, planters on the gallery rail, bougainvillea over the courtyard arches.
+**The shop** (`src/shop.js`) winds back from the street over four floor levels, one room per category zone (`ZONES`): the big hall with crate-digging tables and a U-shaped gallery (+3 m) with a spiral stair; three steps down to the sunken lounge (-0.6 m) with a big arched window onto the garden; through an arch on its right into the stacks, a two-storey library vault running sideways with a walkway across its far end (built in its own frame, `stacksFrame()`); up a stone stair to the glasshouse (+1.2 m), an iron-and-glass lean-to; out onto a terrace and down its steps into the garden courtyard, open to the sky, which wraps round behind the lounge (so you see it through the lounge window long before you get there). From the stacks, the glasshouse, the terrace and the garden the street is never visible, nor the hall from the stacks, glasshouse and terrace, so `src/main.js` does not draw them there (`streetHidden`, `hallHidden`; the hall is its own group, `root.userData.hall`, with its lamps' lights kept outside it so the light count never changes). Plants are everywhere: hanging pothos, ferns and string-of-pearls on brass chains (`hangingPlant()` in `src/interior.js`) in every room, planters on the gallery rail, bougainvillea over the courtyard arches.
 
 **Time of day** follows the viewer's clock (`src/timeofday.js`): sky, sun, shadows and fog blend through night, blue hour, sunset, golden hour and day. Lamps are always there and switch on one by one at dusk with a short flicker (`src/env.js`). Windows light up through the evening.
 
@@ -63,13 +63,14 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   dark the lamps wake one by one as the camera nears them (`lampWake` in `src/env.js`). Click or press
   any key to skip it. Your YouTube Music shelves ("Quick picks", "Listen again"...) are the
   brush-stroke words down both sides of the screen (`src/menu.js`); click one and the camera walks
-  there (`src/nav.js`: along the aisle, through the arches, over the gallery railing). **Tab** /
+  there (`src/nav.js`: along the winding aisle, `SPINE_ORDER`: down the lounge steps, sideways through the stacks, up the glasshouse stair, over the terrace and down into the garden; over the gallery railing). On a long trip (over `FAR_TRIP` 11 m) the camera looks where it is going and turns to the new section over the last fifth; the longest take up to 4.4 s. `node scripts/route-check.mjs [out_dir]` casts rays along every flight and fails if one goes through anything (frames along each with out_dir). **Tab** /
   **Shift+Tab** go to the next / previous section, **Esc** or HOME goes back. At a section the words
   step back to the edges until the cursor comes near them.
 - **Sections** (`src/stations.js`): eight spots in the shop, each with its own kind of rack
   (`src/racks/`): crate table in the hall, cube shelf under the gallery, records leaning on a plinth
-  upstairs, a stepped easel on the counter, picture ledges in the lounge, a library shelf with a
-  ladder in the stacks, a spinner rack in the plant room, a market stall in the courtyard. Shelves
+  upstairs, a stepped easel on the counter, picture ledges on the lounge's record wall, a library shelf with a
+  ladder in the stacks, a spinner rack in the glasshouse, a market stall in the garden (its camera looks back
+  across the garden to the lounge window). Shelves
   YouTube always sends have a fixed spot (Quick picks next to home, Listen again on the cube shelf,
   Forgotten favourites upstairs); the others fill the free spots. Hover a record and it comes out
   toward you with a paper name tag; click it and its vinyl pops out and flies into the suitcase.
@@ -304,7 +305,7 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
     suitcase). Small gain (~2.5 ms at home): that pass is limited
     by its noise maths, not its reads.
   - *Strokes baked at build time* (C1): `node scripts/bake-strokes.mjs` writes `strokes/shop.bin.gz` (packed by
-    `src/strokepack.js`, ~9.5 MB with each stroke's paint colour and room), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
+    `src/strokepack.js`, ~18.5 MB with each stroke's paint colour and room since the winding shop), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
     its fingerprint matches (the app reads it through the main process, `strokes:shipped`; a browser fetches it),
     so a first start also skips placing them (fresh profile: 5.7 s -> 1.7 s to the intro here). Run it again after
     changing the street, the shop or the stroke settings; until then the app places them itself as before.
