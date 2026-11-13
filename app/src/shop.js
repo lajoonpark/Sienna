@@ -38,6 +38,13 @@ export const GH = { x0: 7.0, x1: 12.0, xi0: 7.2, xi1: 11.8, z0: -15.2, z1: -24, 
 export const GARDEN = { x0: -4.5, x1: 12.0, z0: -15.6, z1: -31, wall: 6.6, north: 7.6 };
 const TERRACE = { z0: -24, z1: -26, sx0: 8.6, sx1: 10.4, step: 0.32 };
 const GALLERY = { y: 3.0, inner: 3.7, front: -2.6, back: -9.3 };
+// What cannot be seen from where the camera stands, so main.js skips drawing it: the street from the stacks,
+// the glasshouse, the terrace and the garden; the hall from the stacks, the glasshouse and the terrace (not
+// from the garden: you see it through the lounge window). Never anything from inside the hall itself: the
+// counter's camera stands at x 4.0, which the stacks' x test alone took for the stacks (the hall vanished).
+export const inHall = (p) => Math.abs(p.x) < HALL.x && p.z <= HALL.z0 && p.z >= HALL.z1;
+export const streetHidden = (p) => !inHall(p) && (p.x > 3.4 || p.z < -15.3);
+export const hallHidden = (p) => !inHall(p) && ((p.x > 3.9 && p.z > -15.3) || (p.x > 7.0 && p.z > -26.0));
 
 export const ZONES = [
   { id: 'hall', at: [0, 1.7, -6] },

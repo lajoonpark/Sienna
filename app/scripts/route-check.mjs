@@ -2,7 +2,8 @@
 // home to each station, between neighbouring stations, and a few long ones. For each it walks the planned
 // path in small steps and casts rays (the step itself, and a ring of short rays round the camera) against the
 // shop's solid meshes: a hit on the step means the path goes through something, a ring ray shorter than CLEAR
-// means it brushes past it. Optionally saves frames along each flight (nav.freeze) to look at.
+// means it brushes past it. It also fails a step that stands in the hall while main.js would hide the hall or
+// the street there (shop.js hallHidden / streetHidden). Optionally saves frames along each flight (nav.freeze).
 //   node scripts/route-check.mjs [out_dir]        (frames only when out_dir is given)
 //   SIENNA_PORT, CLEAR=0.25 (metres)
 import { chromium } from 'playwright';
@@ -33,7 +34,7 @@ const pairs = await page.evaluate(() => {
 let bad = 0;
 for (const [a, z] of pairs) {
   const res = await page.evaluate(({ a, z, CLEAR }) => {
-    const { nav, scene, THREE } = window.__siennaDebug;
+    const { nav, scene, THREE, cull } = window.__siennaDebug;
     // the solid shop: opaque, visible meshes (no glows, glass, racks' records or the suitcase overlay)
     const solids = [];
     scene.traverse((o) => {
@@ -47,7 +48,7 @@ for (const [a, z] of pairs) {
     const ray = new THREE.Raycaster();
     const N = Math.max(40, Math.ceil(plan.curve.getLength() / 0.1));
     const p0 = new THREE.Vector3(), p1 = new THREE.Vector3(), d = new THREE.Vector3();
-    const through = [], brush = [];
+    const through = [], brush = [], culled = [];
     const ring = [];
     for (let k = 0; k < 8; k++) ring.push(new THREE.Vector3(Math.cos((k / 8) * Math.PI * 2), 0, Math.sin((k / 8) * Math.PI * 2)));
     ring.push(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, -1, 0));
@@ -57,6 +58,7 @@ for (const [a, z] of pairs) {
       d.subVectors(p1, p0); const len = d.length(); d.normalize();
       ray.set(p0, d); ray.far = len; ray.near = 0;
       const h = ray.intersectObjects(solids, false)[0];
+      if (cull.inHall(p0) && (cull.hallHidden(p0) || cull.streetHidden(p0))) culled.push({ s: +(i / N).toFixed(3), at: p0.toArray().map((v) => +v.toFixed(2)) });
       if (h) through.push({ s: +(i / N).toFixed(3), at: h.point.toArray().map((v) => +v.toFixed(2)), what: name(h.object) });
       if (i % 3) continue;
       for (const r of ring) {
@@ -65,13 +67,14 @@ for (const [a, z] of pairs) {
         if (g) { brush.push({ s: +(i / N).toFixed(3), dist: +g.distance.toFixed(2), at: g.point.toArray().map((v) => +v.toFixed(2)), what: name(g.object) }); break; }
       }
     }
-    return { len: +plan.curve.getLength().toFixed(1), dur: +plan.dur.toFixed(2), wps: plan.wps.length, through, brush };
+    return { len: +plan.curve.getLength().toFixed(1), dur: +plan.dur.toFixed(2), wps: plan.wps.length, through, brush, culled };
   }, { a, z, CLEAR });
   const tag = `${a < 0 ? 'home' : a} -> ${z}`;
-  console.log(`${tag}: ${res.len} m, ${res.dur} s, ${res.wps} waypoints, through ${res.through.length}, brushes ${res.brush.length}`);
+  console.log(`${tag}: ${res.len} m, ${res.dur} s, ${res.wps} waypoints, through ${res.through.length}, brushes ${res.brush.length}${res.culled.length ? `, HALL HIDDEN ${res.culled.length}` : ''}`);
+  for (const t of res.culled.slice(0, 3)) console.log(`   HALL HIDDEN s=${t.s} at ${t.at}`);
   for (const t of res.through.slice(0, 6)) console.log(`   THROUGH s=${t.s} at ${t.at} (${t.what})`);
   for (const t of res.brush.slice(0, 4)) console.log(`   brush s=${t.s} ${t.dist} m at ${t.at} (${t.what})`);
-  bad += res.through.length;
+  bad += res.through.length + res.culled.length;
   if (outDir) {
     for (const p of [0.25, 0.5, 0.75]) {
       await page.evaluate(({ a, z, p }) => window.__siennaDebug.nav.freeze(a, z, p), { a, z, p });
@@ -80,7 +83,7 @@ for (const [a, z] of pairs) {
     }
   }
 }
-console.log(bad ? `${bad} steps go through something` : 'no flight goes through anything');
+console.log(bad ? `${bad} steps go through something or hide the hall around the camera` : 'no flight goes through anything or hides the hall');
 if (outDir) console.log('frames in', outDir);
 await b.close();
 await server.close();

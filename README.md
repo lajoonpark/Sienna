@@ -129,7 +129,7 @@ node scripts/tilt-check.mjs                # tour notes and Settings card lean w
 node scripts/tear-check.mjs                # torn paper edges never reach the text
 node scripts/account-check.mjs out_dir     # Settings rail + Account page: switch, sign out (fake store)
 node scripts/frame-bench.mjs home,0 2      # ms per whole frame on the GPU (Retina size)
-node scripts/route-check.mjs               # no camera flight goes through a wall or furniture
+node scripts/route-check.mjs               # no camera flight goes through a wall or furniture, or hides the hall it is in
 node scripts/wipe-check.mjs out_dir        # a long trip's cut always hides under the paint wipe
 node scripts/idle-check.mjs                # drops to idle, then deep idle, wakes on input
 node scripts/bake-strokes.mjs              # (other-optimizations) bake the brush strokes shipped in strokes/

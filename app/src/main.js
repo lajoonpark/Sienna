@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { buildStreet } from './street.js';
 import { createIntroLight } from './introlight.js';
 import { lampWake } from './env.js';
-import { buildShop } from './shop.js';
+import { buildShop, streetHidden, hallHidden, inHall } from './shop.js';
 import { updateLod } from './kit.js';
 import { createLightSlots } from './lightslots.js';
 import { WATERCOLOUR } from './style.js';
@@ -105,12 +105,9 @@ scene.add(street.root);
 // The street cannot be seen from the stacks, the glasshouse, the terrace or the garden (shop.js: walls all
 // round), but from there it lies in the view behind those walls whenever you look back toward the front of
 // the shop, and drawing it cost ~10 ms a frame (RX 550). So it is not drawn there, once the brush strokes are
-// in (they are placed with the whole scene to be seen).
-// Likewise the hall from inside the stacks, the glasshouse and the terrace (but not from the garden: you see
-// it through the lounge window).
+// in (they are placed with the whole scene to be seen). Likewise the hall from inside the stacks, the
+// glasshouse and the terrace. Where exactly: streetHidden / hallHidden in shop.js.
 let streetCull = false;
-const streetHidden = (p) => p.x > 3.4 || p.z < -15.3;
-const hallHidden = (p) => (p.x > 3.9 && p.z > -15.3) || (p.x > 7.0 && p.z > -26.0);
 const shop = buildShop();
 scene.add(shop);
 // furniture that a station's rack replaces: shown until a rack stands there
@@ -374,6 +371,7 @@ window.__siennaDebug = {
   camera,
   get tilt() { return tilt; }, // the cursor's lean (x, y eased toward tx, ty): checks pin it (scripts/pop-check.mjs)
   THREE, // checks (scripts/spinner-clip-check.mjs)
+  cull: { streetHidden, hallHidden, inHall }, // scripts/route-check.mjs: nothing is hidden from inside the hall
   // ms per render step, GPU work included (each step waits for the GPU); shadows: also redraw the shadow map
   profile({ shadows = false, runs = 3 } = {}) {
     const gl = renderer.getContext(), px = new Uint8Array(4);
