@@ -15,7 +15,9 @@ export function blk(kit, M, x, y, z, sx, sy, sz, color, rx = 0, ry = 0, rz = 0) 
 }
 
 // rod between two local points
-export function rod(kit, M, a, b, radius, color, part = 'rod') {
+// Rods up to THIN_ROD (railings, balusters, cords, wires) go to kit.wire: see kit.js.
+export const THIN_ROD = 0.036;
+export function rod(kit, M, a, b, radius, color, part = radius <= THIN_ROD ? 'wire' : 'rod') {
   const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
   const mid = A.clone().add(B).multiplyScalar(0.5);
   const dir = B.clone().sub(A);

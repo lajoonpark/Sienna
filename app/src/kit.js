@@ -147,6 +147,11 @@ export function createKit() {
     tile: new Part(halfPipe(), toon('#ffffff', { side: THREE.DoubleSide })),
     slat: new Part(new THREE.BoxGeometry(1, 1, 1), white()),
     rod: new Part(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), white()), // iron bars, pipes, poles (unit, scaled)
+    // thin rods (details.js rod, radius up to THIN_ROD: railings and their balusters, lamp and plant cords,
+    // wires): flagged ownColour like the sleeves. Thinner than a dab and often thinner than Oil paint's
+    // downsampled depth, so dabs from the wall behind laid over them and only bits of each rod showed, the
+    // bits sliding as the camera moved (Lajoon, 2026-11-13). Now each pixel of one keeps its own colour.
+    wire: new Part(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), ownColour(white())),
     ball: new Part(new THREE.IcosahedronGeometry(0.5, 1), white()), // fruit, flowers, leaves (scaled)
     leaf: new Part(new THREE.SphereGeometry(0.5, 7, 5), white()),
     cone: new Part(new THREE.ConeGeometry(0.5, 1, 4), white()),

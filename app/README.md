@@ -196,7 +196,11 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   with `ownColour()` (alpha `OWN_ALPHA` 0.997), so the under-coat keeps each pixel's own colour (ridges only) and
   placed dabs stop at them. A dab is wider than a 1-2 cm spine, so it took a neighbour's colour and swapped as the
   camera moved (Lajoon, 2026-11-13: they flickered). Shelf spines also sit a few mm in or out of line, since flush
-  fronts of leaning neighbours overlapped in one plane and z-fought. Glows (halos, washes, the intro's beams: `GLOW_BLENDING`)
+  fronts of leaning neighbours overlapped in one plane and z-fought. **Thin rods** (`rod()` in `src/details.js` with
+  radius up to `THIN_ROD` 3.6 cm: gallery top rails and balusters, lamp and plant cords, wires) go to `kit.wire`,
+  flagged `ownColour()` the same way (they keep their strokes for the other looks). They are thinner than a dab and
+  often than Oil paint's downsampled depth, so dabs from the wall behind were laid over them and only part of each
+  rod showed, that part sliding as the camera moved (Lajoon, 2026-11-13). Glows (halos, washes, the intro's beams: `GLOW_BLENDING`)
   add their light but leave the scene's alpha alone, so a glow cannot wipe out the glass, record or crisp flag under
   it. Filling each stroke's patch with more placed dabs instead (`?oilsub=4,3`, `?oilstep=`, `?oilrow=`)
   doubled the frame (each spot lies under ~20 strokes placed from views at other distances) and still left the
