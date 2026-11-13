@@ -9,7 +9,7 @@ import { registerLamp, glowMesh } from './env.js';
 import { scooter, bicycle, cafeSet, crate, stall, chalkboard, bench, lampPost, stringLights, washingLine, bunting } from './props.js';
 import { stickerTexture } from './textures.js';
 import { FONT, onLettering } from './style.js';
-import { toon, keepSharp } from './materials.js';
+import { toon, keepSharp, glass as flagGlass } from './materials.js';
 import { rng } from './rand.js';
 
 export const STREET_HALF = 3.4;
@@ -239,7 +239,7 @@ function shopFront(kit, root) {
   // display windows: glass, a ledge of records facing the street, a little hanging plant
   for (const o of wins) {
     const spring = o.y + o.h - o.w / 2;
-    const glassMat = new THREE.MeshBasicMaterial({ color: '#cfe0e6', transparent: true, opacity: 0.18, depthWrite: false });
+    const glassMat = flagGlass(new THREE.MeshBasicMaterial({ color: '#cfe0e6', transparent: true, opacity: 0.18, depthWrite: false }));
     const g1 = new THREE.Mesh(new THREE.PlaneGeometry(o.w, spring - o.y), glassMat);
     g1.applyMatrix4(mul(M, trs(o.x, (o.y + spring) / 2, -0.25)));
     const g2 = new THREE.Mesh(new THREE.CircleGeometry(o.w / 2, 20, 0, Math.PI), glassMat);
@@ -301,7 +301,7 @@ function shopFront(kit, root) {
     add(new THREE.BoxGeometry(leafW, 0.12, 0.1), wood, leafW / 2, DOOR.h / 2 - 0.06, 0);
     add(new THREE.BoxGeometry(leafW, 0.9, 0.08), wood, leafW / 2, -DOOR.h / 2 + 0.45, 0);
     add(new THREE.BoxGeometry(leafW, 0.08, 0.1), wood, leafW / 2, -0.55, 0);
-    add(new THREE.BoxGeometry(leafW - 0.1, 2.0, 0.02), new THREE.MeshBasicMaterial({ color: '#f6dca8', transparent: true, opacity: 0.35 }), leafW / 2, 0.45, 0);
+    add(new THREE.BoxGeometry(leafW - 0.1, 2.0, 0.02), flagGlass(new THREE.MeshBasicMaterial({ color: '#f6dca8', transparent: true, opacity: 0.35 })), leafW / 2, 0.45, 0);
     add(new THREE.BoxGeometry(0.035, 2.0, 0.04), wood, leafW / 2, 0.45, 0);
     add(new THREE.BoxGeometry(0.05, 0.32, 0.06), toon('#d8b25c'), leafW - 0.14, -0.15, 0.08);
     pivot.add(L);
@@ -309,7 +309,7 @@ function shopFront(kit, root) {
     leaves.push({ pivot, side: s });
   }
   // fanlight over the door
-  const fan = new THREE.Mesh(new THREE.CircleGeometry(DOOR.w / 2, 20, 0, Math.PI), new THREE.MeshBasicMaterial({ color: '#f6dca8', transparent: true, opacity: 0.4 }));
+  const fan = new THREE.Mesh(new THREE.CircleGeometry(DOOR.w / 2, 20, 0, Math.PI), flagGlass(new THREE.MeshBasicMaterial({ color: '#f6dca8', transparent: true, opacity: 0.4 })));
   fan.position.set(0, DOOR.h, -0.3);
   meshes.push(fan);
   for (let k = 1; k < 5; k++) {
@@ -357,7 +357,7 @@ export function buildStreet() {
   {
     const hang = trs(0, 4.25, 12.2);
     kit.cone.add(mul(hang, trs(0, 0.2, 0, 0, Math.PI / 4, 0, 0.32, 0.16, 0.32)), '#24211f');
-    const gm = new THREE.MeshBasicMaterial({ color: '#5a4c40' });
+    const gm = flagGlass(new THREE.MeshBasicMaterial({ color: '#5a4c40' }));
     const g = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.32, 0.17), gm);
     g.applyMatrix4(hang);
     root.add(g);

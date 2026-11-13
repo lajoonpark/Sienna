@@ -1,5 +1,6 @@
 // Still frames (src/still.js, `Still frames` in src/watercolour.js): when nothing in the shop moves,
-// the painter stops painting the world and repaints only the suitcase's corner and the boiling border.
+// the painter stops painting the world and repaints only the suitcase's corner and the boiling border
+// (Oil paint has no border: there a still, paused shop paints nothing at all).
 // This checks both halves of that:
 //   1. it happens: once the shop has settled, with a record turning on the suitcase, frames are no longer
 //      painted whole (painter.stats), and say what kept changing if they are;
@@ -104,14 +105,19 @@ if (home) {
   console.log('the suitcase redrawn alone (record turning) against a whole repaint:');
   report(await compare('overlay', 4));
 }
-// paused: the record winds down and stops, and only the border still boils
+// paused: the record winds down and stops, and only the border still boils (Oil paint has no border: then
+// nothing at all is painted)
 await page.evaluate(() => window.__siennaDebug.music.command('pause'));
 await page.waitForTimeout(Number(process.env.SETTLE2 || 20000));
-console.log('the border boiling alone (paused) against a whole repaint:');
-report(await compare('border', 4));
+const oil = await page.evaluate(() => window.__siennaDebug.painter.level === 5);
+if (!oil) {
+  console.log('the border boiling alone (paused) against a whole repaint:');
+  report(await compare('border', 4));
+}
 const d2 = await sample(8, 60000);
 console.log('frames at rest, paused:', JSON.stringify(d2));
 if (d2.full > 2 || d2.overlay > 2) { bad++; console.log('  FAIL: more than the border is being painted while nothing moves'); }
+if (oil && d2.skipped < 6) { bad++; console.log('  FAIL: Oil paint has no border to boil, so a still shop should paint nothing'); }
 console.log(bad ? `FAILED (${bad})` : 'ok');
 await b.close(); await server.close();
 process.exit(bad ? 1 : 0);

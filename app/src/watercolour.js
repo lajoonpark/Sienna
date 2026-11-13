@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { paperTexture } from './paint.js';
 import { settings } from './settings.js';
 import { createBrushStrokes, strokeFingerprint } from './brushstrokes.js';
+import { createOilPaint } from './oilpaint.js';
 import { loadStrokes, saveStrokes } from './strokecache.js';
 import { packStrokes } from './strokepack.js';
 const EXPORT_STROKES = new URLSearchParams(globalThis.location?.search ?? '').has('bakeexport');
@@ -35,6 +36,9 @@ const LEVELS = [
   // each other along the same bleed. radius/lift also set how the suitcase overlay is washed, as above (only
   // with ?overwash: by default it gets no wash, see OVER_WASH).
   { strokes: true, radius: 6, bleed: 10, bleedMix: 0.4, bloom: 1.0, edge: 0.55, lift: 0.05, grain: 0.4 },
+  // Oil paint (oilpaint.js): the same strokes, as thick opaque dabs, each loaded with its own object's paint
+  // and lit by the shop's lights. No wash, no bleed, no border: the painting runs to the window's edge.
+  { strokes: true, oil: true, radius: 6, bleed: 10, bleedMix: 0.4, bloom: 0, edge: 0, lift: 0, grain: 0 },
 ];
 // Brush strokes in the small card window. It holds only the suitcase, whose strokes are in its textures
 // (suitcase/paint.js) and swing with the lid, so there is no world to pin strokes to. A light wash keeps
@@ -538,6 +542,7 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
   // Brush mode: the world alone goes through here (the overlay is drawn after). Prep is mip-mapped: each
   // stroke reads its colour from the level matching its size.
   let brush = null;
+  let oilFinal = null; // Oil paint's last pass, in place of `material` on the quad
   // Every view strokes were placed from, kept so they can be placed again if the brush is rebuilt
   // (a level change, a move to a screen with another pixel ratio).
   const strokeViews = [];
@@ -555,32 +560,38 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
       paperOffset: material.uniforms.paperOffset, seed: material.uniforms.seed,
       tDepth: { value: target.depthTexture }, near: material.uniforms.near, far: material.uniforms.far,
     });
-    const steps = [[refT, prepP.sc, 'prep'], [paintT, strokes.scene, 'strokes'], [bleedT, bleedP.sc, 'bleed']];
+    const oil = L.oil ? createOilPaint(renderer, strokes, target) : null;
+    const steps = oil ? [] : [[refT, prepP.sc, 'prep'], [paintT, strokes.scene, 'strokes'], [bleedT, bleedP.sc, 'bleed']];
     const b = {
       scale,
-      texture: bleedT.texture,
+      texture: oil ? oil.texture : bleedT.texture,
       strokes,
-      render(pan, camera, sync) {
+      oil,
+      render(pan, camera, sync, world) {
         strokes.setPan(pan.x, pan.y);
         strokes.setFovea(material.uniforms.fovea.value);
         strokes.setCamera(camera);
+        if (oil) { oil.render(world, camera, sync); return; }
         for (const [t, sc, name] of steps) { renderer.setRenderTarget(t); renderer.render(sc, postCam); sync?.(name); }
       },
       setSize(full) {
+        if (oil) { oil.setSize(full, renderer.getPixelRatio()); return; }
         const s = washSize(full, scale);
         for (const [t] of steps) t.setSize(s.x, s.y);
         bleedP.m.uniforms.texel.value.set(1 / s.x, 1 / s.y);
         strokes.setSize(s.x, s.y);
       },
       dispose() {
-        for (const [t] of steps) t.dispose();
+        for (const t of [refT, paintT, bleedT]) t.dispose();
         for (const p of [prepP, bleedP]) { p.m.dispose(); p.sc.children[0].geometry.dispose(); }
+        oil?.dispose();
         strokes.dispose();
       },
     };
     b.setSize(renderer.getDrawingBufferSize(new THREE.Vector2()));
     const prev = renderer.getRenderTarget();
     for (const [t, sc] of steps) { renderer.initRenderTarget(t); renderer.setRenderTarget(t); renderer.compile(sc, postCam); }
+    if (oil) { renderer.initRenderTarget(oil.target); renderer.setRenderTarget(oil.target); renderer.compile(oil.scene, postCam); }
     renderer.setRenderTarget(prev);
     return b;
   }
@@ -611,12 +622,16 @@ void main() {
     material.needsUpdate = true;
     wash?.dispose(); lite?.dispose(); brush?.dispose();
     wash = lite = brush = null;
+    quad.material = material;
+    oilFinal?.dispose();
+    oilFinal = null;
     invalidate();
     if (!L) return;
     wash = makeWash(1);
     if (L.strokes) {
       brush = makeBrush();
       if (strokeViews.length) brush.strokes.bake(strokeWorld, strokeViews);
+      if (brush.oil) quad.material = oilFinal = brush.oil.finalMaterial(material.uniforms);
       material.uniforms.tWash.value = brush.texture;
       material.uniforms.tOver.value = wash.texture;
       return;
@@ -872,6 +887,8 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     bakeStrokesCached,
     // ?bakeexport: the first bake, packed (strokepack.js), for scripts/bake-strokes.mjs
     get strokeExport() { return exported; },
+    // Oil paint's dabs (oilpaint.js), for checks (scripts/oil-cover-check.mjs); null in the other looks
+    get oil() { return brush?.oil ?? null; },
     // cinema bars (0 = none, 1 = full ~2.2:1 letterbox), painted on the sheet inside the ragged border
     setBars(k) { material.uniforms.bars.value = Math.max(0, Math.min(1, k)); },
     get bars() { return material.uniforms.bars.value; },
@@ -903,7 +920,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       };
 
       // deep idle (pacer.js): the border holds its last shape, so a still shop draws nothing
-      const boil = boilHeld && lastBoil >= 0 ? lastBoil : Math.floor(t * BOIL_FPS) % 64;
+      const boil = (boilHeld || (L?.oil && !u.bars.value)) && lastBoil >= 0 ? lastBoil : Math.floor(t * BOIL_FPS) % 64;
       u.borderSeed.value = boil * 1.37;
       u.seed.value = brush || L?.still ? 0 : u.borderSeed.value; // dry paint does not boil, but the sheet's ragged border does
       u.near.value = camera.near;
@@ -948,7 +965,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
         drawWorld();
         sync?.('scene');
         pan.set((yaw * pxPerRad) / u.resolution.value.x, (pitch * pxPerRad) / u.resolution.value.y);
-        brush.render(pan, camera, sync);
+        brush.render(pan, camera, sync, scene);
         // keep what is under the overlay, so that frames in which only the overlay moves can redraw it alone
         saveUnder(overlay, rect);
         wholeTarget();

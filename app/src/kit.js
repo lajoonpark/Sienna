@@ -10,7 +10,7 @@
 // left over: twice the draw calls for another 5%).
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { toon } from './materials.js';
+import { toon, ownColour } from './materials.js';
 
 export const BRICK = { len: 0.5, row: 0.24, gap: 0.028, depth: 0.2 };
 const CELL = 8;       // metres
@@ -49,10 +49,11 @@ function card(w, h, depth, face) {
 }
 
 class Part {
-  constructor(geometry, material, { castShadow = true, receiveShadow = true, card = null } = {}) {
+  constructor(geometry, material, { castShadow = true, receiveShadow = true, card = null, userData = null } = {}) {
     // a card casts no shadow of its own: the wall's mortar backing behind it does, and a lone face has
     // nothing to add to the shadow map but draw calls
     if (card && CARD_WALLS) { geometry = card; this.isCard = true; castShadow = false; }
+    this.userData = userData; // copied onto every mesh it builds (e.g. noStrokes)
     this.geometry = geometry;
     this.material = material;
     this.castShadow = castShadow;
@@ -85,6 +86,7 @@ class Part {
       mesh.castShadow = this.castShadow;
       mesh.receiveShadow = this.receiveShadow;
       mesh.computeBoundingSphere(); // of its instances: what the renderer culls it by
+      if (this.userData) Object.assign(mesh.userData, this.userData);
       out.push(mesh);
       // a square (not the leftovers spread over the whole street) of rounded pieces gets a boxed twin
       const square = g < groups.length - (rest.length ? 1 : 0);
@@ -97,6 +99,7 @@ class Part {
         twin.receiveShadow = this.receiveShadow;
         twin.boundingSphere = mesh.boundingSphere.clone();
         twin.visible = false; // until updateLod says the square is far
+        if (this.userData) Object.assign(twin.userData, this.userData);
         lodPairs.push([mesh, twin]);
         out.push(twin);
       }
@@ -137,10 +140,18 @@ export function createKit() {
   const parts = {
     brick: new Part(new RoundedBoxGeometry(BRICK.len, BRICK.row - BRICK.gap, BRICK.depth, 2, 0.035), white(), { card: card(BRICK.len, BRICK.row - BRICK.gap, BRICK.depth, 'front') }),
     block: new Part(new RoundedBoxGeometry(1, 1, 1, 1, 0.06), white()), // generic stone/wood block, scaled freely
+    // the decor record sleeves (interior.js): no strokes pinned to them, and Oil paint's under-coat keeps their
+    // own colours (materials.js ownColour), since a dab is wider than a spine
+    sleeve: new Part(new RoundedBoxGeometry(1, 1, 1, 1, 0.06), ownColour(white()), { userData: { noStrokes: true } }),
     flag: new Part(new RoundedBoxGeometry(1, 0.12, 1, 2, 0.05), white(), { castShadow: false, card: WALLS === 'bricks' ? null : card(1, 1, 0.12, 'top') }),
     tile: new Part(halfPipe(), toon('#ffffff', { side: THREE.DoubleSide })),
     slat: new Part(new THREE.BoxGeometry(1, 1, 1), white()),
     rod: new Part(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), white()), // iron bars, pipes, poles (unit, scaled)
+    // thin rods (details.js rod, radius up to THIN_ROD: railings and their balusters, lamp and plant cords,
+    // wires): flagged ownColour like the sleeves. Thinner than a dab and often thinner than Oil paint's
+    // downsampled depth, so dabs from the wall behind laid over them and only bits of each rod showed, the
+    // bits sliding as the camera moved (Lajoon, 2026-11-13). Now each pixel of one keeps its own colour.
+    wire: new Part(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), ownColour(white())),
     ball: new Part(new THREE.IcosahedronGeometry(0.5, 1), white()), // fruit, flowers, leaves (scaled)
     leaf: new Part(new THREE.SphereGeometry(0.5, 7, 5), white()),
     cone: new Part(new THREE.ConeGeometry(0.5, 1, 4), white()),

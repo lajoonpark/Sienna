@@ -4,7 +4,7 @@ A 3D vinyl shop for YouTube Music (free, open source). Electron + Three.js.
 
 The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over the street, a little piazza, and the Sienna shop. The door swings open on its own, the camera walks into the shop, and the view tilts with the cursor. All scenery is procedural.
 
-**Look:** painted, through a screen pass (`src/watercolour.js`): brush strokes pinned to the world's surfaces by default (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Look > Painting). Both have a ragged paper border. `?style=flat` shows the old flat toon look.
+**Look:** painted, through a screen pass (`src/watercolour.js`): oil paint by default on branch `oil-paint` (`src/oilpaint.js`: opaque dabs on the brush strokes' places, each with its object's own paint, lit live, with impasto ridges, over an under-coat of smaller dabs so no canvas is left bare; full bleed, no border), brush strokes pinned to the world's surfaces (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Look > Painting). The brush and watercolour looks have a ragged paper border. `?style=flat` shows the old flat toon look.
 
 **Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Look > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots. A change applies live in both windows, with no reload: `FONT`/`fontReady` are live exports, CSS uses `var(--sienna-font)`, and everything painted into a canvas or texture (tags, rack signs, the shop sign, button plates, menu words, search bar, album-spread stickers) registers a repaint with `onLettering(owner, draw)` in `src/style.js`, which runs once the new face has loaded. New lettered paint must register too. Check: `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out` (mini window, no reload) and `node scripts/tour-check.mjs out`.
 
@@ -93,6 +93,13 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   in front of the tower, shrinking just as much, so it looks the same size in the same spot but never
   cuts into the tower's corner (`CLEAR` in `spinner.js`). Check:
   `node scripts/spinner-clip-check.mjs [out] [tower angles]` (`SHOTS=1` saves every settled hover).
+  The tower's paint turns with it: its brush strokes and oil dabs are placed in the tower's own frame
+  (`userData.strokeTurn` on the turning group = the box it fills; tagged `TURN_TAG` in `aCol.w`; drawn through
+  `turnM`, `STROKE_FRAME` in `src/brushstrokes.js`), and the oil under-coat lays its grid in that frame wherever a
+  pixel lies in the box. When its rack is baked, the tower is turned a quarter at a time (for the bake only) so
+  every side gets strokes from nearly square on (`TURN_FACING`; ~+60 ms on that bake, RX 550). One turning thing at
+  a time. Check: `node scripts/spin-paint-check.mjs [out] [turns] [dpr]` (bare share on the tower per angle, and how
+  well the paint's pattern follows it: correlation ~0.6 at 0.35 rad; ~0.05 when the dabs were pinned to the world).
   At the courtyard stall, hovering a crate makes all its records float up in front of you, spread
   out so every cover shows; the one under the cursor grows and comes forward with its tag.
 - **Albums** (`src/spread.js`, any rack): pressing an album's record fans its songs out of the sleeve
@@ -151,9 +158,80 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   A side rail picks a page: *Account*, *Look* (Painting, Cover art, Lettering), *Playback* (Start of a song),
   *Performance* (Smoothness, Sharpness, Auto cool-down, Frame rate), *Shortcuts*, *Tour*. ↑/↓ or Tab move through the rail; it opens on
   Account the first time, then where you left it. `?settings=<page>` opens a page for screenshots.
-  *Painting* sets the look: Faint / Light / Medium / Heavy watercolour, or Brush strokes (default), which repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map). Faint is the
+  *Painting* sets the look: Faint / Light / Medium / Heavy watercolour, Brush strokes, or Oil paint (default on branch
+  `oil-paint`, a trial of D from the optimisation plan, after blendi's oil-paint demo on patch.gg, MIT). Oil paint
+  (`src/oilpaint.js`) draws the brush strokes' places as thick opaque dabs: each stroke records its object's paint
+  when it is placed (`aCol` in `src/brushstrokes.js`: the world drawn once under an even white sky of strength pi,
+  once with no light, so glows and crisp covers are told apart), and the dab's vertex shader lights that paint
+  with the shop's own lights the way the toon materials do (sky, sun with one shadow-map look, the lamps that are
+  on, fog), so the colour is decisive and never swims with the picture, and time of day still reaches it. The
+  brush sheet holds a height and its slope; light from the canvas's upper left rakes across the ridges
+  (`?impasto=`). Each dab fits the one thing under it: strokes are placed with an id picture (every mesh its own
+  number, every piece of an instanced mesh marked `userData.strokeEach`, the racks' filler spines) and stop where
+  the object or its paint changes (`PAINT_STEP`, so a row of spines or a striped box is never one surface); a dab
+  is never fatter or longer than the room its face leaves there (`aShape.zw`); and at each pixel it is cut where
+  the scene leaves its plane, to about a centimetre (measured square to the plane, so it cannot wrap round a corner
+  or float over a gap). It also stops where the scene draws something it does not know about (a lit window, glass:
+  the colour there disagrees). Strokes on station furniture remember which piece they are on (`ownStrokes` = k,
+  `aCol.w` += 10k) and go when a rack replaces it: before, they floated on the new rack. Spines thinner than a
+  pixel of the bake (320 x 200) get no dab and show as drawn. Records (`userData.noStrokes` on a rack's Sleeve) get no strokes in any look, since they
+  move (a rack revealed mid-session used to pin strokes to its records). Coat and medium layers only, about half the coat's strokes
+  (they are wider): `?oillayers=1,1,0`, `?oilkeep=0.55,0.7,1`, `?oilshape=2.2,1.0` (width, length), `?oilmax=`,
+  `?oilscale=1` (dab px per CSS px), `?dabwidth=`. The placed dabs are capped in size on screen (`MAX_SIZE`), so
+  they leave about half the canvas bare, and none are placed on mortar lines, thin edges or rails; an **under-coat**
+  fills it (`UNDER`, `?under=0.035` dab size as a share of the screen's height, `?under=0` off). It is worked out
+  per pixel in the first pass into the paint target: the pixel's world position and facing come from the scene's
+  depth, and dabs are laid on a grid on the plane of the axis that surface faces most (two grids half a cell apart,
+  only the 2 x 2 cells nearest looked at), cells a power of two in metres that halve and double dab by dab with
+  distance; each dab is one colour (the scene round where its middle lies: 4 pixels, each weighed by how surely it
+  is the same surface, eased toward the pixel's own colour where none is; a single pixel and a yes/no made whole
+  dabs jump colour as the camera moved) with the brush sheet's ridges, and a pixel no dab reaches takes the
+  nearest dab's colour. Things that move (records, their
+  discs: `unpinned()` in `src/materials.js`, alpha 0.99 in the scene buffer) get no under-coat, as it is pinned to
+  the world. **Glass gets no dab at all** (Lajoon, 2026-11-12: dabs made it look worse): window glass, the shop
+  door's panes and fanlight, the display windows and lantern panes are flagged with `glass()` in `src/materials.js`
+  (alpha `GLASS_ALPHA` 0.993 in the scene buffer; a see-through pane keeps its colour blending and only sets the
+  alpha it leaves, so the flag holds over the room behind), and the last pass shows those pixels as drawn, with what
+  is seen through them. New glass should use `glass()`; the pendants' bulbs are glass too, and each shade has a
+  warm lining under it (the hall's green shades, lit from that close, glowed lime and got greenish dabs round the
+  light). **The decor record sleeves** (shelf spines, crates, face-out sleeves in `src/interior.js`) are their own
+  kit part, `kit.sleeve` (`src/kit.js`): no strokes are placed on them (`userData.noStrokes`) and they are flagged
+  with `ownColour()` (alpha `OWN_ALPHA` 0.997), so the under-coat keeps each pixel's own colour (ridges only) and
+  placed dabs stop at them. A dab is wider than a 1-2 cm spine, so it took a neighbour's colour and swapped as the
+  camera moved (Lajoon, 2026-11-13: they flickered). Shelf spines also sit a few mm in or out of line, since flush
+  fronts of leaning neighbours overlapped in one plane and z-fought. **Thin rods** (`rod()` in `src/details.js` with
+  radius up to `THIN_ROD` 3.6 cm: gallery top rails and balusters, lamp and plant cords, wires) go to `kit.wire`,
+  flagged `ownColour()` the same way (they keep their strokes for the other looks). They are thinner than a dab and
+  often than Oil paint's downsampled depth, so dabs from the wall behind were laid over them and only part of each
+  rod showed, that part sliding as the camera moved (Lajoon, 2026-11-13). Glows (halos, washes, the intro's beams: `GLOW_BLENDING`)
+  add their light but leave the scene's alpha alone, so a glow cannot wipe out the glass, record or crisp flag under
+  it. Filling each stroke's patch with more placed dabs instead (`?oilsub=4,3`, `?oilstep=`, `?oilrow=`)
+  doubled the frame (each spot lies under ~20 strokes placed from views at other distances) and still left the
+  edges bare. Dabs are depth tested against the scene (its depth brought down to the paint target, a few cm
+  nearer: `?oilbias=`), so the GPU skips their hidden parts. Check coverage with `node scripts/oil-cover-check.mjs
+  [out] [stations] [dpr] [query]`: the share of the paintable picture no dab reaches, a magenta map of it, the frame
+  time, and the overdraw (`VARIANTS='[{"count":1}]'`). **Every dab stays on its own surface**: a placed dab is cut where the
+  scene under it lies off its plane (`?oiltol=`) or is drawn in another colour (`?oilagreecol=`, tight: 0.12-0.22
+  in sqrt rgb), and an under-coat dab borrows colour only from the scene point near its middle (3D distance,
+  `?undertol=`) whose colour is near the pixel's own (`?undercol=`). Looser tolerances, which grew with distance and
+  only measured off the plane, let wall paint run onto the green sign board 8 cm in front of it, frames, shutters
+  and sun/shade edges (Lajoon, 2026-11-13). Find what still crosses with `node scripts/oil-bleed-check.mjs [out]
+  [views] [dpr] [query]` (views `t<s>` = the intro in shot mode, `home` or station numbers; `CROP=x,y,w,h` saves a
+  close-up as drawn | painted): the share of the painted picture whose paint matches a neighbouring surface better
+  than its own, for all paint, placed dabs alone and under-coat alone, the biggest patches, a magenta map. At
+  Sharpness light over the intro t1-8, home and stations 0-7: 4.1% -> 0.8% (street 6-10% -> 1-2%); what is left is
+  mostly glows the dabs do not carry and patches under the cinema bars. No wash, bleed or border passes; the last pass lays the dabs
+  over the scene, crisp things, glass and the suitcase as drawn, a faint canvas weave. RX 550 @2x (frame-bench), against
+  Brush strokes: home 48.6 -> 27.0 ms before the under-coat, 39.5 with it; station 0 38.9 -> 20.3 / 24 before,
+  29-30 with it; station 3 45.5 -> 23.2 / 24 before, 27 with it (bare canvas at home 52% -> 0%). The scene pass is
+  still drawn whole. Brush strokes repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map; `SHOTS=120,121 MARK=1` saves those frames with the flipped pixels in magenta; `hotPct` = pixels
+flipping in over a tenth of the frames). That count also takes in textured edges sliding past; to find what
+*jumps* as the camera moves, `node scripts/pop-check.mjs <out> [query] [times]` draws each moment twice a sliver
+of time apart (`DT`, default 1/300 s; `DT=0 NUDGE=0.0002` leans the camera a hair instead, for still views like
+`at=3`) with the cursor's lean pinned, and marks in magenta what changed: z-fighting, dabs popping, colours picked
+from another pixel. Faint is the
   old single pass; the others flatten shading into washes and let colour bleed (`LEVELS` in
-  `src/watercolour.js`). `?wc=0..4` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
+  `src/watercolour.js`). `?wc=0..5` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays
   when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Sharpness* sets how
   many pixels the shop is drawn with (`src/quality.js`): Full (every Retina pixel), Balanced (default: 3/4 of the screen's
@@ -171,7 +249,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   walk you through it, with brush-stroke words floating (bobbing) under each note instead of a settings card:
   *welcome* (SIGN IN or LOOK AROUND FIRST, with the small print as four price stickers slapped on one by one: FREE,
   makes no money; PRIVATE, no servers and keeps nothing about you; ADS?, without Premium YouTube Music plays its own
-  and Sienna earns nothing from them; OPEN SOURCE, the code is at github.com/lajoonpark/Sienna), *paint* (brush strokes or a watercolour, applied live),
+  and Sienna earns nothing from them; OPEN SOURCE, the code is at github.com/lajoonpark/Sienna), *paint* (oil paint, brush strokes or a watercolour, applied live),
   *letters* (the lettering, applied live), *smooth*
   (60 or 30 fps), *record* (a small note at the top while you pick a record; the shop's keys work, it fades at a rack
   and moves on once a song plays), *player* (beside the suitcase: the knob is the Mac's own volume, scrubbing, keys),
@@ -229,12 +307,12 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
     suitcase). Small gain (~2.5 ms at home): that pass is limited
     by its noise maths, not its reads.
   - *Strokes baked at build time* (C1): `node scripts/bake-strokes.mjs` writes `strokes/shop.bin.gz` (packed by
-    `src/strokepack.js`, ~9 MB), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
+    `src/strokepack.js`, ~9.5 MB with each stroke's paint colour and room), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
     its fingerprint matches (the app reads it through the main process, `strokes:shipped`; a browser fetches it),
     so a first start also skips placing them (fresh profile: 5.7 s -> 1.7 s to the intro here). Run it again after
     changing the street, the shop or the stroke settings; until then the app places them itself as before.
     It is baked as the app starts (no `?shot`): station furniture stands where racks will go and gets strokes
-    first. Those furniture strokes have places of their own (`ownStrokes` in `src/shop.js`, drawn with alpha 2 in
+    first. Those furniture strokes have places of their own (`ownStrokes` in `src/shop.js`, drawn with alpha 1 + k in
     the bake), so when a rack replaces the furniture the wall behind it still gets its coat; before, the wall
     above the cubby rack was left with gaps. `?shot` builds racks before the bake, so shots with
     `?strokecache=0` never showed this; shots that read the shipped strokes do.

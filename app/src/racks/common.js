@@ -48,7 +48,7 @@ import { chooseDiscDir } from './clear.js';
 import { uploadSoon } from '../warmup.js';
 import { paintOffThread } from '../coverworker.js';
 import { safeArtUrl, artSizeOk } from '../arturl.js';
-import { toon, crisp } from '../materials.js';
+import { toon, crisp, unpinned } from '../materials.js';
 import { rng } from '../rand.js';
 import { brushStroke, INK, PAPER } from '../controls.js';
 import { FONT, fontReady, onLettering } from '../style.js';
@@ -265,7 +265,7 @@ export function vinylMaterial(base = '#25212a') {
   g.fillRect(0, 0, 256, 256);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const mat = toon('#ffffff', { map: tex });
+  const mat = unpinned(toon('#ffffff', { map: tex }));
   grooveMats.set(base, mat);
   return mat;
 }
@@ -308,13 +308,14 @@ export class Sleeve {
     const small = getCover(item.art, 256);
     this.small = small;
     this.big = null;
-    this.spineMat = toon(small.color ?? new THREE.Color().setHSL(rng(seed * 7 + 3)(), 0.3, 0.5));
+    this.spineMat = unpinned(toon(small.color ?? new THREE.Color().setHSL(rng(seed * 7 + 3)(), 0.3, 0.5)));
     if (!small.color) small.loaded.then(() => { if (small.color) this.spineMat.color.copy(small.color); });
     this.coverMat = crisp({ map: small.tex });
     // box faces: +x, -x, +y, -y (spine colour), +z (cover), -z (back: shows the art too, because
     // some racks are seen from behind)
     this.mesh = new THREE.Mesh(sleeveGeo(size, thick), [this.spineMat, this.spineMat, this.spineMat, this.spineMat, this.coverMat, this.coverMat]);
     this.mesh.castShadow = true;
+    this.mesh.userData.noStrokes = true; // records move: no strokes are pinned to them (brushstrokes.js)
     this.mesh.rotation.order = 'YXZ';
     this.mesh.visible = false;
     const v = vinylParts();
@@ -486,6 +487,7 @@ export function instancedBoxes(list) {
   mesh.count = list.length;
   mesh.castShadow = mesh.receiveShadow = true;
   mesh.frustumCulled = false;
+  mesh.userData.strokeEach = true; // each block is its own thing to paint: strokes fit one, never a row (brushstrokes.js)
   return mesh;
 }
 

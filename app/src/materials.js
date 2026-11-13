@@ -63,6 +63,68 @@ export function keepSharp(m) {
   return m;
 }
 
+// Things that move (records, their discs): flagged (alpha 0.99 in the scene buffer, too little for the other
+// looks to notice) so Oil paint's under-coat, which is pinned to the world, does not slide over them as they
+// go. They show as drawn there, like everything the strokes are not pinned to.
+export const UNPINNED_ALPHA = 0.99;
+export function unpinned(m) {
+  const before = m.onBeforeCompile, key = m.customProgramCacheKey?.bind(m);
+  m.onBeforeCompile = (shader, r) => {
+    before?.call(m, shader, r);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>\n  gl_FragColor.a = min(gl_FragColor.a, ${UNPINNED_ALPHA});`);
+  };
+  m.customProgramCacheKey = () => `unpinned-${key ? key() : m.type}`;
+  return m;
+}
+
+// Rows of thin things side by side, each its own colour (the decor record spines on the shelves and in the
+// crates, interior.js): flagged (alpha OWN_ALPHA in the scene buffer) so Oil paint's under-coat keeps each
+// pixel's own colour instead of the colour read at its dab's middle, and placed dabs stop at them. A dab is
+// wider than a spine, so it took a neighbour's colour and switched as the camera moved: the dabs there
+// flickered (Lajoon, 2026-11-13). The under-coat's ridges stay, so they still read as painted.
+export const OWN_ALPHA = 0.997;
+export function ownColour(m) {
+  const before = m.onBeforeCompile, key = m.customProgramCacheKey?.bind(m);
+  m.onBeforeCompile = (shader, r) => {
+    before?.call(m, shader, r);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>\n  gl_FragColor.a = min(gl_FragColor.a, ${OWN_ALPHA});`);
+  };
+  m.customProgramCacheKey = () => `own-${key ? key() : m.type}`;
+  return m;
+}
+
+// Glass (windows, the door's panes, lantern panes): flagged (alpha GLASS_ALPHA in the scene buffer, as little
+// as unpinned's for the other looks) so Oil paint lays no dab on it, neither the placed ones nor the under-coat,
+// and it shows as drawn, with whatever is seen through it: dabs make glass look worse (Lajoon, 2026-11-12).
+// A see-through pane keeps its own colour blending; only the alpha it leaves behind is set (what was there,
+// times GLASS_ALPHA), so the flag also holds where it lies over the room behind it.
+export const GLASS_ALPHA = 0.993;
+
+// Light added on top (halos, washes, the intro's beams): its colour adds like AdditiveBlending, but the alpha
+// already in the scene buffer stays as it was, so a glow over glass, a record or a cover does not wipe out
+// the flag that tells the paint looks how to treat it. Spread it into a material's parameters.
+export const GLOW_BLENDING = {
+  blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+  blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
+};
+export function glass(m) {
+  if (m.transparent) {
+    Object.assign(m, {
+      blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+      blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+      blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.ConstantAlphaFactor, blendAlpha: GLASS_ALPHA,
+    });
+    return m;
+  }
+  const before = m.onBeforeCompile, key = m.customProgramCacheKey?.bind(m);
+  m.onBeforeCompile = (shader, r) => {
+    before?.call(m, shader, r);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>\n  gl_FragColor.a = min(gl_FragColor.a, ${GLASS_ALPHA});`);
+  };
+  m.customProgramCacheKey = () => `glass-${key ? key() : m.type}`;
+  return m;
+}
+
 export function crisp(params) {
   // a little self-light so paper and covers stay readable in the shop's warm, dim corners
   const m = new THREE.MeshLambertMaterial({ emissive: '#ffffff', emissiveMap: params.map, emissiveIntensity: 0.35, ...params });

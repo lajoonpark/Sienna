@@ -38,6 +38,30 @@ float sameSurface(vec2 uv, float d) {
 }
 `;
 
+// Things that turn in place (the plant room's spinner: userData.strokeTurn = { half, y0, y1 }, the box it
+// fills in its own frame, half its width and its height). Strokes placed on one are kept in its own frame,
+// tagged in aCol.w (+ TURN_TAG), and go round with it: turnM is its frame -> world now, turnOn 0 when it
+// is not there or not shown (one such thing at a time).
+export const TURN_TAG = 1000;
+export const STROKE_FRAME = /* glsl */ `
+uniform mat4 turnM;
+uniform float turnOn;
+vec3 sPos, sTan, sNor;      // the stroke's place, way and normal in the world, now
+bool strokeFrame() {
+  sPos = aPos.xyz; sTan = aTan.xyz; sNor = aNor.xyz;
+  if (aCol.w < ${TURN_TAG / 2}.0) return true;
+  if (turnOn < 0.5) return false;
+  mat3 R = mat3(turnM);
+  sPos = (turnM * vec4(aPos.xyz, 1.0)).xyz; sTan = R * aTan.xyz; sNor = R * aNor.xyz;
+  return true;
+}
+`;
+// A face of it is only painted from a view that sees it this square on (the cosine): from a glancing one the
+// shape and normal come out rough, and once it turns to face you that shows. The bake turns it a quarter at a
+// time instead, so every side is seen nearly square on once.
+const TURN_FACING = 0.45;
+const inTurnBox = (l, box) => Math.abs(l.x) < box.half && Math.abs(l.z) < box.half && l.y > box.y0 && l.y < box.y1;
+
 const quadVertex = /* glsl */ `
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
@@ -76,7 +100,8 @@ const strokeVertex = /* glsl */ `
 attribute vec4 aPos;         // world position, stroke length in metres
 attribute vec4 aTan;         // direction along the surface, random
 attribute vec4 aNor;         // surface normal, random
-attribute vec2 aShape;       // length and width after fitting to the shape it sits on (metres)
+attribute vec4 aShape;       // length and width after fitting to the shape it sits on, and the room there (metres)
+attribute vec4 aCol;         // (here only its w: + TURN_TAG when it is on something that turns)
 uniform sampler2D tRef;
 uniform sampler2D tDepth;
 uniform mat4 viewProj;
@@ -99,15 +124,17 @@ varying float vFade;
 varying float vDepth;
 float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 ${SCENE_DEPTH}
+${STROKE_FRAME}
 void main() {
   // anything not on show collapses off screen before the costly part
   gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
   vAtlas = vec2(0.0); vPigment = vec3(1.0); vWants = vec3(1.0); vFade = 0.0; vDepth = 0.0;
-  vec4 clipA = viewProj * vec4(aPos.xyz, 1.0);
+  if (!strokeFrame()) return;
+  vec4 clipA = viewProj * vec4(sPos, 1.0);
   if (clipA.w < 0.15) return;
   vec2 a = clipA.xy / clipA.w * 0.5 + 0.5;
   if (a.x < -0.5 || a.x > 1.5 || a.y < -0.5 || a.y > 1.5) return;
-  if (dot(aNor.xyz, eye - aPos.xyz) <= 0.0) return;
+  if (dot(sNor, eye - sPos) <= 0.0) return;
   float onScreen = aPos.w / (clipA.w * heightAt1m);
   // Far away, fewer and bigger: the smallest size a mark may be on screen grows with distance (farGrow:
   // from x metres to y metres it grows up to z times), so a far wall is painted in a few broad marks
@@ -167,8 +194,8 @@ void main() {
   float wid = aShape.y * (0.8 + 0.2 * fract(aNor.w * 7.13));
   float bend = (fract(aNor.w * 11.3) - 0.5) * 0.7;
   vec2 lp = vec2(position.x, position.y + bend * (position.x * position.x - 0.15));
-  vec3 side = cross(aNor.xyz, aTan.xyz);
-  vec3 world = aPos.xyz + aTan.xyz * lp.x * len + side * lp.y * wid + aNor.xyz * 0.01;
+  vec3 side = cross(sNor, sTan);
+  vec3 world = sPos + sTan * lp.x * len + side * lp.y * wid + sNor * 0.01;
   gl_Position = viewProj * vec4(world, 1.0);
   vDepth = gl_Position.w;
   vWants = fine;
@@ -301,7 +328,7 @@ function bakeAtlas(renderer) {
   return t;
 }
 
-// alpha 2: the point is on something that comes and goes (see `ownStrokes` in bake)
+// alpha 1 + k: the point is on something that comes and goes, number k (see `ownStrokes` in bake)
 const positionMaterial = (tag = 1) => new THREE.ShaderMaterial({
   vertexShader: /* glsl */ `
 varying vec3 vW;
@@ -320,6 +347,28 @@ void main() { gl_FragColor = vec4(vW, ${tag.toFixed(1)}); }`,
   side: THREE.DoubleSide,
 });
 
+// the id picture: R the object's number, G which of its pieces (strokeEach), as set per draw in bake
+const idMaterial = () => new THREE.ShaderMaterial({
+  uniforms: { oid: { value: 0 }, each: { value: 0 } },
+  vertexShader: /* glsl */ `
+varying float vPiece;
+void main() {
+  vec4 p = vec4(position, 1.0);
+  vPiece = 0.0;
+#ifdef USE_INSTANCING
+  p = instanceMatrix * p;
+  vPiece = float(gl_InstanceID);
+#endif
+  gl_Position = projectionMatrix * viewMatrix * modelMatrix * p;
+}`,
+  fragmentShader: /* glsl */ `
+uniform float oid;
+uniform float each;
+varying float vPiece;
+void main() { gl_FragColor = vec4(oid, each > 0.5 ? floor(vPiece + 0.5) : 0.0, 0.0, 1.0); }`,
+  side: THREE.DoubleSide,
+});
+
 function layerMesh(layer, shared, atlas) {
   const geo = new THREE.InstancedBufferGeometry();
   // x -0.5..0.5 along the stroke, y -0.5..0.5 across; enough segments to bend (small marks need few)
@@ -333,7 +382,11 @@ function layerMesh(layer, shared, atlas) {
     geo.setAttribute(name, a);
     return a;
   };
-  const buffers = { aPos: attr('aPos'), aTan: attr('aTan'), aNor: attr('aNor'), aShape: attr('aShape', 2) };
+  // aCol: the paint of the object under it (rgb, linear) and how it is lit: 1 by the lights, 0 it glows by
+  // itself (lamps, windows), -1 a crisp thing that is never painted over (covers, labels); plus 10 x k when it
+  // is on station furniture number k (ownStrokes), which a rack replaces. Oil paint (oilpaint.js)
+  // colours its strokes from this; the other looks read the rendered picture instead.
+  const buffers = { aPos: attr('aPos'), aTan: attr('aTan'), aNor: attr('aNor'), aShape: attr('aShape'), aCol: attr('aCol') };
   geo.instanceCount = 0;
   const blend = layer.mode === 'TOUCH' || layer.mode === 'GROUND'
     ? { blending: THREE.NormalBlending }
@@ -382,6 +435,8 @@ function chooseTangent(p, n, r) {
 
 // Looks around a point in the position picture for the flat piece of surface it belongs to.
 const RAYS = 16, RAY_STEP = 2, RAY_STEPS = 30;
+// how far apart two paints are (sqrt of linear rgb) before a stroke stops where one meets the other
+const PAINT_STEP = 0.14;
 const RAY_DIRS = Array.from({ length: RAYS }, (_, k) => [Math.cos((k / RAYS) * Math.PI * 2), Math.sin((k / RAYS) * Math.PI * 2)]);
 const flatTol = (d) => 0.015 + 0.006 * d;
 
@@ -390,7 +445,7 @@ const FACES = (n) => (Math.abs(n.x) > Math.abs(n.y) && Math.abs(n.x) > Math.abs(
 // A fingerprint of what a bake would see: every solid, drawn mesh (its geometry's size, where it is, its
 // instances), the views, and how strokes are laid out. The stroke cache keeps a bake under it, so a
 // change to the street, the shop or this file's settings bakes again instead of reusing old strokes.
-const CACHE_VERSION = 2; // bump when `place` changes in a way the numbers below do not show
+const CACHE_VERSION = 5; // bump when `place` changes in a way the numbers below do not show
 export function strokeFingerprint(world, views) {
   let h1 = 0x811c9dc5 ^ CACHE_VERSION, h2 = 0x9e3779b9;
   const add = (v) => {
@@ -413,7 +468,7 @@ export function strokeFingerprint(world, views) {
     }
   });
   for (const v of views) { add(v.pos.x); add(v.pos.y); add(v.pos.z); add(v.target.x); add(v.target.y); add(v.target.z); add(v.fov ?? 70); }
-  add(BAKE_W); add(BAKE_H); add(BAKE_STRIDE); add(FARTHEST);
+  add(BAKE_W); add(BAKE_H); add(BAKE_STRIDE); add(FARTHEST); add(PAINT_STEP);
   for (const l of LAYERS) for (const v of Object.values(l)) if (typeof v === 'number') add(v); else if (Array.isArray(v)) v.forEach(add);
   return `${h1.toString(16)}${h2.toString(16)}`;
 }
@@ -431,7 +486,21 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     lodShift: { value: 0 },
     farGrow: { value: new THREE.Vector3(...FAR_GROW) },
     fovea: { value: new THREE.Vector3(0.5, 0.5, 0) },
+    // the thing that turns (STROKE_FRAME): its frame -> world and back, now, and its box (half, y0, y1)
+    turnM: { value: new THREE.Matrix4() },
+    turnInv: { value: new THREE.Matrix4() },
+    turnBox: { value: new THREE.Vector3() },
+    turnOn: { value: 0 },
   };
+  let turner = null;
+  const shownAll = (o) => { for (let q = o; q; q = q.parent) if (!q.visible) return false; return true; };
+  // finds the thing that turns in a world (there is one at most)
+  function watch(world) {
+    let found = null;
+    world.traverse((o) => { if (o.userData.strokeTurn) found = o; });
+    if (found) turner = found;
+    return turner;
+  }
   const atlas = bakeAtlas(renderer);
   const scene = new THREE.Scene();
   const under = new THREE.ShaderMaterial({
@@ -455,8 +524,15 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
   const r = rng(7);
   const p = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), e = new THREE.Vector3(), n = new THREE.Vector3(), toEye = new THREE.Vector3(), side = new THREE.Vector3(), centre = new THREE.Vector3(), long = new THREE.Vector3(), mid = new THREE.Vector3(), hit = new THREE.Vector3(), hand = new THREE.Vector3(), across = new THREE.Vector3();
   const ends = Array.from({ length: RAYS }, () => new THREE.Vector3());
-  const place = (cam, data) => {
+  // in the turning thing's own frame (STROKE_FRAME)
+  const toLocal = new THREE.Matrix4(), pl = new THREE.Vector3(), nl = new THREE.Vector3(), handL = new THREE.Vector3(), acrossL = new THREE.Vector3(), cl = new THREE.Vector3(), tl = new THREE.Vector3();
+  // onlyTurning: just the places on the thing that turns (it has been turned for this look)
+  const place = (cam, data, albedo, glow, ids, onlyTurning = false) => {
+    const box = turner?.userData.strokeTurn;
+    if (box) toLocal.copy(turner.matrixWorld).invert();
     const at = (x, y, out) => { if (x < 0 || y < 0 || x >= BAKE_W || y >= BAKE_H) return null; const i = (y * BAKE_W + x) * 4; if (!data[i + 3]) return null; return out.set(data[i], data[i + 1], data[i + 2]); };
+    // which object (and, for things painted piece by piece, which piece) is drawn at a pixel
+    const idAt = (x, y) => { const i = (y * BAKE_W + x) * 4; return ids[i] * 65536 + ids[i + 1]; };
     const eye = cam.getWorldPosition(new THREE.Vector3());
     for (let y = 0; y < BAKE_H - 2 * BAKE_STRIDE; y += BAKE_STRIDE) {
       for (let x = 0; x < BAKE_W - 2 * BAKE_STRIDE; x += BAKE_STRIDE) {
@@ -464,14 +540,29 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
         if (!at(px, py, p) || !at(px + BAKE_STRIDE, py, a) || !at(px, py + BAKE_STRIDE, b)) continue;
         // on furniture that a rack replaces: its strokes get places of their own, so the wall close behind
         // it (in the same row of places) still gets its coat once the furniture is gone
-        const own = data[(py * BAKE_W + px) * 4 + 3] > 1.5 ? 1 : 0;
+        const ownK = Math.max(0, Math.round(data[(py * BAKE_W + px) * 4 + 3] - 1)), own = ownK > 0 ? 1 : 0;
         const d = toEye.subVectors(eye, p).length();
         if (d > FARTHEST) continue;
+        // On the thing that turns: its places are laid out in its own frame, and kept there, so they go round
+        // with it and a later bake from another angle finds them taken.
+        const turning = !!box && inTurnBox(pl.copy(p).applyMatrix4(toLocal), box);
+        if (onlyTurning && !turning) continue;
+        const id = idAt(px, py);
+        const mine = (x, y) => x >= 0 && y >= 0 && x < BAKE_W && y < BAKE_H && idAt(x, y) === id;
+        // ...and still its paint: a row of record spines or a striped box is many colours on one flat face, and a
+        // painter lays each colour as strokes of its own (the faint world blotches in every paint stay under this)
+        const j0 = (py * BAKE_W + px) * 4;
+        const s0 = Math.sqrt(albedo[j0]), s1 = Math.sqrt(albedo[j0 + 1]), s2 = Math.sqrt(albedo[j0 + 2]);
+        const samePaint = (x, y) => {
+          const q = (y * BAKE_W + x) * 4;
+          return Math.hypot(Math.sqrt(albedo[q]) - s0, Math.sqrt(albedo[q + 1]) - s1, Math.sqrt(albedo[q + 2]) - s2) < PAINT_STEP;
+        };
         // the normal, from as wide a patch as is still flat, so a long stroke lies true on bricks
         const tol = flatTol(d);
         let normalOk = false;
         for (const k of [8, 3, 1]) {
           if (!at(px + k, py, a) || !at(px - k, py, c) || !at(px, py + k, b) || !at(px, py - k, e)) continue;
+          if (!mine(px + k, py) || !mine(px - k, py) || !mine(px, py + k) || !mine(px, py - k)) continue;
           if (mid.addVectors(a, c).multiplyScalar(0.5).distanceTo(p) > tol || mid.addVectors(b, e).multiplyScalar(0.5).distanceTo(p) > tol) continue;
           n.crossVectors(a.sub(c), b.sub(e));
           if (n.lengthSq() < 1e-12) continue;
@@ -481,8 +572,15 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
         if (!normalOk) continue; // on an edge
         n.normalize();
         if (n.dot(toEye) < 0) n.negate();
+        if (turning && n.dot(toEye) < TURN_FACING * d) continue;
         handDirection(n, hand);
         across.crossVectors(n, hand);
+        if (turning) {
+          nl.copy(n).transformDirection(toLocal);
+          handDirection(nl, handL);
+          acrossL.crossVectors(nl, handL);
+        }
+        const kp = turning ? pl : p, kn = turning ? nl : n, kh = turning ? handL : hand, ka = turning ? acrossL : across;
         let measured = false, longest = 0, crossSpan = 0;
         for (const part of layers) {
           const { layer, buffers, taken } = part;
@@ -492,10 +590,10 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
           // one stroke per place in the rows on this surface. Each row starts somewhere of its own: evenly
           // staggered rows line their stroke ends up into a false second diagonal, a zigzag.
           const rowH = len * layer.rowGap;
-          const row = Math.floor(p.dot(across) / rowH);
-          const col = Math.floor(p.dot(hand) / (len * layer.colGap) + ((row * 0.618) % 1 + 1) % 1);
-          const depth = Math.floor(p.dot(n) / Math.max(0.15, rowH));
-          const key = (row + 16384) * 2 ** 33 + (col + 16384) * 2 ** 18 + (depth + 2048) * 2 ** 6 + octave * 8 + FACES(n) + own * 2 ** 51;
+          const row = Math.floor(kp.dot(ka) / rowH);
+          const col = Math.floor(kp.dot(kh) / (len * layer.colGap) + ((row * 0.618) % 1 + 1) % 1);
+          const depth = Math.floor(kp.dot(kn) / Math.max(0.15, rowH));
+          const key = (row + 16384) * 2 ** 33 + (col + 16384) * 2 ** 18 + (depth + 2048) * 2 ** 6 + octave * 8 + FACES(kn) + own * 2 ** 51 + (turning ? 2 ** 52 : 0);
           if (taken.has(key)) continue;
           taken.add(key);
           if (!measured) {
@@ -506,7 +604,9 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
                 const ix = Math.round(px + dx * step * RAY_STEP), iy = Math.round(py + dy * step * RAY_STEP);
                 if (!at(ix, iy, a)) break;
                 a.sub(p);
-                if (Math.abs(a.dot(n)) <= tol) { end.copy(a); continue; }
+                // on the plane: still this object, or the next one lying flush with it (a row of spines,
+                // two boards butted together) or another colour on it, where a stroke laid one by one would stop
+                if (Math.abs(a.dot(n)) <= tol) { if (!mine(ix, iy) || !samePaint(ix, iy)) break; end.copy(a); continue; }
                 // Off the plane. Something in front only hides the surface, which carries on behind it
                 // (a wall seen between two posts is not a thin wall); anything farther means it ended.
                 hit.set(((ix + 0.5) / BAKE_W) * 2 - 1, ((iy + 0.5) / BAKE_H) * 2 - 1, 0.5).unproject(cam).sub(eye);
@@ -546,12 +646,24 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
           const slide = (lo, hi, size) => (size >= hi - lo ? (lo + hi) / 2 : Math.max(lo + size / 2, Math.min(hi - size / 2, 0)));
           // and no two land quite evenly along the row (the slide still keeps both ends on the shape)
           const wander = (r() - 0.5) * len * layer.colGap * 0.8;
-          centre.copy(p).addScaledVector(t, slide(al - wander, ah - wander, fitted) + wander).addScaledVector(side, slide(sl, sh, wid));
+          const cu = slide(al - wander, ah - wander, fitted) + wander, cv = slide(sl, sh, wid);
+          centre.copy(p).addScaledVector(t, cu).addScaledVector(side, cv);
+          // the room the shape leaves round that centre, along and across: a fatter dab (oilpaint.js) never
+          // grows past it
+          const roomU = Math.max(fitted, 2 * Math.min(cu - al, ah - cu)), roomV = Math.max(wid, 2 * Math.min(cv - sl, sh - cv));
           const i = part.count++;
-          buffers.aPos.setXYZW(i, centre.x, centre.y, centre.z, len);
-          buffers.aShape.setXY(i, fitted, wid);
-          buffers.aTan.setXYZW(i, t.x, t.y, t.z, r());
-          buffers.aNor.setXYZW(i, n.x, n.y, n.z, r());
+          const cw = turning ? cl.copy(centre).applyMatrix4(toLocal) : centre, tw = turning ? tl.copy(t).transformDirection(toLocal) : t;
+          buffers.aPos.setXYZW(i, cw.x, cw.y, cw.z, len);
+          buffers.aShape.setXYZW(i, fitted, wid, roomU, roomV);
+          buffers.aTan.setXYZW(i, tw.x, tw.y, tw.z, r());
+          buffers.aNor.setXYZW(i, kn.x, kn.y, kn.z, r());
+          const j = (py * BAKE_W + px) * 4;
+          const lit = albedo[j + 3] < 0.5 ? -1 : (glow[j] + glow[j + 1] + glow[j + 2]) > 0.3 * (albedo[j] + albedo[j + 1] + albedo[j + 2]) + 0.01 ? 0 : 1;
+          // (w: how it is lit, plus 10 x the number of the furniture it is on, if any, plus TURN_TAG on the thing
+          // that turns)
+          const tag = 10 * ownK + (turning ? TURN_TAG : 0);
+          if (lit === 0) buffers.aCol.setXYZW(i, glow[j], glow[j + 1], glow[j + 2], tag);
+          else buffers.aCol.setXYZW(i, Math.max(0, albedo[j] - glow[j]), Math.max(0, albedo[j + 1] - glow[j + 1]), Math.max(0, albedo[j + 2] - glow[j + 2]), lit + tag);
         }
       }
     }
@@ -560,21 +672,52 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
   // views: [{ pos, target, fov }]. Adds strokes for whatever those views can see that has none yet.
   function bake(world, views) {
     const rt = new THREE.WebGLRenderTarget(BAKE_W, BAKE_H, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false });
-    const mat = positionMaterial(), ownMat = positionMaterial(2);
-    // things that come and go (station furniture): drawn again over the positions, alpha 2 where they are in front
-    // (listed in a scene of their own without being moved: the renderer only walks `children` and reads
-    // the world matrices they already have)
+    const mat = positionMaterial();
+    // things that come and go (station furniture, userData.ownStrokes = k, a number from 1): drawn again over
+    // the positions, alpha 1 + k where they are in front, so their strokes know which one they belong to and
+    // can go when it goes (oilpaint.js). (Each listed in a scene of its own without being moved: the renderer
+    // only walks `children` and reads the world matrices they already have.)
     const ownScene = new THREE.Scene();
     ownScene.matrixWorldAutoUpdate = false;
-    ownScene.overrideMaterial = ownMat;
     world.updateMatrixWorld();
-    world.traverseVisible((o) => { if (o.userData.ownStrokes) ownScene.children.push(o); });
+    watch(world);
+    const owners = [];
+    world.traverseVisible((o) => { if (o.userData.ownStrokes) owners.push([o, positionMaterial(1 + Math.min(8, Number(o.userData.ownStrokes) || 1))]); });
     const cam = new THREE.PerspectiveCamera(70, BAKE_W / BAKE_H, 0.1, 200);
     const data = new Float32Array(BAKE_W * BAKE_H * 4);
+    const albedo = new Float32Array(BAKE_W * BAKE_H * 4), glow = new Float32Array(BAKE_W * BAKE_H * 4), ids = new Float32Array(BAKE_W * BAKE_H * 4);
+    // Every object gets a number of its own for the id picture (and every piece of one marked strokeEach: the
+    // instanced filler records, each a spine of its own), so a stroke is fitted to one object, not to a row of
+    // them that happens to lie flat. Set as three draws each one (onBeforeRender sees the override material).
+    const idMat = idMaterial();
+    let nextId = 1;
+    const tagged = [];
+    world.traverse((o) => {
+      if (!o.isMesh) return;
+      const id = nextId++, each = o.userData.strokeEach ? 1 : 0, before = o.onBeforeRender;
+      tagged.push([o, before]);
+      o.onBeforeRender = function (rr, s, c, g, m, grp) {
+        if (m === idMat) { m.uniforms.oid.value = id; m.uniforms.each.value = each; m.uniformsNeedUpdate = true; }
+        before.call(this, rr, s, c, g, m, grp);
+      };
+    });
+    // The paint each object is: the world drawn as it is, but lit only by an even white sky of strength pi (a
+    // lit material then shows exactly its own colour) and with no fog; once more with no light at all, which
+    // leaves what glows by itself. Lights are turned down, not off, so no shader has to be built again.
+    const lights = [];
+    world.traverse((o) => { if (o.isLight) lights.push([o, o.intensity, o.isHemisphereLight ? [o.color.clone(), o.groundColor.clone()] : null]); });
+    const fog = world.fog && 'near' in world.fog ? [world.fog.near, world.fog.far] : null;
+    const evenLight = (k) => {
+      for (const [l, , hemi] of lights) {
+        if (hemi) { l.color.set(0xffffff); l.groundColor.set(0xffffff); l.intensity = Math.PI * k; } else l.intensity = 0;
+      }
+    };
     // only solid, drawn meshes: glows, lines and glass have no surface to paint on
     const hidden = [];
     world.traverse((o) => {
       if (!o.visible) return;
+      // records, which move: painted as drawn, never stroked (a stroke left in the air when one lifts)
+      if (o.userData.noStrokes) { hidden.push(o); o.visible = false; return; }
       const solid = o.isMesh && ![].concat(o.material).every((m) => m.transparent || m.opacity < 1);
       if (!solid && (o.isSprite || o.isLine || o.isPoints || o.isMesh)) { hidden.push(o); o.visible = false; }
     });
@@ -585,20 +728,59 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     renderer.autoClear = true;
     renderer.setClearColor(0x000000, 0);
     renderer.setRenderTarget(rt);
-    for (const v of views) {
+    const shoot = (v, onlyTurning) => {
       cam.fov = v.fov ?? 70;
       cam.updateProjectionMatrix();
       cam.position.copy(v.pos);
       cam.lookAt(v.target);
       cam.updateMatrixWorld();
       renderer.render(world, cam);
-      if (ownScene.children.length) {
+      if (owners.length) {
         renderer.autoClear = false;
-        renderer.render(ownScene, cam); // same depth as in the first draw, so it passes (LessEqual) where it is in front
+        for (const [o, m] of owners) {
+          ownScene.children[0] = o;
+          ownScene.overrideMaterial = m;
+          renderer.render(ownScene, cam); // same depth as in the first draw, so it passes (LessEqual) where it is in front
+        }
         renderer.autoClear = true;
       }
       renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, data);
-      place(cam, data);
+      world.overrideMaterial = idMat;
+      renderer.render(world, cam);
+      renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, ids);
+      world.overrideMaterial = null;
+      if (fog) { world.fog.near = 1e5; world.fog.far = 1e6; }
+      evenLight(1);
+      renderer.render(world, cam);
+      renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, albedo);
+      evenLight(0);
+      renderer.render(world, cam);
+      renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, glow);
+      for (const [l, k, hemi] of lights) { l.intensity = k; if (hemi) { l.color.copy(hemi[0]); l.groundColor.copy(hemi[1]); } }
+      if (fog) [world.fog.near, world.fog.far] = fog;
+      world.overrideMaterial = mat;
+      place(cam, data, albedo, glow, ids, onlyTurning);
+    };
+    for (const v of views) shoot(v, false);
+    // The thing that turns (STROKE_FRAME) shows its other sides only once it has turned: it is turned a quarter
+    // at a time (for this bake only) and painted again from the views that see it, so every side is painted
+    // from nearly square on, as the side you see first was.
+    if (turner?.userData.strokeTurn && shownAll(turner)) {
+      const base = turner.rotation.y, frustum = new THREE.Frustum(), mid = turner.getWorldPosition(new THREE.Vector3());
+      const sees = (v) => {
+        cam.fov = v.fov ?? 70; cam.updateProjectionMatrix(); cam.position.copy(v.pos); cam.lookAt(v.target); cam.updateMatrixWorld();
+        return frustum.setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse)).containsPoint(mid);
+      };
+      const seeing = views.filter(sees);
+      if (seeing.length) {
+        for (let k = 1; k < 4; k++) {
+          turner.rotation.y = base + (k * Math.PI) / 2;
+          world.updateMatrixWorld();
+          for (const v of seeing) shoot(v, true);
+        }
+        turner.rotation.y = base;
+        world.updateMatrixWorld();
+      }
     }
     renderer.setRenderTarget(prev.target);
     renderer.setClearColor(prev.clear, prev.alpha);
@@ -607,9 +789,11 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     world.background = prev.bg;
     world.overrideMaterial = prev.over;
     for (const o of hidden) o.visible = true;
+    for (const [o, before] of tagged) o.onBeforeRender = before;
+    idMat.dispose();
     rt.dispose();
     mat.dispose();
-    ownMat.dispose();
+    for (const [, m] of owners) m.dispose();
     ownScene.children.length = 0;
     upload();
   }
@@ -653,9 +837,15 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
 
   return {
     scene,
+    // for oil paint (oilpaint.js): the same placed strokes, drawn its own way
+    parts: layers.map((part) => ({ geo: part.geo, layer: part.layer })),
+    shared,
     bake,
     save,
     load,
+    // the thing that turns: found in a world (bake does it too), or given
+    watch,
+    setTurner(o) { if (o) turner = o; },
     get counts() { return layers.map((l) => l.count); },
     get caps() { return layers.map((l) => l.buffers.aPos.count); },
     setSize(w, h) {
@@ -665,6 +855,14 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     setPan(x, y) { shared.pan.value.set(x, y); },
     setFovea(v) { shared.fovea.value.copy(v); },
     setCamera(camera) {
+      const on = !!turner && shownAll(turner);
+      shared.turnOn.value = on ? 1 : 0;
+      if (on) {
+        const b = turner.userData.strokeTurn;
+        shared.turnM.value.copy(turner.matrixWorld);
+        shared.turnInv.value.copy(turner.matrixWorld).invert();
+        shared.turnBox.value.set(b.half, b.y0, b.y1);
+      }
       shared.viewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       camera.getWorldPosition(shared.eye.value);
       shared.clipRange.value.set(camera.near, camera.far);

@@ -54,6 +54,9 @@ export function createSpinnerRack({ onPick }) {
       // the tower
       root.add(car);
       c.car = car; // checks (scripts/spin-check.mjs)
+      // its brush strokes and oil dabs go round with it (brushstrokes.js STROKE_FRAME): the box it fills in
+      // its own frame (the roof's corners and the pocket lips reach 0.45 out; the fixed drum ends under 0.14)
+      car.userData.strokeTurn = { half: 0.47, y0: 0.139, y1: TOP + 0.45 };
       car.rotation.y = 0.4;
       const teal = paint('#4f817a'), wood = paint('#9a6a3c');
       addBox(car, [HALF * 2 - 0.02, TOP - 0.16, HALF * 2 - 0.02], teal, [0, (TOP + 0.16) / 2, 0]);

@@ -4,9 +4,15 @@ import * as THREE from 'three';
 import { trs, mul } from './kit.js';
 import { blk, rod } from './details.js';
 import { rng } from './rand.js';
+import { glass } from './materials.js';
 
 const C = new THREE.Color();
 const SLEEVE_H = [0.04, 0.12, 0.58, 0.33, 0.95, 0.07, 0.5, 0.75];
+
+// a decor record sleeve (kit.sleeve: no strokes pinned to it, Oil paint keeps its own colour; kit.js)
+function sleeve(kit, M, x, y, z, sx, sy, sz, color, rx = 0, ry = 0, rz = 0) {
+  kit.sleeve.add(mul(M, trs(x, y, z, rx, ry, rz, sx, sy, sz)), color);
+}
 
 function sleeveColor(r) {
   return C.setHSL(SLEEVE_H[Math.floor(r() * SLEEVE_H.length)] + (r() - 0.5) * 0.05, 0.3 + r() * 0.4, 0.3 + r() * 0.45).clone();
@@ -16,6 +22,7 @@ function sleeveColor(r) {
 export function recordShelf(kit, M, { w, h = 2.4, levels = 4, d = 0.38, seed = 1, wood = '#9a6a3c' }) {
   const r = rng(seed);
   const gap = (h - 0.1) / levels;
+  let spine = 0;
   for (const x of [-w / 2, w / 2]) blk(kit, M, x, h / 2, 0, 0.05, h, d, wood);
   blk(kit, M, 0, h / 2, -d / 2 + 0.01, w, h, 0.02, C.set(wood).offsetHSL(0, -0.1, -0.12).clone());
   for (let l = 0; l <= levels; l++) blk(kit, M, 0, 0.05 + l * gap, 0, w, 0.04, d, wood);
@@ -25,7 +32,7 @@ export function recordShelf(kit, M, { w, h = 2.4, levels = 4, d = 0.38, seed = 1
     while (x < w / 2 - 0.08) {
       if (r() < 0.04 && x < w / 2 - 0.4) {
         // face-out sleeve leaning on the row
-        blk(kit, M, x + 0.17, y + 0.16, d / 2 - 0.05, 0.31, 0.31, 0.01, sleeveColor(r), -0.12, 0, 0);
+        sleeve(kit, M, x + 0.17, y + 0.16, d / 2 - 0.05, 0.31, 0.31, 0.01, sleeveColor(r), -0.12, 0, 0);
         kit.disc.add(mul(M, trs(x + 0.17, y + 0.16, d / 2 - 0.06, Math.PI / 2 - 0.12, 0, 0, 0.1, 0.004, 0.1)), sleeveColor(r));
         x += 0.36;
         continue;
@@ -33,7 +40,9 @@ export function recordShelf(kit, M, { w, h = 2.4, levels = 4, d = 0.38, seed = 1
       if (r() < 0.05) { x += 0.08; continue; }
       const t = 0.012 + r() * 0.012;
       const lean = x > w / 2 - 0.3 && r() < 0.3 ? 0.25 : (r() - 0.5) * 0.04;
-      blk(kit, M, x + t / 2, y + 0.155, 0.02, t, 0.31, 0.31, sleeveColor(r), 0, 0, lean);
+      // fronts a few millimetres in or out, spine by spine: flush, two leaning neighbours' fronts overlapped in
+      // one plane and fought over which was in front (they flickered as the camera moved)
+      sleeve(kit, M, x + t / 2, y + 0.155, 0.02 + (((++spine * 5) % 7) - 3) * 0.0015, t, 0.31, 0.31, sleeveColor(r), 0, 0, lean);
       x += t + 0.003;
     }
   }
@@ -66,7 +75,7 @@ export function crateOfRecords(kit, M, w, d, seed) {
   const n = Math.floor((d - 0.08) / 0.035);
   for (let i = 0; i < n; i++) {
     const tilt = i === n - 1 ? 0.5 : -0.15 + (r() - 0.5) * 0.1;
-    blk(kit, M, 0, 0.26, -d / 2 + 0.06 + i * 0.035, w - 0.08, 0.31, 0.012, sleeveColor(r), tilt, 0, 0);
+    sleeve(kit, M, 0, 0.26, -d / 2 + 0.06 + i * 0.035, w - 0.08, 0.31, 0.012, sleeveColor(r), tilt, 0, 0);
   }
 }
 
@@ -194,7 +203,13 @@ export function pendant(kit, M, top, hang, { light = true, shade = '#3f6e6a' } =
   rod(kit, M, [0, top, 0], [0, top - hang, 0], 0.008, '#2b2a2e');
   kit.pot.add(mul(M, trs(0, top - hang - 0.15, 0, Math.PI, 0, 0, 0.55, 0.3, 0.55)), shade);
   const out = [];
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffe2a8' }));
+  // the shade's warm lining, where the bulb lights it: the shade's own underside (green on the hall's) lit that
+  // close glowed lime, and Oil paint laid greenish dabs round the light (Lajoon, 2026-11-13)
+  const lining = new THREE.Mesh(new THREE.CircleGeometry(0.27, 20).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#f7dfae' }));
+  lining.applyMatrix4(mul(M, trs(0, top - hang - 0.302, 0)));
+  out.push(lining);
+  // the bulb is glass (materials.js glass): no dabs, shown as drawn
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), glass(new THREE.MeshBasicMaterial({ color: '#ffe2a8' })));
   bulb.applyMatrix4(mul(M, trs(0, top - hang - 0.28, 0)));
   out.push(bulb);
   const halo = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), new THREE.MeshBasicMaterial({ color: '#ffb85a', transparent: true, opacity: 0.14, depthWrite: false }));

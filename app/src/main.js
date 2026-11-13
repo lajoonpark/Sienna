@@ -372,6 +372,7 @@ window.__siennaDebug = {
   quality,
   lightSlots,
   camera,
+  get tilt() { return tilt; }, // the cursor's lean (x, y eased toward tx, ty): checks pin it (scripts/pop-check.mjs)
   THREE, // checks (scripts/spinner-clip-check.mjs)
   // ms per render step, GPU work included (each step waits for the GPU); shadows: also redraw the shadow map
   profile({ shadows = false, runs = 3 } = {}) {
