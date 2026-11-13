@@ -210,7 +210,17 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   edges bare. Dabs are depth tested against the scene (its depth brought down to the paint target, a few cm
   nearer: `?oilbias=`), so the GPU skips their hidden parts. Check coverage with `node scripts/oil-cover-check.mjs
   [out] [stations] [dpr] [query]`: the share of the paintable picture no dab reaches, a magenta map of it, the frame
-  time, and the overdraw (`VARIANTS='[{"count":1}]'`). No wash, bleed or border passes; the last pass lays the dabs
+  time, and the overdraw (`VARIANTS='[{"count":1}]'`). **Every dab stays on its own surface**: a placed dab is cut where the
+  scene under it lies off its plane (`?oiltol=`) or is drawn in another colour (`?oilagreecol=`, tight: 0.12-0.22
+  in sqrt rgb), and an under-coat dab borrows colour only from the scene point near its middle (3D distance,
+  `?undertol=`) whose colour is near the pixel's own (`?undercol=`). Looser tolerances, which grew with distance and
+  only measured off the plane, let wall paint run onto the green sign board 8 cm in front of it, frames, shutters
+  and sun/shade edges (Lajoon, 2026-11-13). Find what still crosses with `node scripts/oil-bleed-check.mjs [out]
+  [views] [dpr] [query]` (views `t<s>` = the intro in shot mode, `home` or station numbers; `CROP=x,y,w,h` saves a
+  close-up as drawn | painted): the share of the painted picture whose paint matches a neighbouring surface better
+  than its own, for all paint, placed dabs alone and under-coat alone, the biggest patches, a magenta map. At
+  Sharpness light over the intro t1-8, home and stations 0-7: 4.1% -> 0.8% (street 6-10% -> 1-2%); what is left is
+  mostly glows the dabs do not carry and patches under the cinema bars. No wash, bleed or border passes; the last pass lays the dabs
   over the scene, crisp things, glass and the suitcase as drawn, a faint canvas weave. RX 550 @2x (frame-bench), against
   Brush strokes: home 48.6 -> 27.0 ms before the under-coat, 39.5 with it; station 0 38.9 -> 20.3 / 24 before,
   29-30 with it; station 3 45.5 -> 23.2 / 24 before, 27 with it (bare canvas at home 52% -> 0%). The scene pass is

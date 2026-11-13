@@ -57,6 +57,16 @@ const UNDER = params.get('under') === '0' ? new THREE.Vector2(0.035, 0) : new TH
 const BIAS = params.get('oilbias')?.split(',').map(Number) ?? [0.02, 0.004];
 // how much of its row a stroke's patch spans across (1 = rows just touch); ?oilrow=1.5
 const ROW_SPAN = Number(params.get('oilrow')) || 1.5;
+// How sure a dab must be that it is still on its own surface (TUNE, scripts/oil-bleed-check.mjs). Placed dabs:
+// the scene's point under a fragment may lie this far off the dab's plane (metres, plus a share of the
+// distance), and the colour drawn there this far from the dab's paint (sqrt rgb: fades out from .x to .y).
+// Under-coat: the scene's point where its dab's middle lies must be this near the middle (metres, plus a
+// share), and of a colour this near the pixel's own, to lend it its colour.
+// ?oiltol=0.006,0.0015  ?oilagreecol=0.12,0.22  ?undertol=0.01,0.004  ?undercol=0.08,0.16
+const num = (k, d) => params.get(k)?.split(',').map(Number) ?? d;
+const DAB_TOL = num('oiltol', [0.006, 0.0015]), DAB_COL = num('oilagreecol', [0.12, 0.22]);
+const UNDER_TOL = num('undertol', [0.01, 0.004]), UNDER_COL = num('undercol', [0.08, 0.16]);
+const f4 = (x) => x.toFixed(4);
 const MAX_POINTS = 8;
 const ATLAS_COLS = 4, ATLAS_ROWS = 2;
 
@@ -339,16 +349,17 @@ void main() {
   // look let paint wrap round a corner or float over a gap). Past the edge of the face it stops.
   vec2 uv = gl_FragCoord.xy / screen;
   float off = vPlane * abs(sceneDepth(uv) / vDepth - 1.0);
-  float tol = 0.006 + 0.0015 * vDepth;
+  float tol = ${f4(DAB_TOL[0])} + ${f4(DAB_TOL[1])} * vDepth;
   float own = agree.x < 0.5 ? 1.0 : 1.0 - smoothstep(tol, tol * 1.8, off);
   if (own <= 0.0) discard;
   // and only where the scene agrees it is this paint: a dab stops where something it does not know about
-  // is drawn on its surface (a lit window, glass, a sign), as a careful hand paints round it
+  // is drawn on its surface (a lit window, glass, a sign), as a careful hand paints round it. Kept tight
+  // (DAB_COL): a looser one let wall dabs run onto the sign board and the frames next to them
   vec4 drawn = texture2D(tScene, uv);
   // never over the decor spines (materials.js ownColour): a dab wider than a spine would cover its neighbours
   if (abs(drawn.a - ${OWN_ALPHA.toFixed(4)}) < 0.0012) discard;
   vec3 there = sqrt(max(drawn.rgb, 0.0)), mine = sqrt(max(vC1, 0.0));
-  if (agree.y > 0.5) own *= 1.0 - smoothstep(0.26, 0.4, length(there - mine));
+  if (agree.y > 0.5) own *= 1.0 - smoothstep(${f4(DAB_COL[0])}, ${f4(DAB_COL[1])}, length(there - mine));
   if (own <= 0.0) discard;
   // the paint stands up off the canvas, and the room's light, from the upper left, rakes across it
   vec2 g = vAxis.xy * (t.b - 0.5) * 0.5 + vAxis.zw * (t.a - 0.5) * 0.5;
@@ -486,6 +497,10 @@ void main() {
   // Read over a few pixels round the middle, each by how surely it is this surface, and eased between the
   // two: one pixel read and a yes/no let the whole dab jump to another colour whenever the camera moved its
   // middle across an edge (a mortar line, a jamb's corner), and the dabs flickered as the camera moved.
+  // "This same surface" is the point there lying near the middle (not just near its plane: the wall above the
+  // sign board lies in the plane of the board's underside) and a colour near this pixel's own: a far tolerance
+  // that grew with distance let a dab on the sign board take the wall's colour, 8 cm behind it (Lajoon,
+  // 2026-11-13). UNDER_TOL, UNDER_COL; scripts/oil-bleed-check.mjs measures what still crosses.
   vec3 C = P + U * (bestC.x - q.x) + V * (bestC.y - q.y);
   C -= W * dot(C - P, N) / max(abs(dot(W, N)), 0.3) * sign(dot(W, N));
   vec4 cc = VP * vec4(C, 1.0);
@@ -494,14 +509,15 @@ void main() {
   // (the decor spines, materials.js ownColour: each pixel keeps its own colour; only the ridges are laid on)
   bool ownCol = abs(here.a - ${OWN_ALPHA.toFixed(4)}) < 0.0012;
   if (!ownCol && cc.w > 0.1 && cuv.x > 0.0 && cuv.x < 1.0 && cuv.y > 0.0 && cuv.y < 1.0) {
-    float tol = 0.01 + 0.004 * dist;
-    vec3 sum = vec3(0.0);
+    float tol = ${f4(UNDER_TOL[0])} + ${f4(UNDER_TOL[1])} * dist;
+    vec3 sum = vec3(0.0), mine = sqrt(max(here.rgb, 0.0));
     float wsum = 0.0;
     for (int i = 0; i < 4; i++) {
       vec2 tuv = clamp(cuv + vec2(i == 0 || i == 2 ? -1.5 : 1.5, i < 2 ? -1.5 : 1.5) * full, 0.0, 1.0);
       vec3 Q = (toL * vec4(worldAt(tuv), 1.0)).xyz;
       vec4 there = texture2D(tScene, tuv);
-      float wt = (1.0 - smoothstep(tol, tol * 2.0, abs(dot(Q - C, N)))) * smoothstep(0.4, 0.6, there.a);
+      float wt = (1.0 - smoothstep(tol, tol * 2.0, length(Q - C))) * smoothstep(0.4, 0.6, there.a)
+        * (1.0 - smoothstep(${f4(UNDER_COL[0])}, ${f4(UNDER_COL[1])}, length(sqrt(max(there.rgb, 0.0)) - mine)));
       sum += there.rgb * wt;
       wsum += wt;
     }
@@ -759,6 +775,8 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
     strokes,
     scene,
     materials,
+    // the under-coat pass's uniforms (check scripts switch it off: under.value.y = 0)
+    underUniforms: depthDown.uniforms,
     // the dabs, into the paint target (cleared clear)
     render(world, camera, sync) {
       updateLights(world);
