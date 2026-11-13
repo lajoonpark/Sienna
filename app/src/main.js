@@ -739,7 +739,7 @@ function frame(t, dtOverride, draw = true) {
   menu.update(dt, cursorX01, !pinnedPose && nav.at !== AT_HOME);
   if (!draw) return;
   updateLod(camera); // far squares of bricks and flagstones as plain boxes (kit.js)
-  if (!params.has('allLights')) lightSlots.update(camera); // ?allLights keeps every lamp on (to compare)
+  if (!params.has('allLights')) lightSlots.update(camera, dt); // ?allLights keeps every lamp on (to compare)
   updateShadows(t);
   if (painter) {
     // cheaper paint while the camera travels (?motion=1 pins it on, to compare in screenshots)

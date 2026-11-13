@@ -58,7 +58,8 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   open, then through them to a home spot just inside the shop. Painted cinema bars (`setBars` in
   `src/watercolour.js`) frame it and slide away on arrival. Intro-only lighting (`src/introlight.js`,
   on top of the real time of day): a cool street grade turning warm through the door, a vignette, warm
-  light spilling from the opening doors, hazy sun beams in the piazza while the sun is up, and after
+  light spilling from the opening doors, hazy sun beams in the piazza while the sun is up (the doorway glow and
+  the beams are sheets the camera walks through, so each dims away over its last 3 m, `NEAR_FADE`), and after
   dark the lamps wake one by one as the camera nears them (`lampWake` in `src/env.js`). Click or press
   any key to skip it. Your YouTube Music shelves ("Quick picks", "Listen again"...) are the
   brush-stroke words down both sides of the screen (`src/menu.js`); click one and the camera walks
@@ -257,7 +258,9 @@ from another pixel. Faint is the
   at points straight ahead, with their reach in view), so every lit pixel loops over 5 lights, not 8
   (`src/lightslots.js`; the count stays fixed so no shader compiles again; `?allLights` turns them all on to compare,
   `?lights=N` sets the count). At night the stations look the same as with all 8; at home and the first table a little
-  faint light from the far end goes.
+  faint light from the far end goes. A lamp never switches at once: one dropping out of the 5 dims over `FADE_S`
+  (0.9 s) before its slot goes to the next, which brightens over the same; a lamp holding a slot scores 1.25x so
+  close pairs do not keep trading.
   **Bricks**: rounded pieces (bricks, blocks, flagstones: 108-300 triangles each) in an 8 m square more than 5 m from
   the camera are drawn as plain boxes (12), sharing the same instances (`updateLod` in `src/kit.js`): about a quarter
   fewer triangles at home.
