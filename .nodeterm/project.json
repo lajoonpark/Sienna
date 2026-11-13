@@ -1,14 +1,73 @@
 {
   "version": 1,
-  "rev": 1,
-  "savedAt": "2026-11-13T23:28:37.195Z",
+  "rev": 10,
+  "savedAt": "2026-11-13T23:41:10.273Z",
   "id": "project-12m6qob",
   "name": "Sienna",
   "color": "#6ac4dc",
   "viewport": {
-    "x": 0,
-    "y": 0,
+    "x": 809.0809593558027,
+    "y": 720.4858843329504,
     "zoom": 1
   },
-  "nodes": []
+  "nodes": [
+    {
+      "id": "term-mwflzw0y-bc9c8e73",
+      "kind": "terminal",
+      "position": {
+        "x": 165,
+        "y": 112
+      },
+      "size": {
+        "width": 640,
+        "height": 440
+      },
+      "title": "Terminal 1",
+      "color": "#0a84ff",
+      "group": null,
+      "tags": [],
+      "cwd": "."
+    },
+    {
+      "id": "term-mwfmbi0r-55a1245d",
+      "kind": "terminal",
+      "position": {
+        "x": -729.0809593558027,
+        "y": 279.8561525932416
+      },
+      "size": {
+        "width": 640,
+        "height": 440
+      },
+      "title": "Antigravity",
+      "titleAuto": true,
+      "color": "#00a3a3",
+      "group": null,
+      "tags": [],
+      "cwd": ".",
+      "agentId": "antigravity"
+    },
+    {
+      "id": "term-mwfmelcc-d3e74e01",
+      "kind": "terminal",
+      "position": {
+        "x": -694.0864462613288,
+        "y": -640.4858843329504
+      },
+      "size": {
+        "width": 640,
+        "height": 440
+      },
+      "title": "Claude Code",
+      "titleAuto": true,
+      "color": "#d97757",
+      "group": null,
+      "tags": [],
+      "cwd": ".",
+      "agentId": "claude",
+      "agentSessionId": "6adff391-8c4e-4f06-b38c-60bec6ab98c3"
+    }
+  ],
+  "bridges": [],
+  "ropes": []
 }
