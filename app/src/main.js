@@ -789,7 +789,7 @@ function watchCamera() {
 }
 for (const ev of ['pointermove', 'pointerdown', 'pointerup', 'wheel', 'keydown', 'keyup']) addEventListener(ev, () => pacer?.kick(), { passive: true, capture: true });
 document.addEventListener('pointerleave', () => pacer?.kick());
-for (const k of ['paint', 'covers', 'fps', 'maxFps']) settings.on(k, () => pacer?.kick());
+for (const k of ['covers', 'fps', 'maxFps']) settings.on(k, () => pacer?.kick());
 // back on screen, or the GPU context was lost and restored: paint the whole frame, whatever the painter remembers
 document.addEventListener('visibilitychange', () => painter?.invalidate());
 renderer.domElement.addEventListener('webglcontextrestored', () => { painter?.invalidate(); renderer.shadowMap.needsUpdate = true; restoreCovers(); });

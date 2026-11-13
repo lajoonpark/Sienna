@@ -1,4 +1,4 @@
-// Finds oil dabs that run over onto another surface (Settings > Painting > Oil paint): wall paint laid over
+// Finds oil dabs that run over onto another surface (Oil paint): wall paint laid over
 // the green sign board, a frame's colour over the wall next to it. A pixel counts as BLED when the painted
 // colour there is far from what the scene draws there, but close to what the scene draws a few pixels away
 // on the other side of a colour edge: its paint came from the neighbour. Ridges and the dabs' own small

@@ -1,4 +1,4 @@
-// Oil paint (Settings > Painting > Oil paint): the shop painted in thick, opaque dabs of oil paint.
+// Oil paint (the shop's only look): the shop painted in thick, opaque dabs of oil paint.
 //
 // The strokes are the brush-stroke look's (brushstrokes.js: same places, pinned to the world; the spinner's turn
 // with it, STROKE_FRAME), but each one

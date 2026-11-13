@@ -3,7 +3,6 @@
 // a high-key paper tint and an unpainted ragged border.
 import * as THREE from 'three';
 import { paperTexture } from './paint.js';
-import { settings } from './settings.js';
 import { createBrushStrokes, strokeFingerprint } from './brushstrokes.js';
 import { createOilPaint } from './oilpaint.js';
 import { loadStrokes, saveStrokes } from './strokecache.js';
@@ -11,45 +10,24 @@ import { packStrokes } from './strokepack.js';
 const EXPORT_STROKES = new URLSearchParams(globalThis.location?.search ?? '').has('bakeexport');
 import { createWatcher } from './still.js';
 
-// The brush strokes are laid at this share of the CSS-pixel size (they are soft marks; the final pass reads
-// them smoothly). ?brushscale=0.75 to try others.
-const BRUSH_SCALE = Number(new URLSearchParams(globalThis.location?.search ?? '').get('brushscale')) || 0.75;
 const BOIL_FPS = 8; // edges re-wobble at a hand-drawn frame rate instead of every frame
 // The ragged paper border: how far its edge wanders, and how wide the paint fades out along it (shares
 // of the picture's height). Past BORDER_REACH from the sheet's edge the border never shows, so a frame in
 // which only the border has boiled is repainted in four strips that deep (see `Still frames` below).
 const BORDER_NOISE = 0.05, BORDER_FADE = 0.045, BORDER_REACH = BORDER_NOISE / 2 + BORDER_FADE;
 
-// How far the scene is pushed from "render" toward "painting" (Settings > Painting; ?wc=N overrides
-// for screenshots). 0 is the old single pass (grain, small blur); higher levels first flatten the
-// image into washes (Kuwahara filter)
-// and then let neighbouring washes run, in patches, into each other along a wandering flow (bleed).
-//   radius: Kuwahara radius in pixels (bigger = flatter, bigger washes)
-//   bleed:  how far colour runs, pixels; bleedMix: how strongly, in the patches where it runs
-//   bloom:  strength of backruns (pale blooms with a dark rim where wet paint pushed back)
-const LEVELS = [
-  null,
-  { radius: 3, bleed: 7, bleedMix: 0.55, bloom: 0.5, edge: 0.9, lift: 0.09 },
-  { radius: 4, bleed: 12, bleedMix: 0.75, bloom: 0.8, edge: 0.8, lift: 0.12 },
-  { radius: 6, bleed: 20, bleedMix: 0.9, bloom: 1.0, edge: 0.7, lift: 0.15 },
-  // Brush strokes (brushstrokes.js): the world is repainted stroke by stroke, then the strokes run into
-  // each other along the same bleed. radius/lift also set how the suitcase overlay is washed, as above (only
-  // with ?overwash: by default it gets no wash, see OVER_WASH).
-  { strokes: true, radius: 6, bleed: 10, bleedMix: 0.4, bloom: 1.0, edge: 0.55, lift: 0.05, grain: 0.4 },
-  // Oil paint (oilpaint.js): the same strokes, as thick opaque dabs, each loaded with its own object's paint
-  // and lit by the shop's lights. No wash, no bleed, no border: the painting runs to the window's edge.
-  { strokes: true, oil: true, radius: 6, bleed: 10, bleedMix: 0.4, bloom: 0, edge: 0, lift: 0, grain: 0 },
-];
-// Brush strokes in the small card window. It holds only the suitcase, whose strokes are in its textures
-// (suitcase/paint.js) and swing with the lid, so there is no world to pin strokes to. A light wash keeps
-// those marks readable, and like the shop's strokes the paint stays still.
+// The look: Oil paint (oilpaint.js). The world is painted in thick, opaque dabs on the brush strokes' places
+// (brushstrokes.js), each loaded with its own object's paint and lit by the shop's lights. No wash, no bleed, no
+// border: the painting runs to the window's edge. radius/bleed/bleedMix still set how the suitcase overlay is
+// washed (only with ?overwash: by default it gets no wash, see OVER_WASH). The watercolour and brush-stroke looks
+// were removed (Lajoon, 2026-11-13); the wash passes below remain for the overlay and the card window.
+const OIL = { strokes: true, oil: true, radius: 6, bleed: 10, bleedMix: 0.4, bloom: 0, edge: 0, lift: 0, grain: 0 };
+// The small card window. It holds only the suitcase, whose strokes are in its textures (suitcase/paint.js) and
+// swing with the lid, so there is no world to pin strokes to. A light wash keeps those marks readable, and the
+// paint stays still.
 const CARD_BRUSH = { still: true, radius: 2, bleed: 5, bleedMix: 0.3, bloom: 0.35, edge: 0.5, lift: 0.04, grain: 0.35 };
-export const PAINT_LEVELS = LEVELS.length;
-const validLevel = (v) => Number.isInteger(v) && v >= 0 && v < LEVELS.length;
-function levelFromUrl() {
-  const raw = new URLSearchParams(globalThis.location?.search ?? '').get('wc');
-  return raw !== null && validLevel(Number(raw)) ? Number(raw) : null;
-}
+// ?wc=0: no painting at all, the plain render (for checks that test geometry and clicks, scripts/*-check.mjs)
+const UNPAINTED = new URLSearchParams(globalThis.location?.search ?? '').get('wc') === '0';
 
 const NOISE = /* glsl */ `
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -427,12 +405,9 @@ const msaaFor = (renderer) => (renderer.getPixelRatio() >= 1.5 ? 2 : 4);
 
 // { card: true } turns the unpainted border into a deckle-edged card and makes everything beyond it
 // transparent (for the small frameless window; the renderer needs alpha: true).
-// level: fixed strength; left out, it follows Settings > Painting live (unless ?wc= pins it).
-export function createWatercolour(renderer, { card = false, level = levelFromUrl() } = {}) {
-  const follow = level === null || level === undefined;
-  if (follow) level = validLevel(settings.get('paint')) ? settings.get('paint') : LEVELS.length - 1;
-  const levelOf = (n) => (card && LEVELS[n]?.strokes ? CARD_BRUSH : LEVELS[n]);
-  let L = levelOf(level);
+// unpainted: the plain render (?wc=0).
+export function createWatercolour(renderer, { card = false, unpainted = UNPAINTED } = {}) {
+  const L = unpainted ? null : card ? CARD_BRUSH : OIL;
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
     type: THREE.HalfFloatType,
@@ -484,7 +459,7 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
   const dir = new THREE.Vector3();
   const pan = new THREE.Vector2();
 
-  // wash + bleed passes (level > 0), rebuilt when the level changes.
+  // wash + bleed passes (the card window's look, and the suitcase overlay's), rebuilt when the pixel ratio changes.
   // Two copies: `full`, and `lite` at half the size (a quarter of the pixels, half the radius: about
   // 1/16 of the Kuwahara work) for while the camera travels. setMotion(on) eases between them over
   // ~0.5 s through a small mix pass, so the paint never pops; at rest only `full` runs.
@@ -539,59 +514,33 @@ export function createWatercolour(renderer, { card = false, level = levelFromUrl
     renderer.setRenderTarget(prev);
     return w;
   }
-  // Brush mode: the world alone goes through here (the overlay is drawn after). Prep is mip-mapped: each
-  // stroke reads its colour from the level matching its size.
+  // Oil paint: the world alone goes through here (the overlay is drawn after). The strokes (brushstrokes.js)
+  // only place the dabs; oilpaint.js draws them.
   let brush = null;
   let oilFinal = null; // Oil paint's last pass, in place of `material` on the quad
   // Every view strokes were placed from, kept so they can be placed again if the brush is rebuilt
-  // (a level change, a move to a screen with another pixel ratio).
+  // (a move to a screen with another pixel ratio).
   const strokeViews = [];
   let strokeWorld = null;
   function makeBrush() {
-    const scale = washScale() * BRUSH_SCALE;
-    const ws = washSize(renderer.getDrawingBufferSize(new THREE.Vector2()), scale);
-    const refT = new THREE.WebGLRenderTarget(ws.x, ws.y, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, depthBuffer: false });
-    const paintT = new THREE.WebGLRenderTarget(ws.x, ws.y, { type: THREE.HalfFloatType, depthBuffer: false });
-    const bleedT = new THREE.WebGLRenderTarget(ws.x, ws.y, { type: THREE.HalfFloatType, depthBuffer: false });
-    const prepP = pass(prepShader, {}, { tScene: { value: target.texture } });
-    const strokes = createBrushStrokes(renderer, refT.texture, target.depthTexture);
-    const bleedP = pass(bleedShader, { OWN_SURFACE: '', BLEED: (L.bleed * scale).toFixed(2), BLEED_MIX: L.bleedMix.toFixed(2), FRAG: (1 / scale).toFixed(4) }, {
-      tWash: { value: paintT.texture }, texel: { value: new THREE.Vector2() },
-      paperOffset: material.uniforms.paperOffset, seed: material.uniforms.seed,
-      tDepth: { value: target.depthTexture }, near: material.uniforms.near, far: material.uniforms.far,
-    });
-    const oil = L.oil ? createOilPaint(renderer, strokes, target) : null;
-    const steps = oil ? [] : [[refT, prepP.sc, 'prep'], [paintT, strokes.scene, 'strokes'], [bleedT, bleedP.sc, 'bleed']];
+    const strokes = createBrushStrokes(renderer, null, target.depthTexture);
+    const oil = createOilPaint(renderer, strokes, target);
     const b = {
-      scale,
-      texture: oil ? oil.texture : bleedT.texture,
+      texture: oil.texture,
       strokes,
       oil,
       render(pan, camera, sync, world) {
         strokes.setPan(pan.x, pan.y);
         strokes.setFovea(material.uniforms.fovea.value);
         strokes.setCamera(camera);
-        if (oil) { oil.render(world, camera, sync); return; }
-        for (const [t, sc, name] of steps) { renderer.setRenderTarget(t); renderer.render(sc, postCam); sync?.(name); }
+        oil.render(world, camera, sync);
       },
-      setSize(full) {
-        if (oil) { oil.setSize(full, renderer.getPixelRatio()); return; }
-        const s = washSize(full, scale);
-        for (const [t] of steps) t.setSize(s.x, s.y);
-        bleedP.m.uniforms.texel.value.set(1 / s.x, 1 / s.y);
-        strokes.setSize(s.x, s.y);
-      },
-      dispose() {
-        for (const t of [refT, paintT, bleedT]) t.dispose();
-        for (const p of [prepP, bleedP]) { p.m.dispose(); p.sc.children[0].geometry.dispose(); }
-        oil?.dispose();
-        strokes.dispose();
-      },
+      setSize(full) { oil.setSize(full, renderer.getPixelRatio()); },
+      dispose() { oil.dispose(); strokes.dispose(); },
     };
     b.setSize(renderer.getDrawingBufferSize(new THREE.Vector2()));
     const prev = renderer.getRenderTarget();
-    for (const [t, sc] of steps) { renderer.initRenderTarget(t); renderer.setRenderTarget(t); renderer.compile(sc, postCam); }
-    if (oil) { renderer.initRenderTarget(oil.target); renderer.setRenderTarget(oil.target); renderer.compile(oil.scene, postCam); }
+    renderer.initRenderTarget(oil.target); renderer.setRenderTarget(oil.target); renderer.compile(oil.scene, postCam);
     renderer.setRenderTarget(prev);
     return b;
   }
@@ -631,7 +580,7 @@ void main() {
     if (L.strokes) {
       brush = makeBrush();
       if (strokeViews.length) brush.strokes.bake(strokeWorld, strokeViews);
-      if (brush.oil) quad.material = oilFinal = brush.oil.finalMaterial(material.uniforms);
+      quad.material = oilFinal = brush.oil.finalMaterial(material.uniforms);
       material.uniforms.tWash.value = brush.texture;
       material.uniforms.tOver.value = wash.texture;
       return;
@@ -697,9 +646,9 @@ void main() {
   // ---- Still frames ----
   // A frame is painted again only as far as it differs from the one before (still.js tells):
   //   nothing changed                      nothing is drawn; the screen keeps its picture
-  //   only the border boiled               Brush strokes: the final pass again, in four strips along the edges
-  //                                        (older looks boil all over: the bleed and the final pass again)
-  //   only the suitcase overlay changed    Brush strokes: the world saved under it is put back, the overlay
+  //   only the border boiled               the final pass again, in four strips along the edges
+  //                                        (the card window boils all over: the bleed and the final pass again)
+  //   only the suitcase overlay changed    the world saved under it is put back, the overlay
   //   (its record turning)                 drawn on that, and its wash and the final pass run inside its box
   //   the world changed                    a whole frame, as ever
   // So the shop's millions of triangles, its shadows and the stroke passes are drawn only while something in
@@ -821,7 +770,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     sync?.('final');
     return true;
   }
-  // Only the ragged border boiled (Brush strokes): the final pass along the four edges.
+  // Only the ragged border boiled: the final pass along the four edges.
   function repaintBorder() {
     renderer.getDrawingBufferSize(full);
     const d = Math.ceil(BORDER_REACH * full.y) + 2;
@@ -841,15 +790,6 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
   function washScale() { return Math.min(1, 1 / Math.max(1, renderer.getPixelRatio())); }
   function washSize(full, scale) { return new THREE.Vector2(Math.max(1, Math.round(full.x * scale)), Math.max(1, Math.round(full.y * scale))); }
   buildWash();
-
-  function setLevel(n) {
-    if (!validLevel(n)) return;
-    if (n === level) return;
-    level = n;
-    L = levelOf(n);
-    buildWash();
-  }
-  if (follow) settings.on('paint', setLevel);
 
   // While the first, cached bake is being read, later bakes (a rack revealed) wait for it: strokes are
   // placed in order, each skipping spots an earlier one took.
@@ -899,7 +839,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     // sync (profiling only): called after each step with its name, to time it (see __siennaDebug.profile)
     render(scene, camera, t, overlay, sync) {
       const u = material.uniforms;
-      // a page that named no views gets strokes for what it is looking at (Brush strokes)
+      // a page that named no views gets strokes for what it is looking at
       if (brush && !strokeViews.length) {
         camera.getWorldDirection(dir);
         bakeStrokes(scene, [{ pos: camera.getWorldPosition(new THREE.Vector3()), target: camera.getWorldPosition(new THREE.Vector3()).add(dir), fov: Math.min(100, camera.fov * 1.2) }]);
@@ -1025,14 +965,12 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
         mixT.setSize(m.x, m.y);
       }
     },
-    setLevel,
     // the camera is travelling (intro, flights): paint with the cheap half-size washes until it stops
     setMotion(on) { motion = !!on; },
     // hold the border's boil still (pacer.js deep idle); let go and it boils on from the clock
     setBoilHeld(on) { boilHeld = !!on; },
     // where you look: uv x, y (0..1, y up) and the reach of full detail (share of the height; 0 = all of it)
     setFovea(x, y, r) { material.uniforms.fovea.value.set(x, y, r); },
-    get level() { return level; },
     // the next frame is painted whole (something changed that the painter cannot see for itself)
     invalidate,
     // frames so far by how much of them was painted: { full, overlay, border, skipped }
@@ -1040,7 +978,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     // what the last frame found changed in the world (an object, or null), for checks
     get why() { return watchWorld.why; },
     get last() { return { ...last, saved: !!capBox }; },
-    // strokes placed so far, per layer (Brush strokes), and how many their buffers hold
+    // strokes placed so far, per layer, and how many their buffers hold
     get strokes() { return brush ? { counts: brush.strokes.counts, caps: brush.strokes.caps, scene: brush.strokes.scene } : null; },
     // where the world is drawn: warm-up compiles must use it too (it picks the shader's output variant)
     get target() { return target; },

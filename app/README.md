@@ -4,7 +4,7 @@ A 3D vinyl shop for YouTube Music (free, open source). Electron + Three.js.
 
 The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over the street, a little piazza, and the Sienna shop. The door swings open on its own, the camera walks into the shop, and the view tilts with the cursor. All scenery is procedural.
 
-**Look:** painted, through a screen pass (`src/watercolour.js`): oil paint by default on branch `oil-paint` (`src/oilpaint.js`: opaque dabs on the brush strokes' places, each with its object's own paint, lit live, with impasto ridges, over an under-coat of smaller dabs so no canvas is left bare; full bleed, no border), brush strokes pinned to the world's surfaces (`src/brushstrokes.js`), or a watercolour wash with hand wobble, colour bleed, wet edges and paper grain (Settings > Look > Painting). The brush and watercolour looks have a ragged paper border. `?style=flat` shows the old flat toon look.
+**Look:** painted in oil, through a screen pass (`src/watercolour.js`, `src/oilpaint.js`): opaque dabs on the brush strokes' places (`src/brushstrokes.js` places them, pinned to the world's surfaces), each with its object's own paint, lit live, with impasto ridges, over an under-coat of smaller dabs so no canvas is left bare; full bleed, no border. Oil paint is the only look: the watercolour (Faint / Light / Medium / Heavy) and Brush strokes looks and the Settings > Look > Painting choice were removed when oil-paint was merged into dev (Lajoon, 2026-11-13). The mini window's suitcase card keeps a light wash with a ragged paper border. `?wc=0` shows the plain unpainted render (for the check scripts); `?style=flat` shows the old flat toon look.
 
 **Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Look > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots. A change applies live in both windows, with no reload: `FONT`/`fontReady` are live exports, CSS uses `var(--sienna-font)`, and everything painted into a canvas or texture (tags, rack signs, the shop sign, button plates, menu words, search bar, album-spread stickers) registers a repaint with `onLettering(owner, draw)` in `src/style.js`, which runs once the new face has loaded. New lettered paint must register too. Check: `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out` (mini window, no reload) and `node scripts/tour-check.mjs out`.
 
@@ -123,7 +123,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   (`createCaption` in `src/controls.js`, also used in the mini window). Long names never run off it: the
   title steps down from 27 to 21 px, then wraps onto a second line (cut with … only past that), and the
   artist · album line steps from 19 to 15 px before it is cut; the full text is in the hover tooltip.
-  Under Brush strokes it gets only a light touch of the paint (paper grain, glazed darks, a wobbly edge) and
+  It gets only a light touch of the paint (paper grain, glazed darks, a wobbly edge) and
   no wobble or wash inside, since its own textures are already brushed: washed, it went blurry and its
   sharp button icons slid off their caps. `?overwash=0..1` gives it that share of the shop's wash back
   (its own wash pass then runs in its box again, ~1 ms).
@@ -155,11 +155,11 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   `npm run build && xvfb-run -a node scripts/shortcuts-check.mjs out`.
 - **Settings**: the SETTINGS word (top right) or **⌘,** (Ctrl+, elsewhere) opens a paper card
   (`src/settings-panel.js`, stored by `src/settings.js` in localStorage, shared with the mini window).
-  A side rail picks a page: *Account*, *Look* (Painting, Cover art, Lettering), *Playback* (Start of a song),
+  A side rail picks a page: *Account*, *Look* (Cover art, Lettering), *Playback* (Start of a song),
   *Performance* (Smoothness, Sharpness, Auto cool-down, Frame rate), *Shortcuts*, *Tour*. ↑/↓ or Tab move through the rail; it opens on
   Account the first time, then where you left it. `?settings=<page>` opens a page for screenshots.
-  *Painting* sets the look: Faint / Light / Medium / Heavy watercolour, Brush strokes, or Oil paint (default on branch
-  `oil-paint`, a trial of D from the optimisation plan, after blendi's oil-paint demo on patch.gg, MIT). Oil paint
+  **Oil paint**, the shop's only look (D from the optimisation plan, after blendi's oil-paint demo on patch.gg, MIT;
+  merged into dev 2026-11-13, when the watercolour and Brush strokes looks and the Painting setting were removed),
   (`src/oilpaint.js`) draws the brush strokes' places as thick opaque dabs: each stroke records its object's paint
   when it is placed (`aCol` in `src/brushstrokes.js`: the world drawn once under an even white sky of strength pi,
   once with no light, so glows and crisp covers are told apart), and the dab's vertex shader lights that paint
@@ -222,16 +222,15 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   Sharpness light over the intro t1-8, home and stations 0-7: 4.1% -> 0.8% (street 6-10% -> 1-2%); what is left is
   mostly glows the dabs do not carry and patches under the cinema bars. No wash, bleed or border passes; the last pass lays the dabs
   over the scene, crisp things, glass and the suitcase as drawn, a faint canvas weave. RX 550 @2x (frame-bench), against
-  Brush strokes: home 48.6 -> 27.0 ms before the under-coat, 39.5 with it; station 0 38.9 -> 20.3 / 24 before,
+  the old Brush strokes look: home 48.6 -> 27.0 ms before the under-coat, 39.5 with it; station 0 38.9 -> 20.3 / 24 before,
   29-30 with it; station 3 45.5 -> 23.2 / 24 before, 27 with it (bare canvas at home 52% -> 0%). The scene pass is
-  still drawn whole. Brush strokes repaints the world with strokes pinned to its surfaces: a full coat pulled in one direction, each stroke kept to its own surface, so the paint looks laid on by one hand, moves with the world and stays still when the camera does, while only the ragged border keeps boiling (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). Each stroke takes its colour from its whole patch of the picture and the wash under the strokes stays a little soft, so the paint does not shimmer while the camera moves (measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map; `SHOTS=120,121 MARK=1` saves those frames with the flipped pixels in magenta; `hotPct` = pixels
+  still drawn whole. The strokes the dabs sit on are pinned to the world's surfaces, so the paint moves with the world and stays still when the camera does (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). To check that the paint does not shimmer while the camera moves, measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map; `SHOTS=120,121 MARK=1` saves those frames with the flipped pixels in magenta; `hotPct` = pixels
 flipping in over a tenth of the frames). That count also takes in textured edges sliding past; to find what
 *jumps* as the camera moves, `node scripts/pop-check.mjs <out> [query] [times]` draws each moment twice a sliver
 of time apart (`DT`, default 1/300 s; `DT=0 NUDGE=0.0002` leans the camera a hair instead, for still views like
 `at=3`) with the cursor's lean pinned, and marks in magenta what changed: z-fighting, dabs popping, colours picked
-from another pixel. Faint is the
-  old single pass; the others flatten shading into washes and let colour bleed (`LEVELS` in
-  `src/watercolour.js`). `?wc=0..5` (or `SIENNA_QUERY="wc=2" npm run dev`) pins a level for screenshots.
+from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the paint off for screenshots and
+  geometry checks.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays
   when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Sharpness* sets how
   many pixels the shop is drawn with (`src/quality.js`): Full (every Retina pixel), Balanced (default: 3/4 of the screen's
@@ -249,8 +248,7 @@ from another pixel. Faint is the
   walk you through it, with brush-stroke words floating (bobbing) under each note instead of a settings card:
   *welcome* (SIGN IN or LOOK AROUND FIRST, with the small print as four price stickers slapped on one by one: FREE,
   makes no money; PRIVATE, no servers and keeps nothing about you; ADS?, without Premium YouTube Music plays its own
-  and Sienna earns nothing from them; OPEN SOURCE, the code is at github.com/lajoonpark/Sienna), *paint* (oil paint, brush strokes or a watercolour, applied live),
-  *letters* (the lettering, applied live), *smooth*
+  and Sienna earns nothing from them; OPEN SOURCE, the code is at github.com/lajoonpark/Sienna), *letters* (the lettering, applied live; the *paint* step went with the other looks), *smooth*
   (60 or 30 fps), *record* (a small note at the top while you pick a record; the shop's keys work, it fades at a rack
   and moves on once a song plays), *player* (beside the suitcase: the knob is the Mac's own volume, scrubbing, keys),
   *keys* (each shortcut ticks when pressed; the global ones are reported by `keys:used` from `electron/shortcuts.cjs`;
@@ -297,9 +295,8 @@ from another pixel. Faint is the
     colours (`CARD_WALLS` in `src/kit.js`; they cast no shadow, the mortar backing does). Triangles at home 2.2M ->
     0.8M. `?walls=3d` brings the 3D pieces back, `?walls=bricks` cards only the bricks.
   - *Fewer, bigger strokes far away* (OP-C): a stroke's smallest on-screen size grows with distance (`farGrow`,
-    `FAR_GROW` in `src/brushstrokes.js`, `?fargrow=near,far,k`), and the strokes are laid at 3/4 of the CSS-pixel
-    size (`BRUSH_SCALE` in `src/watercolour.js`, `?brushscale=1` for full): most of the strokes' cost is the coat's
-    overlap on near walls, and at 3/4 size it looks the same.
+    `FAR_GROW` in `src/brushstrokes.js`, `?fargrow=near,far,k`). (The old Brush strokes look was also laid at 3/4 of
+    the CSS-pixel size, `BRUSH_SCALE`; that went with the look.)
   - *Sharp only where you look* (C4): around the eased cursor (`fovea`, reach 0.45 of the height, `?fovea=0` off)
     the final pass does its full wet pooling and colour edges and the detail strokes (CORRECT, TOUCH) show; toward
     the corners it reads fewer taps and only the coat paints (there the coat no longer steps aside for detail, or
@@ -336,9 +333,9 @@ from another pixel. Faint is the
   only the suitcase's corner if just its record turned (the world's pixels under it are kept and put
   back), and the whole frame only when the world itself changed. So the shop's 3.8 million triangles,
   its shadows and the stroke passes are drawn while something in the shop moves and not otherwise. The
-  screen keeps its picture between frames for this (`preserveDrawingBuffer` in `main.js`). The older
-  watercolour looks boil all over, so they repaint the bleed and the final pass per boil step, but not the
-  scene. A frame put together in parts is the same picture to the last bit as a whole repaint:
+  screen keeps its picture between frames for this (`preserveDrawingBuffer` in `main.js`). Oil paint has no
+  border, so a still shop draws only the record's corner. The mini window's card boils all over, so it repaints
+  the bleed and the final pass per boil step, but not the scene. A frame put together in parts is the same picture to the last bit as a whole repaint:
   `node scripts/cache-check.mjs` compares them and counts what was painted (`__siennaDebug.painter.stats`).
   Things that help the shop come to rest: the time of day is worked out every 5 s of the clock, not every
   frame (`src/timeofday.js`); the cursor tilt snaps the last 1/30 px; under a shut lid (case tucked away)

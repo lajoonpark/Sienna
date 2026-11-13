@@ -3,9 +3,9 @@
 // step ends when you have done the thing it is about (signed in, played a record, pressed a shortcut).
 //
 //   welcome  sign in, or look around first; small print on ads, money, data and the source code
-//   paint    how the shop is painted          } choices apply at once, so the shop behind the note
-//   letters  the handwriting                  } shows each one; they are the Settings card's choices,
-//   smooth   60 or 30 fps                     } just floating in the shop
+//   letters  the handwriting                  } choices apply at once, so the shop behind the note shows
+//   smooth   60 or 30 fps                     } each one; they are the Settings card's choices, just
+//                                             } floating in the shop
 //   record   pick a record (a small note at the top, the shop stays usable)
 //   player   the suitcase: volume is the Mac's own, scrubbing, keys (a note above the case)
 //   keys     the three shortcuts: each is ticked when pressed, a click on one changes it
@@ -27,7 +27,7 @@ import { createFx, COLOURS } from './tourfx.js';
 import { onCursorTilt, tiltCSS } from './cursortilt.js';
 
 const KEY = 'sienna.tour';
-const STEPS = ['welcome', 'paint', 'letters', 'smooth', 'record', 'player', 'keys', 'bye'];
+const STEPS = ['welcome', 'letters', 'smooth', 'record', 'player', 'keys', 'bye'];
 const SOURCE = 'github.com/lajoonpark/Sienna';
 const mac = /Mac/.test(navigator.platform);
 // the small print on the welcome note: [sticker, under it, colour, what it means]
@@ -414,17 +414,9 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
       }
       onKey = (e) => { if (e.key === 'Enter') { signedIn ? next() : music.signIn(); return true; } };
     },
-    paint() {
-      where('upper');
-      text('Make it yours', 'How should the shop be painted? Try them: the shop changes behind this note as you pick.');
-      choices('paint', [['Oil paint', 5], ['Brush strokes', 4], ['Heavy watercolour', 3], ['Medium watercolour', 2], ['Light watercolour', 1]]);
-      brk();
-      float('Next', next, { big: true });
-      onKey = (e) => { if (e.key === 'Enter') { next(); return true; } };
-    },
     letters() {
       where('upper');
-      text('And the handwriting?', 'The lettering on the tags, the sign and every button. Picking one repaints the shop, so it blinks for a moment.');
+      text('Make it yours', 'Pick the handwriting for the tags, the sign and every button. Picking one repaints the shop, so it blinks for a moment.');
       choices('font', Object.entries(FONTS).map(([k, f]) => [f.label, k, f.family]));
       brk();
       float('Next', next, { big: true });

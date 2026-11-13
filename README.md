@@ -33,12 +33,10 @@ web page and internal API, so a change on their side can break it.
   out like a drawer and the record lifts out of it onto the platter. Shut the mini player early and the song starts
   at once.
 - **A painted look.** The world is painted in thick, opaque dabs of oil paint pinned to its surfaces, each
-  loaded with its own object's colour and lit by the shop's lights, with ridges that catch the light (branch
-  `oil-paint`, a trial). Album covers are painted to match. Settings can switch to the earlier brush strokes,
-  a softer watercolour wash, or turn cover painting off.
+  loaded with its own object's colour and lit by the shop's lights, with ridges that catch the light. Album
+  covers are painted to match; Settings can turn cover painting down or off.
 - **Runs cool.** It only draws at full speed while something is moving. Once the shop is still it is
-  not drawn again at all: only the turning record's corner (and in the watercolour looks the paper border) is repainted, and a few
-  seconds later even the border holds still. It stops drawing while its window is hidden. On a Retina
+  not drawn again at all: only the turning record's corner is repainted. It stops drawing while its window is hidden. On a Retina
   screen it draws fewer pixels than the screen has (Settings > Performance > Sharpness), and when the Mac
   gets warm it draws lighter until it cools down. Left in the menu bar it lets go of the mini player's
   window after five minutes unused (the next ⌃⌥K loads it again). The second start is quicker: the

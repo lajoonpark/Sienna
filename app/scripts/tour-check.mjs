@@ -49,16 +49,8 @@ assert.strictEqual(await page.evaluate(() => window.__siennaDebug.nav.at), -1);
 ok('Tab does not move the camera behind the note');
 
 await press("Let's go");   // the fake store counts as signed in
-assert.strictEqual(await step(), 'paint');
-await press('Heavy watercolour');
-assert.strictEqual(await setting('paint'), 3);
-await shot('2-paint');
-await press('Brush strokes');
-assert.strictEqual(await setting('paint'), 4);
-ok('painting choices apply');
-await press('Next');
 assert.strictEqual(await step(), 'letters');
-assert.deepStrictEqual(await saved(), { step: 2, done: false });
+assert.deepStrictEqual(await saved(), { step: 1, done: false });
 
 // a new lettering applies live: no reload, the tour stays on its step and the notes take the new hand
 await page.evaluate(() => { window.__noReload = true; });

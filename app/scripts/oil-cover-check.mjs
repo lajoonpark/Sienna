@@ -1,4 +1,4 @@
-// How much of the shop the oil dabs cover (Settings > Painting > Oil paint). For each view: the share of the
+// How much of the shop the oil dabs cover (Oil paint). For each view: the share of the
 // paintable picture (not sky, not crisp covers and labels, not the suitcase) that no dab reaches, and a map of
 // it: the shop where dabs cover it, magenta where it shows bare (records, which move, are not counted). Variants change the dabs' uniforms to see
 // what leaves the gaps.

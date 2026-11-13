@@ -72,7 +72,7 @@ function createWindow() {
   // The shop never leaves its own page (a link or a script cannot take it, and the bridge, elsewhere).
   lockNavigation(win.webContents, isAppUrl);
   const dev = process.env.SIENNA_DEV_URL;
-  // SIENNA_QUERY='wc=3&hour=17' passes page options (look strength, time of day...) to the window
+  // SIENNA_QUERY='wc=0&hour=17' passes page options (paint off, time of day...) to the window
   const query = process.env.SIENNA_QUERY || '';
   if (dev) win.loadURL(query ? `${dev}${dev.includes('?') ? '&' : '?'}${query}` : dev);
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), query ? { search: query } : {});

@@ -109,7 +109,7 @@ if (home) {
 // nothing at all is painted)
 await page.evaluate(() => window.__siennaDebug.music.command('pause'));
 await page.waitForTimeout(Number(process.env.SETTLE2 || 20000));
-const oil = await page.evaluate(() => window.__siennaDebug.painter.level === 5);
+const oil = await page.evaluate(() => !!window.__siennaDebug.painter.oil);
 if (!oil) {
   console.log('the border boiling alone (paused) against a whole repaint:');
   report(await compare('border', 4));

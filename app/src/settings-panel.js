@@ -19,9 +19,6 @@ import { shortcuts, fromEvent } from './shortcuts.js';
 import { rng } from './rand.js';
 import { onCursorTilt, tiltCSS } from './cursortilt.js';
 
-// Settings > Look > Painting: watercolour strength (LEVELS in watercolour.js), lightest first
-const PAINT = ['Faint', 'Light', 'Medium', 'Heavy', 'Brush strokes', 'Oil paint'];
-
 const CSS = `
 .st-btn { position: fixed; top: 3.4vh; right: 2.6vw; z-index: 6; border: 0; padding: 0; background: none; cursor: pointer;
   font-family: var(--sienna-font); color: ${PAPER}; font-size: 26px; line-height: 1; user-select: none; opacity: 0; transition: opacity .6s ease, transform .18s cubic-bezier(.3,1.6,.5,1); }
@@ -380,7 +377,6 @@ export function createSettingsPanel({ music = null, onTour = null } = {}) {
     });
   }
   settingRows(addPage('look', 'Look'), [
-    { key: 'paint', label: 'Painting', hint: 'How much the colours run and pool, like wet paint.', opts: PAINT.map((l, i) => [l, i]) },
     { key: 'covers', label: 'Cover art', hint: 'How strongly album covers are painted over.', opts: ['Off', 'Light', 'Medium', 'Heavy'].map((l, i) => [l, i]) },
     { key: 'font', label: 'Lettering', hint: 'The handwriting on tags, signs and buttons. It changes straight away.', opts: Object.entries(FONTS).map(([k, f]) => [f.label, k, f]) },
   ], 23);

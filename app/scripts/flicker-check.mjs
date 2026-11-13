@@ -4,7 +4,7 @@
 // edge changes a pixel one way only, so flips are paint popping, shimmering or boiling, not motion.
 // Writes a heat map (where it flickers) and a few frames to <out>.
 //   node scripts/flicker-check.mjs [out] [query] [width] [height]
-//   e.g. node scripts/flicker-check.mjs /tmp/fl "wc=3"   (compare against another painting level)
+//   e.g. node scripts/flicker-check.mjs /tmp/fl "wc=0"   (compare against the unpainted render)
 //   SHOTS=120,121 saves those frames; MARK=1 marks in magenta the pixels that flipped there
 // Runs on the Radeon (GPU flags, see work rules).
 import { chromium } from 'playwright';

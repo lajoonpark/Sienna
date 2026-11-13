@@ -1,6 +1,6 @@
 // Rough frame cost at a station, step by step (profile(): each step waits for the GPU, so the steps of one
 // frame do not add up exactly to its total; scripts/frame-bench.mjs measures whole frames back to back).
-//   node scripts/perf-check.mjs [at] [dpr] [query]   e.g. node scripts/perf-check.mjs 0 2 "wc=3"
+//   node scripts/perf-check.mjs [at] [dpr] [query]   e.g. node scripts/perf-check.mjs 0 2 "wc=0"
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 const at = Number(process.argv[2] ?? 0), dpr = Number(process.argv[3] ?? 1), q = process.argv[4] ?? '';

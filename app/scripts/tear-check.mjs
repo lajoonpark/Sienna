@@ -54,7 +54,7 @@ assert.strictEqual(worst.over, 0, 'a tear went past its cap');
 console.log(`ok   2000 seeds stay within the cap (deepest ${(worst.deepest * 100).toFixed(0)}% of it)`);
 
 // 2. every tour note keeps its words clear of the tear (cap 12 there)
-for (const step of ['welcome', 'paint', 'letters', 'smooth', 'record', 'player', 'keys', 'bye']) {
+for (const step of ['welcome', 'letters', 'smooth', 'record', 'player', 'keys', 'bye']) {
   await open(`at=home&tour=${step}`);
   const i = await insets('.tr-stage:not(.tr-ghost) .tr-note', '.tr-title, .tr-body, .tr-fine, .tr-msg');
   assert.ok(i.n > 0, `${step}: no text found`);
