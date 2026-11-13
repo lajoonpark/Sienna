@@ -198,6 +198,7 @@ const TAG_CSS = `
   perspective: 900px; }   /* the player docks it beside the case with dock() */
 .cad-tag.shop > .turn { transform-origin: 0% 50%; will-change: transform; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 100%; }
 .cad-tag.mini { position: absolute; left: 50%; bottom: 8.5%; transform: translateX(-50%); width: 76%; align-items: center; }
+.cad-tag.mini > .turn { width: 100%; }   /* else a long title's one-line width stretches it past the card */
 .cad-tag .cap { pointer-events: auto; padding: 8px 20px 10px 16px; max-width: 100%; box-sizing: border-box; min-width: 200px;
   background: ${PAPER}; color: #2b2436;
   clip-path: polygon(0 6%, 18% 0, 47% 4%, 72% 0, 100% 5%, 98% 52%, 100% 96%, 66% 100%, 38% 95%, 9% 100%, 2% 60%);
@@ -205,6 +206,8 @@ const TAG_CSS = `
 .cad-tag.mini .cap { width: 100%; padding: 12px 26px 12px 24px; clip-path: none; filter: none; background: var(--cap) 0 0 / 100% 100% no-repeat; }
 .cad-tag .cap .t { font-size: 27px; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cad-tag .cap .a { font-size: 19px; color: #7a5a40; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* a title still too long once shrunk (fitLine) takes a second line, and only the end of that one is cut */
+.cad-tag .cap .t.wrap { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 2px; }
 .cad-tag .cap .bar { position: relative; height: 14px; margin-top: 5px; cursor: pointer; }
 .cad-tag .cap .bar::before { content: ''; position: absolute; left: 0; right: 0; top: 5px; height: 2px; background: rgba(45,49,88,.2); border-radius: 2px; transition: height .15s, top .15s; }
 .cad-tag .cap .bar:hover::before { top: 4px; height: 4px; }
@@ -227,6 +230,20 @@ const TAG_CSS = `
 .cad-tag button:active { transform: translateX(3px) scale(.97); }
 .cad-tag button span { position: relative; display: block; text-shadow: 0 0 1px rgba(251,245,232,.7); font-size: 38px; padding: 5px 40px 3px 26px; }
 `;
+
+// Long lines on the tag: step the lettering down a few px until it fits on one line; if it still does not
+// and `lines` is 2, let it wrap (clamped to two lines, the end cut with an ellipsis). The full text stays in the tooltip.
+const fitLine = (el, big, small, lines) => {
+  el.style.fontSize = '';
+  el.classList.remove('wrap');
+  el.title = el.textContent;
+  if (!el.textContent || !el.clientWidth) return;
+  for (let px = big; px >= small; px--) {
+    el.style.fontSize = `${px}px`;
+    if (el.scrollWidth <= el.clientWidth + 1) return;
+  }
+  if (lines > 1) el.classList.add('wrap');
+};
 
 // Title / artist / progress line on a torn paper tag, and the SIGN IN word when needed.
 //   variant 'shop': fixed beside the suitcase in the bottom-left; 'mini': inside the small window's card.
@@ -261,12 +278,12 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
     hot.style.backgroundImage = `url(${brushStroke(Math.ceil(width), Math.ceil(height), HOT, 41)})`;
   };
   // The small window's tag is brushed like its card; the shop's stays torn paper for now.
-  let paintedW = 0;
+  let paintedW = 0, paintedH = 0;
   const paintCap = () => {
     const { width, height } = cap.getBoundingClientRect();
     const barW = bar.offsetWidth;
-    if (variant !== 'mini' || !width || !barW || paintedW === width) return;
-    paintedW = width;
+    if (variant !== 'mini' || !width || !barW || (paintedW === width && paintedH === height)) return;
+    paintedW = width; paintedH = height;   // a title taking a second line makes the band taller
     root.style.setProperty('--cap', `url(${brushBand(Math.ceil(width), Math.ceil(height), { tones: TONES.paper, seed: 61, rows: 3 })})`);
     root.style.setProperty('--barw', `${barW}px`);
     const line = (tones, seed) => `url(${brushBand(barW, 16, { tones, seed, rows: 1 })})`;
@@ -274,9 +291,11 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
     root.style.setProperty('--fill', line(TONES.ink, 63));
     root.style.setProperty('--fillhot', line(TONES.hot, 64));
   };
-  const fontReady = (document.fonts?.load(`38px ${FONT}`) ?? Promise.resolve()).then(() => { paint(); paintCap(); }, () => { paint(); paintCap(); });
+  const fit = () => { fitLine(capT, 27, 21, 2); fitLine(capA, 19, 15, 1); };
+  const fontReady = (document.fonts?.load(`38px ${FONT}`) ?? Promise.resolve()).then(() => { fit(); paint(); paintCap(); }, () => { fit(); paint(); paintCap(); });
   if (variant === 'mini') new ResizeObserver(() => fontReady.then(paintCap)).observe(cap);
-  onLettering(root, () => { paint(); paintedW = 0; paintCap(); }); // Settings > Lettering
+  addEventListener('resize', () => fontReady.then(() => { fit(); paintCap(); }));
+  onLettering(root, () => { fit(); paint(); paintedW = 0; paintCap(); }); // Settings > Lettering
 
   let duration = 0, scrubP = null, lastP = 0;
   bar.addEventListener('click', (e) => {
@@ -297,7 +316,8 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
     dock({ left, bottom, maxWidth }) {
       root.style.left = `${Math.round(left)}px`;
       root.style.bottom = `${Math.round(bottom)}px`;
-      root.style.maxWidth = `${Math.round(maxWidth)}px`;
+      const mw = `${Math.round(maxWidth)}px`;
+      if (root.style.maxWidth !== mw) { root.style.maxWidth = mw; fit(); }
     },
     // Its box on screen while it shows something, else null.
     rect() {
@@ -315,8 +335,9 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
       if (signin.style.display !== show) { signin.style.display = show; if (!show) fontReady.then(paint); }
       const has = !!(s.title || s.adPlaying);
       cap.classList.toggle('empty', !has);
-      capT.textContent = s.adPlaying ? 'A short ad…' : s.title ?? '';
-      capA.textContent = s.adPlaying ? 'your record plays next' : [s.artist, s.album].filter(Boolean).join(' · ');
+      const t = s.adPlaying ? 'A short ad…' : s.title ?? '';
+      const a = s.adPlaying ? 'your record plays next' : [s.artist, s.album].filter(Boolean).join(' · ');
+      if (capT.textContent !== t || capA.textContent !== a) { capT.textContent = t; capA.textContent = a; fit(); }
       duration = s.duration || 0;
       lastP = duration ? Math.min(100, (s.position / duration) * 100) : 0;
       if (scrubP == null) fill.style.width = `${lastP}%`;
