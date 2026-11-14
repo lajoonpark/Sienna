@@ -10,4 +10,4 @@ build/
 # graphify knowledge graph (rebuilt locally)
 graphify-out/
 
-nodeterm/project.json
+.nodeterm/project.json
