@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "rev": 10,
-  "savedAt": "2026-11-13T23:41:10.273Z",
+  "rev": 11,
+  "savedAt": "2026-11-14T00:47:22.165Z",
   "id": "project-12m6qob",
   "name": "Sienna",
   "color": "#6ac4dc",
@@ -23,9 +23,11 @@
         "height": 440
       },
       "title": "Terminal 1",
+      "titleAuto": true,
       "color": "#0a84ff",
       "group": null,
       "tags": [],
+      "collapsed": false,
       "cwd": "."
     },
     {
@@ -44,6 +46,7 @@
       "color": "#00a3a3",
       "group": null,
       "tags": [],
+      "collapsed": false,
       "cwd": ".",
       "agentId": "antigravity"
     },
@@ -63,6 +66,7 @@
       "color": "#d97757",
       "group": null,
       "tags": [],
+      "collapsed": false,
       "cwd": ".",
       "agentId": "claude",
       "agentSessionId": "6adff391-8c4e-4f06-b38c-60bec6ab98c3"
