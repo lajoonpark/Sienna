@@ -71,7 +71,7 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.shadowMap.needsUpdate = true;
 document.body.appendChild(renderer.domElement);
-const painter = WATERCOLOUR ? createWatercolour(renderer) : null;
+const painter = WATERCOLOUR ? createWatercolour(renderer, { isLight: () => quality.level === 'light' }) : null;
 setCoverUploader(renderer); // painted covers go to the GPU in small slices, before a rack shows them
 
 const scene = new THREE.Scene();

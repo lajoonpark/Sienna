@@ -400,19 +400,26 @@ const OVER_WASH = (() => {
   return Number.isFinite(v) && v > 0 ? Math.min(1, v) : 0;
 })();
 
-// 2x MSAA from 1.5 pixels per CSS pixel up (Sharpness Balanced or Full on a Retina screen), else 4x
-const msaaFor = (renderer) => (renderer.getPixelRatio() >= 1.5 ? 2 : 4);
+// ?msaa=N pins the scene MSAA sample count (e.g. 0, 2, 4); otherwise 2x MSAA for Light or hi-dpi (>= 1.5),
+// and 4x MSAA for 1x Balanced/Full.
+const PIN_MSAA = (() => {
+  const s = new URLSearchParams(globalThis.location?.search ?? '').get('msaa');
+  if (s === null || s === '') return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+})();
+const msaaFor = (renderer, isLight) => (PIN_MSAA ?? (isLight?.() || renderer.getPixelRatio() >= 1.5 ? 2 : 4));
 
 // { card: true } turns the unpainted border into a deckle-edged card and makes everything beyond it
 // transparent (for the small frameless window; the renderer needs alpha: true).
 // unpainted: the plain render (?wc=0).
-export function createWatercolour(renderer, { card = false, unpainted = UNPAINTED } = {}) {
+export function createWatercolour(renderer, { card = false, unpainted = UNPAINTED, isLight = null } = {}) {
   const L = unpainted ? null : card ? CARD_BRUSH : OIL;
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
     type: THREE.HalfFloatType,
     // hi-dpi pixels are small enough that 2x MSAA reads the same under the paint, at half the memory traffic
-    samples: msaaFor(renderer),
+    samples: msaaFor(renderer, isLight),
     depthTexture: new THREE.DepthTexture(size.x, size.y),
   });
 
@@ -990,7 +997,8 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       const s = renderer.getDrawingBufferSize(new THREE.Vector2());
       invalidate();
       // a new pixel ratio (Sharpness, cool-down) may want another MSAA count: three makes it again on next use
-      if (target.samples !== msaaFor(renderer)) { target.dispose(); target.samples = msaaFor(renderer); }
+      const samples = msaaFor(renderer, isLight);
+      if (target.samples !== samples) { target.dispose(); target.samples = samples; }
       target.setSize(s.x, s.y);
       material.uniforms.resolution.value.copy(s);
       // A pixel-ratio change only resizes the brush and its targets; strokes are never rebuilt for it.
