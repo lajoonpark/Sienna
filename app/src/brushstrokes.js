@@ -46,11 +46,11 @@ const rawOilLayers = new URLSearchParams(globalThis.location?.search ?? '').get(
 const WANT_TOUCH = rawOilLayers === '3' || Number(rawOilLayers?.split(',')[2]) > 0;
 const LAYERS = [
   // the coat: rows close enough that the strokes overlap and no wall is left bare
-  { segments: 3, cap: 150000, reach: 0.3, rowGap: 0.17, colGap: 0.8, widthRatio: 0.3, window: [0.16, 0.8], lods: [3.0, 4.2], gate: [0, 0], calm: [0.1, 0.22], power: 0.82, opacity: 0.94, rim: 0.2, clip: [1.6, 0.15, 0.3], slack: 1.4, mode: 'GROUND' },
+  { segments: 3, reach: 0.3, rowGap: 0.17, colGap: 0.8, widthRatio: 0.3, window: [0.16, 0.8], lods: [3.0, 4.2], gate: [0, 0], calm: [0.1, 0.22], power: 0.82, opacity: 0.94, rim: 0.2, clip: [1.6, 0.15, 0.3], slack: 1.4, mode: 'GROUND' },
   // medium strokes, where the picture has detail the coat could not hold
-  { segments: 3, cap: 90000, reach: 0.14, rowGap: 0.55, colGap: 0.55, widthRatio: 0.33, window: [0.08, 0.24], lods: [1.6, 3.4], gate: [0.025, 0.09], opacity: 0.85, rim: 0.4, clip: [1.2, 0.08, 0.2], slack: 1.5, mode: 'CORRECT' },
+  { segments: 3, reach: 0.14, rowGap: 0.55, colGap: 0.55, widthRatio: 0.33, window: [0.08, 0.24], lods: [1.6, 3.4], gate: [0.025, 0.09], opacity: 0.85, rim: 0.4, clip: [1.2, 0.08, 0.2], slack: 1.5, mode: 'CORRECT' },
   // fine touches of opaque colour (left out of default draws by ?oillayers, so only baked when ?oillayers=3 or 1,1,1 asks for them)
-  ...(WANT_TOUCH ? [{ segments: 1, cap: 200000, reach: 0.05, rowGap: 0.5, colGap: 0.5, widthRatio: 0.29, window: [0.03, 0.1], lods: [0.8, 2.2], gate: [0.07, 0.18], opacity: 0.72, rim: 0.2, clip: [0.7, 0.1, 0.22], slack: 1, mode: 'TOUCH' }] : []),
+  ...(WANT_TOUCH ? [{ segments: 1, reach: 0.05, rowGap: 0.5, colGap: 0.5, widthRatio: 0.29, window: [0.03, 0.1], lods: [0.8, 2.2], gate: [0.07, 0.18], opacity: 0.72, rim: 0.2, clip: [0.7, 0.1, 0.22], slack: 1, mode: 'TOUCH' }] : []),
 ];
 const BASE_LENGTH = 0.1; // metres; stroke lengths are this times a power of two
 // far away, fewer and bigger marks (see farGrow in the vertex shader); ?fargrow=near,far,k to try others
@@ -101,22 +101,38 @@ void main() { gl_FragColor = vec4(oid, each > 0.5 ? floor(vPiece + 0.5) : 0.0, 0
   side: THREE.DoubleSide,
 });
 
-// Instance attributes for placed strokes (rendered by oilpaint.js).
+// Instance attributes for placed strokes (rendered by oilpaint.js). Buffers grow while baking and trim to count on upload.
+const ATTR_NAMES = ['aPos', 'aTan', 'aNor', 'aShape', 'aCol'];
+const INITIAL_CAP = 8192;
+const makeAttr = (arr) => { const a = new THREE.InstancedBufferAttribute(arr, 4); a.setUsage(THREE.DynamicDrawUsage); return a; };
+const setXYZW = (arr, i, x, y, z, w) => { const o = i * 4; arr[o] = x; arr[o + 1] = y; arr[o + 2] = z; arr[o + 3] = w; };
+function ensureCapacity(part, need) {
+  if (need <= part.cap) return;
+  let nextCap = Math.max(INITIAL_CAP, Math.ceil(part.cap * 1.5));
+  while (nextCap < need) nextCap = Math.ceil(nextCap * 1.5);
+  for (const name of ATTR_NAMES) {
+    const prev = part.arrays[name];
+    const next = new Float32Array(nextCap * 4);
+    if (prev.length) next.set(prev);
+    part.arrays[name] = next;
+  }
+  part.cap = nextCap;
+}
 function layerData(layer) {
   const geo = new THREE.InstancedBufferGeometry();
-  const attr = (name, size = 4) => {
-    const a = new THREE.InstancedBufferAttribute(new Float32Array(layer.cap * size), size);
-    a.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute(name, a);
-    return a;
-  };
+  const arrays = {}, buffers = {};
+  for (const name of ATTR_NAMES) {
+    const arr = new Float32Array(0);
+    arrays[name] = arr;
+    buffers[name] = makeAttr(arr);
+    geo.setAttribute(name, buffers[name]);
+  }
+  geo.instanceCount = 0;
   // aCol: the paint of the object under it (rgb, linear) and how it is lit: 1 by the lights, 0 it glows by
   // itself (lamps, windows), -1 a crisp thing that is never painted over (covers, labels); plus 10 x k when it
   // is on station furniture number k (ownStrokes), which a rack replaces. Oil paint (oilpaint.js)
   // colours its strokes from this.
-  const buffers = { aPos: attr('aPos'), aTan: attr('aTan'), aNor: attr('aNor'), aShape: attr('aShape'), aCol: attr('aCol') };
-  geo.instanceCount = 0;
-  return { geo, buffers, layer, count: 0, taken: new Set() };
+  return { geo, buffers, arrays, layer, cap: 0, count: 0, version: 0, taken: new Set() };
 }
 
 // The one direction a painter pulls the brush across an open surface: left to right as you face it,
@@ -268,8 +284,7 @@ export function createBrushStrokes(renderer) {
         const kp = turning ? pl : p, kn = turning ? nl : n, kh = turning ? handL : hand, ka = turning ? acrossL : across;
         let measured = false, longest = 0, crossSpan = 0;
         for (const part of layers) {
-          const { layer, buffers, taken } = part;
-          if (part.count >= layer.cap) continue;
+          const { layer, arrays, taken } = part;
           const octave = Math.min(MAX_OCTAVE, Math.max(0, Math.round(Math.log2((layer.reach * d) / BASE_LENGTH))));
           const len = BASE_LENGTH * 2 ** octave;
           // one stroke per place in the rows on this surface. Each row starts somewhere of its own: evenly
@@ -336,19 +351,20 @@ export function createBrushStrokes(renderer) {
           // the room the shape leaves round that centre, along and across: a fatter dab (oilpaint.js) never
           // grows past it
           const roomU = Math.max(fitted, 2 * Math.min(cu - al, ah - cu)), roomV = Math.max(wid, 2 * Math.min(cv - sl, sh - cv));
+          if (part.count >= part.cap) ensureCapacity(part, part.count + 1);
           const i = part.count++;
           const cw = turning ? cl.copy(centre).applyMatrix4(toLocal) : centre, tw = turning ? tl.copy(t).transformDirection(toLocal) : t;
-          buffers.aPos.setXYZW(i, cw.x, cw.y, cw.z, len);
-          buffers.aShape.setXYZW(i, fitted, wid, roomU, roomV);
-          buffers.aTan.setXYZW(i, tw.x, tw.y, tw.z, r());
-          buffers.aNor.setXYZW(i, kn.x, kn.y, kn.z, r());
+          setXYZW(arrays.aPos, i, cw.x, cw.y, cw.z, len);
+          setXYZW(arrays.aShape, i, fitted, wid, roomU, roomV);
+          setXYZW(arrays.aTan, i, tw.x, tw.y, tw.z, r());
+          setXYZW(arrays.aNor, i, kn.x, kn.y, kn.z, r());
           const j = (py * BAKE_W + px) * 4;
           const lit = albedo[j + 3] < 0.5 ? -1 : (glow[j] + glow[j + 1] + glow[j + 2]) > 0.3 * (albedo[j] + albedo[j + 1] + albedo[j + 2]) + 0.01 ? 0 : 1;
           // (w: how it is lit, plus 10 x the number of the furniture it is on, if any, plus TURN_TAG on the thing
           // that turns)
           const tag = 10 * ownK + (turning ? TURN_TAG : 0);
-          if (lit === 0) buffers.aCol.setXYZW(i, glow[j], glow[j + 1], glow[j + 2], tag);
-          else buffers.aCol.setXYZW(i, Math.max(0, albedo[j] - glow[j]), Math.max(0, albedo[j + 1] - glow[j + 1]), Math.max(0, albedo[j + 2] - glow[j + 2]), lit + tag);
+          if (lit === 0) setXYZW(arrays.aCol, i, glow[j], glow[j + 1], glow[j + 2], tag);
+          else setXYZW(arrays.aCol, i, Math.max(0, albedo[j] - glow[j]), Math.max(0, albedo[j + 1] - glow[j + 1]), Math.max(0, albedo[j + 2] - glow[j + 2]), lit + tag);
         }
       }
       yield;
@@ -563,37 +579,62 @@ export function createBrushStrokes(renderer) {
       layers: layers.map((part) => ({
         count: part.count,
         taken: Float64Array.from(part.taken),
-        buffers: Object.fromEntries(Object.entries(part.buffers).map(([k, buf]) => [k, buf.array.slice(0, part.count * buf.itemSize)])),
+        buffers: Object.fromEntries(ATTR_NAMES.map((k) => [k, part.arrays[k].slice(0, part.count * 4)])),
       })),
     };
   }
   function load(state) {
     if (!state || state.layers?.length !== layers.length) return false;
     for (let i = 0; i < layers.length; i++) {
-      const part = layers[i], s = state.layers[i];
-      if (s.count > part.layer.cap) return false;
-      for (const [k, buf] of Object.entries(part.buffers)) if (!s.buffers[k] || s.buffers[k].length !== s.count * buf.itemSize) return false;
+      const s = state.layers[i];
+      for (const k of ATTR_NAMES) if (!s.buffers[k] || s.buffers[k].length !== s.count * 4) return false;
     }
     r.state = state.rng;
     layers.forEach((part, i) => {
-      const s = state.layers[i];
+      const s = state.layers[i], needed = s.count * 4;
       part.count = s.count;
+      part.cap = s.count;
       part.taken = new Set(s.taken);
-      for (const [k, buf] of Object.entries(part.buffers)) buf.array.set(s.buffers[k], 0);
+      for (const k of ATTR_NAMES) {
+        if (part.buffers[k].array.length === needed) {
+          part.arrays[k] = part.buffers[k].array;
+        } else {
+          part.arrays[k] = new Float32Array(needed);
+        }
+        part.arrays[k].set(s.buffers[k], 0);
+      }
     });
     upload();
     return true;
   }
   function upload() {
     for (const part of layers) {
+      const needed = part.count * 4;
+      if (part.buffers.aPos.array.length !== needed || part.arrays.aPos !== part.buffers.aPos.array) {
+        // Trim any doubling slack so settled RAM and VRAM hold only the placed strokes.
+        for (const k of ATTR_NAMES) {
+          const arr = part.arrays[k].length === needed ? part.arrays[k] : part.arrays[k].slice(0, needed);
+          part.arrays[k] = arr;
+          const attr = makeAttr(arr);
+          part.buffers[k] = attr;
+          part.geo.setAttribute(k, attr);
+        }
+        part.cap = part.count;
+        part.version++;
+      } else {
+        for (const buf of Object.values(part.buffers)) {
+          buf.clearUpdateRanges();
+          buf.addUpdateRange(0, needed);
+          buf.needsUpdate = true;
+        }
+      }
       part.geo.instanceCount = part.count;
-      for (const buf of Object.values(part.buffers)) { buf.clearUpdateRanges(); buf.addUpdateRange(0, part.count * buf.itemSize); buf.needsUpdate = true; }
     }
   }
 
   return {
     // for oil paint (oilpaint.js): the same placed strokes, drawn its own way
-    parts: layers.map((part) => ({ geo: part.geo, layer: part.layer })),
+    parts: layers.map((part) => ({ geo: part.geo, layer: part.layer, get version() { return part.version; } })),
     shared,
     bake,
     bakeAsync,

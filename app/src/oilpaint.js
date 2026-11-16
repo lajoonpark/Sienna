@@ -773,13 +773,15 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
     for (const i of unit.index.array) index.push(i + k * 4);
   }
   unit.dispose();
+  const ATTR_NAMES = ['aPos', 'aTan', 'aNor', 'aShape', 'aCol'];
+  const versions = strokes.parts.map((p) => p.version);
   const geos = strokes.parts.map(({ geo }) => {
     const g = new THREE.InstancedBufferGeometry();
     g.setIndex(index);
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     g.setAttribute('sub', new THREE.BufferAttribute(subs, 1));
-    for (const k of ['aPos', 'aTan', 'aNor', 'aShape', 'aCol']) g.setAttribute(k, geo.getAttribute(k));
+    for (const k of ATTR_NAMES) g.setAttribute(k, geo.getAttribute(k));
     g.instanceCount = 0;
     return g;
   });
@@ -881,7 +883,14 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
     // the dabs, into the paint target (cleared clear)
     render(world, camera, sync) {
       updateLights(world);
-      strokes.parts.forEach(({ geo }, i) => { geos[i].instanceCount = geo.instanceCount; });
+      strokes.parts.forEach((part, i) => {
+        if (versions[i] !== part.version) {
+          versions[i] = part.version;
+          geos[i].dispose();
+          for (const k of ATTR_NAMES) geos[i].setAttribute(k, part.geo.getAttribute(k));
+        }
+        geos[i].instanceCount = part.geo.instanceCount;
+      });
       strokes.setCamera(camera);
       const u = depthDown.uniforms, pe = camera.projectionMatrixInverse.elements;
       u.depthK.value.set(2 * pe[11], pe[15] - pe[11]);
