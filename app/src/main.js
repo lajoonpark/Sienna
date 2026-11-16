@@ -8,6 +8,7 @@ import { createLightSlots } from './lightslots.js';
 import { WATERCOLOUR } from './style.js';
 import { createWatercolour, renderOverlay } from './watercolour.js';
 import { createSky } from './sky.js';
+import { toon, crisp, unpinned } from './materials.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
 import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
@@ -861,15 +862,36 @@ if (shotMode) {
   };
   window.__ready = true;
 } else {
-  // Compile the whole scene (hidden parts too) and the suitcase overlay in the background first, and
-  // only then start the clock, so the intro never stops for a shader. Capped at 4 s just in case.
-  // The strokes are always in first (read back, or placed: as before the cache, the intro waits for them).
+  // Compile the whole scene (hidden parts too), the rack shader variants (unpinned toon, crisp labels/covers),
+  // and the suitcase overlay in the background first, then draw one whole painted frame of the intro's first
+  // pose and wait for the GPU before starting the clock, so uploads and links never stall the first frame.
+  const rackWarmGeo = new THREE.PlaneGeometry(0.01, 0.01);
+  const rackWarmTex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+  rackWarmTex.needsUpdate = true;
+  const rackWarmMats = [
+    unpinned(toon('#ffffff')),
+    unpinned(toon('#ffffff', { map: rackWarmTex })),
+    crisp({ map: rackWarmTex }),
+    crisp({ map: rackWarmTex, alphaTest: 0.4 }),
+  ];
+  const rackWarm = new THREE.Group();
+  for (const m of rackWarmMats) rackWarm.add(new THREE.Mesh(rackWarmGeo, m));
+  scene.add(rackWarm);
   const warmed = Promise.all([
     warmUp(renderer, scene, camera, scene, painter?.target ?? null),
     warmUp(renderer, suitcase.overlay.scene, suitcase.overlay.camera, suitcase.overlay.scene, painter?.target ?? null, { draw: true }),
   ]);
+  scene.remove(rackWarm);
+  rackWarmGeo.dispose();
+  for (const m of rackWarmMats) m.dispose();
+  renderer.info.render.frame = 0; // atlas bakes and warm-up scratch draws are not intro frames
   Promise.all([strokesIn, Promise.race([warmed, new Promise((r) => setTimeout(r, 4000))])]).catch(() => {}).then(() => {
-    const start = performance.now() - (Number(params.get('t')) || 0) * 1000;
+    const t0 = Number(params.get('t')) || 0;
+    frame(t0, 0);
+    const gl = renderer.getContext();
+    renderer.setRenderTarget(null);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+    const start = performance.now() - t0 * 1000;
     pacer = createPacer({
       renderer,
       step: (now) => { tickFps(); frame((now - start) / 1000); watchCamera(); },

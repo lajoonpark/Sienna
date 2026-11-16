@@ -25,10 +25,12 @@ export function warmUp(renderer, root, camera, scene = root, target = null, { dr
     if (draw) {
       const tiny = scratchTarget(target);
       const shadows = renderer.shadowMap.needsUpdate;
+      const frames = renderer.info.render.frame;
       renderer.shadowMap.needsUpdate = false; // no shadow-map redraw for this
       renderer.setRenderTarget(tiny);
       renderer.render(root, camera);
       renderer.shadowMap.needsUpdate = shadows;
+      renderer.info.render.frame = frames;
     }
   } finally {
     renderer.setRenderTarget(prevTarget);
