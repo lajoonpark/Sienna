@@ -380,6 +380,7 @@ window.__siennaDebug = {
       let last = performance.now();
       const seen = new Map(); // a step name met twice in one frame (the suitcase's own wash) is timed as name#2
       const sync = (name) => {
+        renderer.setRenderTarget(null);
         gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
         const now = performance.now();
         const n = (seen.get(name) ?? 0) + 1;
