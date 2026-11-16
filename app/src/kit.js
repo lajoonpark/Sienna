@@ -63,31 +63,59 @@ class Part {
     this.material = material;
     this.castShadow = castShadow;
     this.receiveShadow = receiveShadow;
-    this.matrices = [];
-    this.colors = [];
+    this.count = 0;
+    this.cap = 0;
+    this.mats = null;
+    this.cols = null;
   }
   add(matrix, color) {
-    this.matrices.push(matrix.clone());
-    this.colors.push(_c.set(color).clone());
+    const i = this.count++;
+    if (i >= this.cap) {
+      const nextCap = Math.max(64, this.cap * 2);
+      const mats = new Float32Array(nextCap * 16);
+      const cols = new Float32Array(nextCap * 3);
+      if (this.mats) mats.set(this.mats);
+      if (this.cols) cols.set(this.cols);
+      this.mats = mats;
+      this.cols = cols;
+      this.cap = nextCap;
+    }
+    const me = matrix.elements, mo = i * 16, mats = this.mats;
+    for (let k = 0; k < 16; k++) mats[mo + k] = me[k];
+    _c.set(color);
+    const co = i * 3, cols = this.cols;
+    cols[co] = _c.r; cols[co + 1] = _c.g; cols[co + 2] = _c.b;
   }
   // -> its InstancedMeshes: one per well-filled square, and one for everything else
   build() {
+    const n = this.count;
+    if (!n) return [];
+    const mats = this.mats, cols = this.cols;
     const cells = new Map();
-    this.matrices.forEach((m, i) => {
-      const key = `${Math.floor(m.elements[12] / CELL)},${Math.floor(m.elements[14] / CELL)}`;
-      if (!cells.has(key)) cells.set(key, []);
-      cells.get(key).push(i);
-    });
+    for (let i = 0; i < n; i++) {
+      const o = i * 16;
+      const key = (Math.floor(mats[o + 12] / CELL) + 16384) * 32768 + (Math.floor(mats[o + 14] / CELL) + 16384);
+      let list = cells.get(key);
+      if (!list) { list = []; cells.set(key, list); }
+      list.push(i);
+    }
     const groups = [], rest = [];
     for (const ids of cells.values()) { if (ids.length >= CELL_MIN) groups.push(ids); else rest.push(...ids); }
     if (rest.length) groups.push(rest);
     const out = [];
     groups.forEach((ids, g) => {
-      const mesh = new THREE.InstancedMesh(this.geometry, this.material, ids.length);
-      ids.forEach((id, i) => {
-        mesh.setMatrixAt(i, this.matrices[id]);
-        mesh.setColorAt(i, this.colors[id]);
-      });
+      const len = ids.length;
+      const mesh = new THREE.InstancedMesh(this.geometry, this.material, len);
+      const dstM = mesh.instanceMatrix.array;
+      const dstC = new Float32Array(len * 3);
+      for (let i = 0; i < len; i++) {
+        const id = ids[i], sm = id * 16, dm = i * 16, sc = id * 3, dc = i * 3;
+        for (let k = 0; k < 16; k++) dstM[dm + k] = mats[sm + k];
+        dstC[dc] = cols[sc]; dstC[dc + 1] = cols[sc + 1]; dstC[dc + 2] = cols[sc + 2];
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(dstC, 3);
+      mesh.instanceColor.needsUpdate = true;
       mesh.castShadow = this.castShadow;
       mesh.receiveShadow = this.receiveShadow;
       mesh.computeBoundingSphere(); // of its instances: what the renderer culls it by
@@ -97,7 +125,7 @@ class Part {
       const square = g < groups.length - (rest.length ? 1 : 0);
       const lo = square && this.lowGeometry();
       if (lo) {
-        const twin = new THREE.InstancedMesh(lo, this.material, ids.length);
+        const twin = new THREE.InstancedMesh(lo, this.material, len);
         twin.instanceMatrix = mesh.instanceMatrix;
         twin.instanceColor = mesh.instanceColor;
         twin.castShadow = this.castShadow;
@@ -109,9 +137,10 @@ class Part {
         out.push(twin);
       }
     });
-    // Drop build-time Matrix4/Color wrappers once packed into InstancedMesh typed arrays.
-    this.matrices.length = 0;
-    this.colors.length = 0;
+    // Drop build-time typed arrays once packed into InstancedMesh buffers.
+    this.mats = null;
+    this.cols = null;
+    this.count = this.cap = 0;
     return out;
   }
   // lower-triangle twin geometry for far squares (?lod=0 keeps only RoundedBoxGeometry -> BoxGeometry)

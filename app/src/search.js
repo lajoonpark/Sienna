@@ -127,6 +127,7 @@ export function createSearch({ music, onPlay, suggest = null }) {
   // The paint is drawn to the final size once the brush font is in (sizes follow the window).
   let paintedW = 0;
   const paintStrokes = () => {
+    if (!isOpen) return;
     const w = Math.ceil(root.getBoundingClientRect().width || 0);
     if (!w || paintedW === w) return;
     paintedW = w;
@@ -295,9 +296,10 @@ export function createSearch({ music, onPlay, suggest = null }) {
   function open() {
     if (isOpen) return;
     isOpen = true;
-    fontReady.then(paintStrokes);
     root.classList.remove('closing');
     root.classList.add('show');
+    paintStrokes();
+    fontReady.then(paintStrokes);
     paint.play(true);
     for (const el of [head, ...list.children]) el.style.setProperty('--lead', `${paint.lead()}ms`);   // what is already there waits for the bar to land
     input.focus({ preventScroll: true });

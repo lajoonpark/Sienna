@@ -66,12 +66,24 @@ function stamp(color, variant) {
   c = document.createElement('canvas');
   c.width = W; c.height = H;
   const g = c.getContext('2d'), img = g.createImageData(W, H), { cover, density, rim } = brushShapes()[variant];
-  const base = rgb.map((v) => v / 255);
+  const br = rgb[0], bg = rgb[1], bb = rgb[2];
+  const br0 = br / 255, bg0 = bg / 255, bb0 = bb / 255;
+  const d = img.data;
   for (let i = 0; i < W * H; i++) {
-    if (cover[i] <= 0) continue;
-    const streak = 0.9 + 0.5 * (density[i] - 0.8), pool = 1 + rim[i] * 0.45;   // pigment pools at the edge of the mark
-    for (let k = 0; k < 3; k++) img.data[i * 4 + k] = 255 * Math.min(1, base[k] ** pool * streak);
-    img.data[i * 4 + 3] = 255 * cover[i];
+    const c0 = cover[i];
+    if (c0 <= 0) continue;
+    const streak = 0.9 + 0.5 * (density[i] - 0.8), ri = rim[i], o = i * 4;
+    if (ri <= 0) {
+      d[o] = br * streak;
+      d[o + 1] = bg * streak;
+      d[o + 2] = bb * streak;
+    } else {
+      const pool = 1 + ri * 0.45, k = 255 * streak; // pigment pools at the edge of the mark
+      d[o] = br0 ** pool * k;
+      d[o + 1] = bg0 ** pool * k;
+      d[o + 2] = bb0 ** pool * k;
+    }
+    d[o + 3] = 255 * c0;
   }
   g.putImageData(img, 0, 0);
   stamps.set(key, c);

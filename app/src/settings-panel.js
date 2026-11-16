@@ -471,7 +471,9 @@ export function createSettingsPanel({ music = null, onTour = null } = {}) {
   card.querySelector('.st-foot').appendChild(done);
 
   const paintAll = () => {
-    for (const w of [btn, ...Object.values(railWords), ...optWords, done]) w.paint();
+    btn.paint();
+    if (!openNow) return;
+    for (const w of [...Object.values(railWords), ...optWords, done]) w.paint();
     paintRule(rule, 5);
   };
   document.fonts?.ready.then(paintAll);
@@ -485,6 +487,7 @@ export function createSettingsPanel({ music = null, onTour = null } = {}) {
     veil.classList.add('show');
     if (page || !current) show(page || 'account');
     else PAGES.find((x) => x.id === current)?.onShow?.();   // the same page as last time, brought up to date
+    paintAll();
     requestAnimationFrame(paintAll);
     // a big card, so a gentler lean than the tour's notes
     unlean ??= onCursorTilt((x, y) => { leaner.style.transform = tiltCSS(x, y, 5); });
