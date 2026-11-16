@@ -546,8 +546,8 @@ export function createWatercolour(renderer, { card = false, unpainted = UNPAINTE
     renderer.setRenderTarget(prev);
     return b;
   }
-  // blends lite (k = 1) over full (k = 0) while the two hand over
-  const mixT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+  // blends lite (k = 1) over full (k = 0) while the two hand over (only used with wash + motion)
+  let mixT = null;
   const mixP = pass(/* glsl */ `
 uniform sampler2D tA;
 uniform sampler2D tB;
@@ -560,9 +560,15 @@ void main() {
   gl_FragColor = mix(texture2D(tA, vUv), texture2D(tB, vUv), k * (1.0 - a.x * a.y));
 }
 `, {}, { tA: { value: null }, tB: { value: null }, k: { value: 0 }, hi: { value: new THREE.Vector4(2, 2, 2, 2) }, feather: { value: new THREE.Vector2(0.01, 0.01) } });
-  { const prev = renderer.getRenderTarget(); renderer.initRenderTarget(mixT); renderer.setRenderTarget(mixT); renderer.compile(mixP.sc, postCam); renderer.setRenderTarget(prev); } // first used as the intro ends: compile it now
   let lite = null;
   let motion = false, motionK = 0, lastT = null, sawFrame = false;
+  function ensureWash() {
+    if (!wash && L && (!L.strokes || OVER_WASH > 0)) {
+      wash = makeWash(1);
+      material.uniforms[L.strokes ? 'tOver' : 'tWash'].value = wash.texture;
+    }
+    return wash;
+  }
   function buildWash() {
     const u = material.uniforms;
     u.bloomAmt.value = L?.bloom ?? 0;
@@ -571,6 +577,7 @@ void main() {
     u.grainAmt.value = L?.grain ?? 1;
     material.defines = finalDefines();
     material.needsUpdate = true;
+    const saved = brush ? brush.strokes.save() : null;
     wash?.dispose(); lite?.dispose(); brush?.dispose();
     wash = lite = brush = null;
     quad.material = material;
@@ -578,23 +585,28 @@ void main() {
     oilFinal = null;
     invalidate();
     if (!L) return;
-    wash = makeWash(1);
     if (L.strokes) {
       brush = makeBrush();
-      if (strokeViews.length) brush.strokes.bake(strokeWorld, strokeViews);
+      if (saved) brush.strokes.load(saved);
+      else if (strokeViews.length) brush.strokes.bake(strokeWorld, strokeViews);
       quad.material = oilFinal = brush.oil.finalMaterial(material.uniforms);
       material.uniforms.tWash.value = brush.texture;
-      material.uniforms.tOver.value = wash.texture;
+      material.uniforms.tOver.value = null;
       return;
     }
-    material.uniforms.tWash.value = wash.texture;
+    ensureWash();
     if (!card) makeLite(); // the card window has no camera to travel: it gets these only if it ever asks (setMotion)
   }
   function makeLite() {
+    ensureWash();
     lite = makeWash(0.5);
     const s = washSize(renderer.getDrawingBufferSize(new THREE.Vector2()), wash.scale);
-    mixT.setSize(s.x, s.y);
-    renderer.initRenderTarget(mixT); // allocated now, not in the frame the intro ends
+    if (!mixT) {
+      mixT = new THREE.WebGLRenderTarget(s.x, s.y, { type: THREE.HalfFloatType });
+      const prev = renderer.getRenderTarget();
+      renderer.initRenderTarget(mixT); renderer.setRenderTarget(mixT); renderer.compile(mixP.sc, postCam);
+      renderer.setRenderTarget(prev);
+    } else mixT.setSize(s.x, s.y);
   }
   // While the camera travels the world is washed at half size, but the suitcase (an overlay that does
   // not move with the camera) keeps the full wash: the full pipeline runs only inside its box (scissored,
@@ -602,6 +614,7 @@ void main() {
   // mix pass keeps full strength inside the box with a soft edge. hiRect: CSS px { left, right, top, bottom }.
   const FEATHER = 28; // CSS px
   function scissorFull(r) {
+    if (!wash) return;
     const css = renderer.domElement.clientWidth || innerWidth, cssH = renderer.domElement.clientHeight || innerHeight;
     const ws = washSize(renderer.getDrawingBufferSize(new THREE.Vector2()), wash.scale);
     const f = ws.x / css, fy = ws.y / cssH;
@@ -622,7 +635,7 @@ void main() {
     mu.hi.value.set(u0, v0, u1, v1);
     mu.feather.value.set(FEATHER / css, FEATHER / cssH);
   }
-  function unscissor() { for (const [rt] of wash.steps) rt.scissorTest = false; mixP.m.uniforms.hi.value.set(2, 2, 2, 2); }
+  function unscissor() { if (!wash) return; for (const [rt] of wash.steps) rt.scissorTest = false; mixP.m.uniforms.hi.value.set(2, 2, 2, 2); }
   function renderWash(t, sync, hiRect) {
     if (!wash) return;
     const dt = lastT === null ? 0 : Math.min(0.25, Math.max(0, t - lastT));
@@ -747,6 +760,17 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     renderer.render(post, postCam);
     renderer.setScissorTest(false);
   }
+  function washOverlay(rect, sync) {
+    const u = material.uniforms;
+    u.overBox.value.set(2, 2, 2, 2);
+    if (OVER_WASH <= 0 || !rect || rect.right <= rect.left) return;
+    ensureWash();
+    if (!wash) return;
+    scissorFull(rect);
+    wash.render(sync);
+    u.overBox.value.copy(mixP.m.uniforms.hi.value);
+    unscissor();
+  }
   // Only the overlay changed. false = cannot be done in its box (then a whole frame is painted).
   function repaintOverlay(overlay, rect, sync) {
     if (!capBox) return false;
@@ -758,14 +782,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     renderOverlay(renderer, overlay);
     wholeTarget();
     sync?.('scene');
-    const u = material.uniforms;
-    u.overBox.value.set(2, 2, 2, 2);
-    if (OVER_WASH > 0 && rect && rect.right > rect.left) {
-      scissorFull(rect);
-      wash.render(sync);
-      u.overBox.value.copy(mixP.m.uniforms.hi.value);
-      unscissor();
-    }
+    washOverlay(rect, sync);
     renderer.getDrawingBufferSize(full);
     const x0 = Math.max(0, c.x - REACH), y0 = Math.max(0, c.y - REACH);
     finalPart(x0, y0, Math.min(full.x, c.x + c.w + REACH) - x0, Math.min(full.y, c.y + c.h + REACH) - y0);
@@ -918,13 +935,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
         renderOverlay(renderer, overlay);
         sync?.('overlay');
         u.overlayOn.value = overlay ? 1 : 0;
-        u.overBox.value.set(2, 2, 2, 2);
-        if (OVER_WASH > 0 && rect && rect.right > rect.left) {
-          scissorFull(rect);
-          wash.render(sync);
-          u.overBox.value.copy(mixP.m.uniforms.hi.value);
-          unscissor();
-        }
+        washOverlay(rect, sync);
         renderer.setRenderTarget(null);
         renderer.render(post, postCam);
         sync?.('final');
@@ -960,13 +971,20 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       if (target.samples !== msaaFor(renderer)) { target.dispose(); target.samples = msaaFor(renderer); }
       target.setSize(s.x, s.y);
       material.uniforms.resolution.value.copy(s);
-      // a new pixel ratio (window moved to another screen) changes the wash scale: rebuild
-      if (wash && wash.scale !== washScale()) buildWash();
-      else if (brush) { wash.setSize(s); brush.setSize(s); }
-      else if (wash) {
-        wash.setSize(s); lite?.setSize(s);
-        const m = washSize(s, wash.scale);
-        mixT.setSize(m.x, m.y);
+      // A pixel-ratio change only resizes the brush and its targets; strokes are never rebuilt for it.
+      if (brush) brush.setSize(s);
+      if (wash && wash.scale !== washScale()) {
+        wash.dispose();
+        wash = makeWash(1);
+        material.uniforms[brush ? 'tOver' : 'tWash'].value = wash.texture;
+        if (!brush && lite) { lite.dispose(); makeLite(); }
+      } else if (wash) {
+        wash.setSize(s);
+        if (lite) {
+          lite.setSize(s);
+          const m = washSize(s, wash.scale);
+          mixT?.setSize(m.x, m.y);
+        }
       }
     },
     // the camera is travelling (intro, flights): paint with the cheap half-size washes until it stops
