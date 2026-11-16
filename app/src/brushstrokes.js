@@ -13,6 +13,7 @@
 // as a painter works across a wall. Smaller strokes then add only what the coat could not hold.
 import * as THREE from 'three';
 import { rng } from './rand.js';
+import { BLOTCH_MATH } from './materials.js';
 
 const NOISE = /* glsl */ `
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -445,7 +446,7 @@ const FACES = (n) => (Math.abs(n.x) > Math.abs(n.y) && Math.abs(n.x) > Math.abs(
 // A fingerprint of what a bake would see: every solid, drawn mesh (its geometry's size, where it is, its
 // instances), the views, and how strokes are laid out. The stroke cache keeps a bake under it, so a
 // change to the street, the shop or this file's settings bakes again instead of reusing old strokes.
-const CACHE_VERSION = 5; // bump when `place` changes in a way the numbers below do not show
+const CACHE_VERSION = 6; // bump when `place` or material colours change in a way the numbers below do not show
 export function strokeFingerprint(world, views) {
   let h1 = 0x811c9dc5 ^ CACHE_VERSION, h2 = 0x9e3779b9;
   const add = (v) => {
@@ -453,6 +454,7 @@ export function strokeFingerprint(world, views) {
     h1 = Math.imul(h1 ^ x, 16777619) >>> 0;
     h2 = Math.imul(h2 ^ (x >>> 7) ^ (x << 3), 2246822519) >>> 0;
   };
+  add(BLOTCH_MATH ? 1 : 0);
   world.updateMatrixWorld();
   world.traverseVisible((o) => {
     if (!o.isMesh || [].concat(o.material).every((m) => m.transparent || m.opacity < 1)) return;

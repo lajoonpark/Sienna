@@ -1,14 +1,51 @@
 import * as THREE from 'three';
 import { toonGradient } from './textures.js';
 import { WATERCOLOUR } from './style.js';
+import { rng } from './rand.js';
 
 // Watercolour: fewer, lighter glaze layers (shadows in watercolour are thin washes, never near-black).
 const gradientMap = WATERCOLOUR ? toonGradient(3, 120) : toonGradient(4);
+
+// ?blotch=math keeps the 24-sin-hash 3D noise; default uses one 3D lattice texture sampled with trilinear filtering.
+export const BLOTCH_MATH = new URLSearchParams(globalThis.location?.search ?? '').get('blotch') === 'math';
+const BLOTCH_N = 64;
+let blotchTex = null;
+function getBlotchTex() {
+  if (blotchTex) return blotchTex;
+  const r = rng(17);
+  const data = new Uint8Array(BLOTCH_N * BLOTCH_N * BLOTCH_N);
+  for (let i = 0; i < data.length; i++) data[i] = Math.floor(r() * 256);
+  const t = new THREE.Data3DTexture(data, BLOTCH_N, BLOTCH_N, BLOTCH_N);
+  t.format = THREE.RedFormat;
+  t.type = THREE.UnsignedByteType;
+  t.minFilter = t.magFilter = THREE.LinearFilter;
+  t.wrapS = t.wrapT = t.wrapR = THREE.RepeatWrapping;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return (blotchTex = t);
+}
+
+const BLOTCH_NOISE_MATH = /* glsl */ `
+float wcHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float wcNoise(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(wcHash(i), wcHash(i + vec3(1,0,0)), f.x), mix(wcHash(i + vec3(0,1,0)), wcHash(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(wcHash(i + vec3(0,0,1)), wcHash(i + vec3(1,0,1)), f.x), mix(wcHash(i + vec3(0,1,1)), wcHash(i + vec3(1,1,1)), f.x), f.y), f.z);
+}`;
+const BLOTCH_NOISE_TEX = /* glsl */ `
+uniform highp sampler3D tBlotch;
+float wcNoise(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return texture(tBlotch, (i + f + 0.5) / ${BLOTCH_N}.0).r;
+}`;
 
 // Pigment settles unevenly in a wash. Vary each surface's density with noise fixed to world space,
 // so the blotches stay on the wall as the camera moves instead of sliding over the screen.
 function addPigmentBlotches(material) {
   material.onBeforeCompile = (shader) => {
+    if (!BLOTCH_MATH) shader.uniforms.tBlotch = { value: getBlotchTex() };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
       .replace('#include <project_vertex>', `#include <project_vertex>
@@ -20,15 +57,7 @@ function addPigmentBlotches(material) {
   vWPos = (modelMatrix * wp).xyz;
 }`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>
-varying vec3 vWPos;
-float wcHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-float wcNoise(vec3 p) {
-  vec3 i = floor(p), f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(mix(wcHash(i), wcHash(i + vec3(1,0,0)), f.x), mix(wcHash(i + vec3(0,1,0)), wcHash(i + vec3(1,1,0)), f.x), f.y),
-             mix(mix(wcHash(i + vec3(0,0,1)), wcHash(i + vec3(1,0,1)), f.x), mix(wcHash(i + vec3(0,1,1)), wcHash(i + vec3(1,1,1)), f.x), f.y), f.z);
-}`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vWPos;\n${BLOTCH_MATH ? BLOTCH_NOISE_MATH : BLOTCH_NOISE_TEX}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   float n = wcNoise(vWPos * 0.9) * 0.6 + wcNoise(vWPos * 3.1) * 0.4;
