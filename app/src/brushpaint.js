@@ -1,17 +1,19 @@
-// The shop's brush on a 2D canvas, for what the world's pinned strokes (brushstrokes.js) cannot reach:
-// the search bars, the small window's card, everything the suitcase wears and (its shapes, via coverpaint.js) the covers. A mark here is the same
-// mark as there (the same shape as atlasFragment: ragged sides, bristle tracks, a dry tail, a wet rim),
-// and a coat is laid the same way: staggered rows, all pulled in one direction.
+// Oil-paint dabs on a 2D canvas, for what the 3D world's pinned dabs (oilpaint.js) cannot reach:
+// buttons, the search bar and slips, the mini window's card, the suitcase textures, and (its dab
+// shapes, via coverpaint.js) the covers. Each dab matches oilpaint.js (atlasFragment + dabFragment):
+// a rounded loaded start, wandering centerline, torn sides, a dry ragged tail breaking into bristle
+// tracks, raised impasto ridges lit from the upper left, and a second colour streaked along the bristles.
 import { rng } from './rand.js';
 
 // The diagonal the arm falls into, as brushstrokes.js LEAN (a canvas's y runs down, so the sign flips).
 export const LEAN = 0.5;
 
-export const STAMP_W = 192, STAMP_H = 48, VARIANTS = 6;
+export const STAMP_W = 160, STAMP_H = 56, VARIANTS = 8;
 const W = STAMP_W, H = STAMP_H;
-export const COVERED = 0.6;    // how much of a stamp's height the mark fills
+export const DAB_WIDTH = 0.62;
+export const COVERED = DAB_WIDTH; // share of stamp height filled across
 
-// value noise from a table: stamps are made on the main thread, so this has to be cheap
+// Value noise from a table: stamps and cover dabs are computed on CPU/worker, so this stays fast.
 const TABLE = (() => { const r = rng(99); return Float32Array.from({ length: 65536 }, () => r()); })();
 const cell = (x, y) => TABLE[(x & 255) | ((y & 255) << 8)];
 function noise(x, y) {
@@ -24,31 +26,69 @@ function noise(x, y) {
 const fbm = (x, y) => noise(x, y) * 0.55 + noise(x * 2.1 + 7.3, y * 2.1 + 7.3) * 0.3 + noise(x * 4.3 + 1.7, y * 4.3 + 1.7) * 0.15;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-// coverage, pigment density and wet rim of each variant, once (coverpaint.js presses these straight into pixels)
+// Precomputed oil-dab shapes (alpha, height, slopeU, slopeV, streak), worker-safe (no DOM).
 let shapes = null;
-export function brushShapes() {
+export function oilDabShapes() {
   if (shapes) return shapes;
   shapes = [];
+  const rawH = new Float32Array(W * H);
+  const blurH = new Float32Array(W * H);
   for (let k = 0; k < VARIANTS; k++) {
-    const seed = k * 7.3 + 1, cover = new Float32Array(W * H), density = new Float32Array(W * H), rim = new Float32Array(W * H);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const u = (x + 0.5) / W, v = ((y + 0.5) / H) * 2 - 1;
-      const body = smooth(0, 0.05, u) * (1 - smooth(0.7, 0.99, u) ** 2);
-      const centre = (fbm(u * 1.3, seed + 9) - 0.5) * 0.45;
-      const width = 0.6 * body * (1 + (fbm(u * 2.5, seed) - 0.5) * 0.6) + (fbm(u * 9, seed + 3) - 0.5) * 0.2 * body;
-      const d = Math.abs(v - centre) / Math.max(width, 0.001) + (noise(u * 26, v * 7 + seed) - 0.5) * 0.22;
-      const bristle = fbm(u * 1.5, v * 9 + seed * 2);
-      const dry = smooth(0.35, 1, u) * 0.75 + (fbm(u * 6, v * 4 + seed) - 0.5) * 0.35;
-      const c = (1 - smooth(0.84, 1, d)) * smooth(dry - 0.16, dry + 0.16, bristle + 0.14);
-      const i = y * W + x;
-      cover[i] = c;
-      density[i] = 0.8 + 0.2 * smooth(0.25, 0.75, bristle);
-      rim[i] = smooth(0.7, 0.98, d) * c;
+    const seed = (k % 4) * 7.3 + Math.floor(k / 4) * 13.1 + 1;
+    const alpha = new Float32Array(W * H);
+    const streak = new Float32Array(W * H);
+    const slopeU = new Float32Array(W * H);
+    const slopeV = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) {
+      const v = ((y + 0.5) / H) * 2 - 1;
+      for (let x = 0; x < W; x++) {
+        const u = (x + 0.5) / W;
+        const centre = (fbm(u * 1.6, seed + 9) - 0.5) * 0.25 * (0.4 + u);
+        const xv = v - centre;
+        const w = DAB_WIDTH * (0.85 + 0.15 * Math.sin(Math.PI * Math.min(1, u * 1.1))) * (1 + (fbm(u * 6, seed + 2) - 0.5) * 0.18);
+        const start = 0.05 + 0.04 * noise(xv * 4, seed + 3) + 0.06 * xv * xv;
+        const end = 0.92 - 0.28 * fbm(xv * 5 + 2, seed + 4);
+        const ax = Math.abs(xv) + (noise(u * 30, xv * 6 + seed) - 0.5) * 0.06;
+        const body = (1 - smooth(w - 0.06, w, ax)) * smooth(start, start + 0.03, u) * (1 - smooth(end - 0.02, end + 0.015, u));
+        const tracks = noise(xv * 22, u * 2 + seed) * 0.65 + noise(xv * 53, u * 3 + seed * 2) * 0.35;
+        const dry = smooth(end - 0.3, end, u);
+        const paint = body * smooth(dry * 0.65 - 0.07, dry * 0.65 + 0.07, tracks + 0.05);
+        const ridge = smooth(w - 0.34, w - 0.07, ax);
+        const heap = 1 - smooth(start, start + 0.22, u);
+        const h = paint * (0.3 + 0.24 * tracks + 0.28 * ridge + 0.26 * heap + 0.08 * fbm(u * 5, xv * 5 + seed));
+        const i = y * W + x;
+        rawH[i] = Math.min(1, h);
+        alpha[i] = smooth(0.3, 0.62, paint);
+        streak[i] = fbm(xv * 3.4 + seed, u * 1.2);
+      }
     }
-    shapes.push({ cover, density, rim });
+    // Slight blur before finite differences so broad impasto ridges catch the light, not pixel noise.
+    for (let y = 0; y < H; y++) {
+      const y0 = Math.max(0, y - 1), y1 = Math.min(H - 1, y + 1);
+      for (let x = 0; x < W; x++) {
+        const x0 = Math.max(0, x - 1), x1 = Math.min(W - 1, x + 1);
+        blurH[y * W + x] = (
+          rawH[y0 * W + x0] + rawH[y0 * W + x] + rawH[y0 * W + x1] +
+          rawH[y * W + x0] + rawH[y * W + x] + rawH[y * W + x1] +
+          rawH[y1 * W + x0] + rawH[y1 * W + x] + rawH[y1 * W + x1]
+        ) / 9;
+      }
+    }
+    for (let y = 0; y < H; y++) {
+      const ym = Math.max(0, y - 1), yp = Math.min(H - 1, y + 1);
+      for (let x = 0; x < W; x++) {
+        const xm = Math.max(0, x - 1), xp = Math.min(W - 1, x + 1);
+        const i = y * W + x;
+        slopeU[i] = (blurH[y * W + xp] - blurH[y * W + xm]) * 0.5;
+        slopeV[i] = (blurH[yp * W + x] - blurH[ym * W + x]) * 0.5;
+      }
+    }
+    shapes.push({ alpha, height: rawH.slice(), slopeU, slopeV, streak });
   }
   return shapes;
 }
+
+export const brushShapes = oilDabShapes;
 
 const toRGB = (color) => {
   if (Array.isArray(color)) return color;
@@ -56,66 +96,100 @@ const toRGB = (color) => {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 };
 
+// Cached lit impasto oil-dab stamps. Quantizing angle & tone keeps cache tiny while ensuring
+// upper-left raking light stays physically consistent regardless of dab orientation.
 const stamps = new Map();
-function stamp(color, variant) {
+export function dabStamp(color, variant, { angle = LEAN, tone = 0.5, warm = 0.5, streakHi = true, impasto = 1.15, flipY = false, soft = false } = {}) {
   const rgb = toRGB(color);
-  const key = rgb.join() + variant;
+  const aq = Math.round(angle * 4);
+  const tq = Math.round(tone * 2);
+  const wq = Math.round(warm * 2);
+  const key = `${rgb.join()}|${variant}|${aq}|${tq}|${wq}|${streakHi ? 1 : 0}|${flipY ? 1 : 0}|${Math.round(impasto * 10)}|${soft ? 1 : 0}`;
   let c = stamps.get(key);
   if (c) return c;
-  if (stamps.size > 240) stamps.clear();   // only a few palettes are ever in use at once
+  if (stamps.size > 480) stamps.clear();
   c = document.createElement('canvas');
   c.width = W; c.height = H;
-  const g = c.getContext('2d'), img = g.createImageData(W, H), { cover, density, rim } = brushShapes()[variant];
-  const base = rgb.map((v) => v / 255);
+  const g = c.getContext('2d'), img = g.createImageData(W, H), d = img.data;
+  const { alpha, slopeU, slopeV, streak } = oilDabShapes()[variant];
+  const aRad = aq / 4;
+  const ca = Math.cos(aRad), sa = Math.sin(aRad);
+  const toneMul = 0.92 + 0.16 * (tq / 2);
+  const warmMix = wq / 2;
+  const wR = 1.05 - 0.11 * warmMix, wG = 1.0, wB = 0.93 + 0.14 * warmMix;
+  const c1 = [rgb[0] * toneMul * wR, rgb[1] * toneMul * wG, rgb[2] * toneMul * wB];
+  const c2 = soft
+    ? [c1[0] * 0.96, c1[1] * 0.95, c1[2] * 0.92]
+    : streakHi
+      ? [c1[0] * 1.15 + 4, c1[1] * 1.1 + 3, c1[2] * 1.0 + 2]
+      : [c1[0] * 0.8, c1[1] * 0.84, c1[2] * 0.92];
+
   for (let i = 0; i < W * H; i++) {
-    if (cover[i] <= 0) continue;
-    const streak = 0.9 + 0.5 * (density[i] - 0.8), pool = 1 + rim[i] * 0.45;   // pigment pools at the edge of the mark
-    for (let k = 0; k < 3; k++) img.data[i * 4 + k] = 255 * Math.min(1, base[k] ** pool * streak);
-    img.data[i * 4 + 3] = 255 * cover[i];
+    const a = alpha[i];
+    if (a <= 0.004) continue;
+    const sm = smooth(0.52, 0.78, streak[i]);
+    let R = c1[0] + (c2[0] - c1[0]) * sm;
+    let G = c1[1] + (c2[1] - c1[1]) * sm;
+    let B = c1[2] + (c2[2] - c1[2]) * sm;
+    // Upper-left light raking across impasto ridges (canvas y points down: upper-left is -x, -y)
+    const su = slopeU[i], sv = flipY ? -slopeV[i] : slopeV[i];
+    const gx = ca * su - sa * sv;
+    const gy = sa * su + ca * sv;
+    const rake = 0.5 * gx - 0.7 * gy;
+    const shade = 1 + rake * 2.4 * impasto;
+    const lum = (0.3 * R + 0.5 * G + 0.2 * B) / 255;
+    const spec = rake > 0 ? rake * rake * 1.5 * impasto * (0.3 + lum) * 255 : 0;
+    d[i * 4] = Math.max(0, Math.min(255, R * shade + spec));
+    d[i * 4 + 1] = Math.max(0, Math.min(255, G * shade + spec * 0.97));
+    d[i * 4 + 2] = Math.max(0, Math.min(255, B * shade + spec * 0.9));
+    d[i * 4 + 3] = Math.round(255 * a);
   }
   g.putImageData(img, 0, 0);
   stamps.set(key, c);
   return c;
 }
 
-// One mark, centred at x, y; wid is the width of the painted part.
-export function mark(g, x, y, len, wid, angle, color, r, alpha = 1) {
+// One oil dab, centred at x, y; wid is the width of the painted body.
+export function mark(g, x, y, len, wid, angle, color, r, alpha = 1, { impasto = 1.15, flipX = false, quiet = false } = {}) {
   const h = wid / COVERED;
+  const variant = Math.floor(r() * VARIANTS);
+  const tone = quiet ? 0.5 : r(), warm = quiet ? 0.5 : r(), streakHi = quiet ? false : r() > 0.5;
+  const flipY = r() < 0.5;
+  const effAngle = flipX ? angle + Math.PI : angle;
+  const st = dabStamp(color, variant, { angle: effAngle, tone, warm, streakHi, impasto, flipY });
   g.save();
   g.translate(x, y);
-  g.rotate(angle);
-  g.scale(1, r() < 0.5 ? -1 : 1);
+  g.rotate(effAngle);
+  g.scale(1, flipY ? -1 : 1);
   g.globalAlpha = alpha;
-  g.drawImage(stamp(color, Math.floor(r() * VARIANTS)), -len / 2, -h / 2, len, h);
+  g.drawImage(st, -len / 2, -h / 2, len, h);
   g.restore();
 }
 
 const pick = (tones, r) => tones[Math.floor(r() * tones.length)];
 
-// A full coat over w x h in staggered rows pulled one way. Each row starts somewhere of its own, as in
-// brushstrokes.js: evenly staggered rows line their ends up into a false second diagonal.
+// A full coat of opaque oil dabs over w x h in staggered rows pulled one way.
 //   tones: colours to load the brush with, or (x, y, r) => colour
 //   tile:  the coat wraps round (w and h are one tile of a repeating texture)
-export function coat(g, w, h, { tones, len, wid, seed = 1, lean = LEAN, rowGap = 0.3, colGap = 0.62, alpha = 1, tile = false }) {
+export function coat(g, w, h, { tones, len, wid, seed = 1, lean = LEAN, rowGap = 0.28, colGap = 0.56, alpha = 1, tile = false, impasto = 1.1, quiet = false }) {
   const r = rng(seed);
   const tone = typeof tones === 'function' ? tones : () => pick(tones, r);
   const rowH = len * rowGap, colW = len * colGap;
   const put = (x, y) => {
-    const a = lean + (r() - 0.5) * 0.14, m = r(), f = 0.85 + r() * 0.3, colour = tone(x, y, r);
+    const a = lean + (r() - 0.5) * (quiet ? 0.12 : 0.2), m = r(), f = 0.85 + r() * 0.3, colour = tone(x, y, r);
     for (const [dx, dy] of tile ? [[0, 0], [-w, 0], [w, 0], [0, -h], [0, h], [-w, -h], [w, -h], [-w, h], [w, h]] : [[0, 0]]) {
-      const rs = rng(Math.floor(m * 1e6));   // the wrapped copies are the very same mark
-      mark(g, x + dx, y + dy, len * f, wid * f, a, colour, rs, alpha);
+      const rs = rng(Math.floor(m * 1e6));
+      mark(g, x + dx, y + dy, len * f, wid * f, a, colour, rs, alpha, { impasto, quiet });
     }
   };
   if (tile) {
-    const rows = Math.round(h / rowH), cols = Math.round(w / colW);
+    const rows = Math.max(1, Math.round(h / rowH)), cols = Math.max(1, Math.round(w / colW));
     for (let j = 0; j < rows; j++) {
       const start = (j * 0.618) % 1;
       for (let i = 0; i < cols; i++) put(((i + start + (r() - 0.5) * 0.8) / cols) * w, ((j + (r() - 0.5) * 0.5) / rows) * h);
     }
     return;
   }
-  // rows laid along the lean, wide enough to reach every corner of the box
   const reach = Math.hypot(w, h) / 2 + len, c = Math.cos(lean), s = Math.sin(lean);
   let j = 0;
   for (let b = -reach; b < reach; b += rowH, j++) {
@@ -128,41 +202,122 @@ export function coat(g, w, h, { tones, len, wid, seed = 1, lean = LEAN, rowGap =
   }
 }
 
-// A swipe of paint for 2D UI, as an image: long pulls side by side make its body and ragged ends, then a
-// coat on the same diagonal as the shop goes over, on this body only (as the world's strokes keep to their
-// own surface), so it reads as brushwork and not as a flat label. Solid enough in the middle to carry text.
-//   body: tones for the long pulls (coat tones default to the same)   rows: long pulls one above another
-export const brushBand = (w, h, opts) => brushBandCanvas(w, h, opts).toDataURL();
+// Subtle woven linen canvas tooth (tileable 128x128 pattern) matching oilpaint.js finalFragment.
+let weaveTile = null;
+export function canvasWeavePattern(g) {
+  if (!weaveTile) {
+    const S = 128;
+    const c = document.createElement('canvas');
+    c.width = S; c.height = S;
+    const cg = c.getContext('2d'), img = cg.createImageData(S, S), d = img.data;
+    const r = rng(404);
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const weave = (Math.sin(x * 1.9) * Math.sin(y * 1.9 + 1.3)) * 0.5 + 0.5;
+        const tooth = 0.86 + r() * 0.14;
+        const v = Math.round(255 * (0.955 + 0.045 * (tooth * 0.65 + weave * 0.35)));
+        const i = (y * S + x) * 4;
+        d[i] = v; d[i + 1] = v; d[i + 2] = Math.max(0, v - 2); d[i + 3] = 255;
+      }
+    }
+    cg.putImageData(img, 0, 0);
+    weaveTile = c;
+  }
+  return g.createPattern(weaveTile, 'repeat');
+}
 
-// The same swipe as a canvas, for what draws it itself (searchpaint.js).
-export function brushBandCanvas(w, h, { tones, coatTones = tones, seed = 1, rows = 2, scale = 2 }) {
+// Build a deterministic layout of chunky individual oil dabs spanning w x h (used for buttons,
+// search bar, search slips, and mini caption). Each dab descriptor can be rendered into a canvas
+// at rest or animated one-by-one (searchpaint.js).
+//   even: one coat of a single paint (no per-dab shade, warmth or streak swing), so overlapping dabs
+//         don't show up as lighter and darker patches; the bristle texture inside each dab stays.
+//   soft: like even, with a gentler warm bristle streak for light paper/cream coats.
+export function layoutDabCluster(w, h, { tones, seed = 1, rows = 1, flipX = false, tilt = 0.08, overlap = 0.52, minCols = 1, impasto = 1.25, even = false, soft = false } = {}) {
+  const r = rng(seed);
+  const rowH = h / rows;
+  const edgeTilt = tilt * 0.5 + (rows > 1 ? (rows - 1) * 0.015 : 0);
+  const targetDabW = Math.max(rowH * 1.55, 72);
+  const cols = Math.max(minCols, Math.ceil(w / (targetDabW * overlap * 0.8)));
+  const len = Math.min(w * 0.96, Math.max(targetDabW, (w / cols) * 1.95));
+  // Keep painted dab body inside [0, h] vertically and asymmetric start/tail inside [0, w] horizontally
+  // so cluster edges read as torn brush strokes instead of hard-clipped canvas rectangles.
+  const wid = rows === 1 ? Math.min(h * 0.74, h / 1.36) : Math.min(h * 0.65, rowH * 1.28);
+  const edgeY = Math.min(h * 0.42, wid * 1.08 * 0.55 + len * Math.sin(edgeTilt) * 0.45 + 1.5);
+  const jitterY = Math.max(1, Math.min(4, rowH * 0.08, rows === 1 ? h * 0.5 - edgeY : ((h - 2 * edgeY) / rows) * 0.25));
+  const jitterX = Math.min(5, len * 0.045);
+  const startInset = len * 0.45 + jitterX + 1;
+  const tailInset = len * 0.34 + jitterX + 1;
+  const minCx = Math.min(w * 0.46, flipX ? tailInset : startInset);
+  const maxCx = Math.max(minCx, w - (flipX ? startInset : tailInset));
+  const dabs = [];
+  for (let j = 0; j < rows; j++) {
+    const baseY = rows === 1 ? h * 0.5 : edgeY + (j / (rows - 1)) * (h - 2 * edgeY);
+    for (let i = 0; i < cols; i++) {
+      const t = cols === 1 ? 0.5 : i / (cols - 1);
+      const baseCx = flipX ? maxCx + (minCx - maxCx) * t : minCx + (maxCx - minCx) * t;
+      const cx = baseCx + (r() - 0.5) * 2 * jitterX;
+      const cy = baseY + (r() - 0.5) * 2 * jitterY;
+      const dLen = len * (0.92 + r() * 0.12);
+      const dWid = wid * (0.92 + r() * 0.16);
+      const angle = (r() - 0.5) * tilt + (j - (rows - 1) / 2) * 0.03;
+      let color = pick(tones, r);
+      const variant = Math.floor(r() * VARIANTS);
+      let tone = r(), warm = r(), streakHi = r() > 0.5;
+      const flipY = r() < 0.5;
+      if (even || soft) { color = tones[0]; tone = 0.5; warm = 0.5; streakHi = false; }
+      dabs.push({ x: cx, y: cy, len: dLen, wid: dWid, angle, color, variant, tone, warm, streakHi, flipY, flipX, impasto, soft });
+    }
+  }
+  return dabs;
+}
+
+export function drawOilDab(g, dab, { alpha = 1, scaleX = 1, scaleY = 1, dx = 0, dy = 0 } = {}) {
+  const effAngle = dab.flipX ? dab.angle + Math.PI : dab.angle;
+  const st = dabStamp(dab.color, dab.variant, {
+    angle: effAngle, tone: dab.tone, warm: dab.warm, streakHi: dab.streakHi, impasto: dab.impasto, flipY: dab.flipY, soft: dab.soft,
+  });
+  const h = dab.wid / COVERED;
+  g.save();
+  g.translate(dab.x + dx, dab.y + dy);
+  g.rotate(effAngle);
+  g.scale(scaleX, (dab.flipY ? -1 : 1) * scaleY);
+  g.globalAlpha = alpha;
+  g.drawImage(st, -dab.len / 2, -h / 2, dab.len, h);
+  g.restore();
+}
+
+// Make the painted union fully opaque: the dabs' half-dry tails and soft sides are see-through, so
+// where they cross a light wall they read paler and where two overlap they read darker. Lifting any
+// real coverage to solid keeps the torn outline but gives one even coat inside it.
+export function solidify(g, w, h) {
+  const img = g.getImageData(0, 0, w, h), d = img.data;
+  for (let i = 3; i < d.length; i += 4) {
+    const a = d[i] / 255;
+    d[i] = Math.round(255 * smooth(0.12, 0.45, a));
+  }
+  g.putImageData(img, 0, 0);
+}
+
+export function dabClusterCanvas(w, h, opts) {
+  const scale = opts.scale ?? 2;
   const c = document.createElement('canvas');
   c.width = Math.ceil(w * scale); c.height = Math.ceil(h * scale);
   const g = c.getContext('2d');
   g.scale(scale, scale);
-  const r = rng(seed);
-  const pad = Math.max(2, h * 0.09), rowH = (h - pad * 2) / rows, wid = Math.min(h - pad * 2, rowH * 1.45);
-  // Short enough pulls that only the last few px of the band run dry: a mark's tail is a share of its
-  // length, and a long dry tail would open holes under the text at the right-hand end.
-  const pulls = Math.max(1, Math.round(w / Math.max(h * 2.6, 70)));
-  const len = (w / pulls) * 1.5;
-  for (let pass = 0; pass < 3; pass++) {      // later passes close the gaps between earlier ones
-    for (let j = 0; j < rows; j++) {
-      const y = pad + rowH * (j + 0.5) + (r() - 0.5) * rowH * 0.1;
-      for (let i = 0; i < pulls; i++) {
-        const x = Math.max(len / 2, Math.min(w - len / 2, (w / pulls) * (i + 0.5 + pass * 0.33) + (r() - 0.5) * 14));
-        mark(g, x, y, len, wid * (pass === 0 ? 1 : 0.9), (r() - 0.5) * 0.014, pick(tones, r), r);
-      }
-    }
-  }
-  g.globalCompositeOperation = 'source-atop';
-  coat(g, w, h, { tones: coatTones, len: Math.max(h * 1.5, 46), wid: Math.max(h * 0.42, 13), seed: seed + 1, rowGap: 0.34, colGap: 0.72, alpha: 0.9 });
+  const dabs = layoutDabCluster(w, h, opts);
+  for (const dab of dabs) drawOilDab(g, dab);
+  if (opts.solid) solidify(g, c.width, c.height);
   return c;
 }
 
-// the palettes of the 2D paint
+export const dabCluster = (w, h, opts) => dabClusterCanvas(w, h, opts).toDataURL();
+export const brushBandCanvas = (w, h, opts) => dabClusterCanvas(w, h, opts);
+export const brushBand = (w, h, opts) => dabCluster(w, h, opts);
+
+// The palettes of the 2D oil paint
 export const TONES = {
   ink: ['#2d3158', '#353a66', '#272b4e', '#3d4272', '#2f3a62'],
   hot: ['#b4503a', '#c05d44', '#a8472f', '#c86a4d', '#b8583c'],
   paper: ['#fbf5e8', '#f7eedb', '#f3e7cf', '#fdf9ef', '#f6ebd6'],
+  track: ['#dcd2c0', '#e2d9c8', '#d5cab6', '#d8cdb9'],
 };

@@ -44,11 +44,18 @@ const easeOutBack = (t) => { const c = 1.4; t = clamp01(t) - 1; return 1 + (c + 
 const easeOut = (t) => 1 - Math.pow(1 - clamp01(t), 3);
 const easeInOut = (t) => { t = clamp01(t); return t * t * (3 - 2 * t); };
 
-function build(mats) {
+function build(mats, { sharp = false } = {}) {
   const g = new THREE.Group();
+  if (sharp) g.userData.noStrokes = true;
   const rbox = (w, h, d, r) => new RoundedBoxGeometry(w, h, d, 2, r);
-  const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); g.add(m); return m; };
-  const leather = mats.leather, lining = painted(COL.lining), brass = painted(COL.brass), welt = painted(COL.leatherDark);
+  const add = (geo, mat, x, y, z) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    if (sharp) { m.castShadow = true; m.receiveShadow = true; }
+    g.add(m);
+    return m;
+  };
+  const leather = mats.leather, lining = painted(COL.lining, { sharp }), brass = painted(COL.brass, { sharp }), welt = painted(COL.leatherDark, { sharp });
   // z = 0 is the drawer's front face; the tray reaches back to -TRAY_D
   add(rbox(TRAY_W, TRAY_H, 0.08, 0.03), leather, 0, TRAY_Y + TRAY_H / 2, -0.03);              // the front
   add(rbox(TRAY_W - 0.06, 0.025, 0.04, 0.01), welt, 0, TRAY_Y + TRAY_H - 0.02, 0.012);       // a dark seam along its top
@@ -61,7 +68,7 @@ function build(mats) {
 
 export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
   const { caseRoot, mats } = suitcase.parts;
-  const drawer = build(mats);
+  const drawer = build(mats, { sharp: !!suitcase.sharp });
   const front = L.caseDepth / 2 + 0.035;   // the closed front sits just proud of the leather
   drawer.position.z = front;
   caseRoot.add(drawer);

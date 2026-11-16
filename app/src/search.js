@@ -1,7 +1,6 @@
-// Search bar. Opens with the search shortcut (Control+Option+J by default, see shortcuts.js): a swipe of cream paint on a swipe of indigo,
-// top centre, with the results brushed in under it row by row, the chosen one painted over in terracotta.
-// All of it is laid with the shop's brush (brushpaint.js). The bar is slapped on and flicked off as paint
-// (searchpaint.js); the results follow in zigzag, one row each way, as a painter's arm goes.
+// Search bar. Opens with the search shortcut (Control+Option+J by default, see shortcuts.js): chunky
+// cream oil dabs pressed over chunky indigo oil dabs, top centre, with results stamped in under
+// it row by row as chunky oil-dab clusters, the chosen one painted over in terracotta oil dabs.
 //
 //   const search = createSearch({ music, onPlay, suggest });   // music.search(q) -> Promise<items>
 //   search.open() / close() / toggle() / isOpen()
@@ -19,12 +18,11 @@
 import { shortcuts } from './shortcuts.js';
 import { rng } from './rand.js';
 import { FONT, onLettering } from './style.js';
-import { INK, PAPER } from './controls.js';
-import { brushBand, brushBandCanvas, TONES } from './brushpaint.js';
+import { INK, HOT, PAPER } from './controls.js';
+import { dabCluster, layoutDabCluster } from './brushpaint.js';
 import { createBarPaint, slipMasks, MARGIN, SLIP_FRAMES } from './searchpaint.js';
 import { paintedCoverURL } from './coverpaint.js';
 
-const HOT = '#b4503a';           // terracotta on the chosen slip
 const DEBOUNCE = 250;
 const MAX_SLIPS = 20;          // the slips scroll
 const BAR_H = 88;
@@ -60,17 +58,17 @@ const CSS = `
   mask-image: var(--mask-l); mask-repeat: no-repeat; mask-size: 100% ${SLIP_FRAMES * 100}%; }
 .cs-slipwrap:nth-child(even) { --sx: 16px; mask-image: var(--mask-r); }
 .cs.show .cs-slipwrap { --at: calc(var(--lead, 0ms) + var(--i) * 34ms);
-  animation: cs-mask .26s steps(${SLIP_FRAMES - 1}, jump-none) var(--at) both, cs-land .34s cubic-bezier(.2,.8,.3,1) var(--at) both; }
-.cs.closing .cs-slipwrap { animation: cs-mask .17s steps(${SLIP_FRAMES - 1}, jump-none) var(--o, 0ms) reverse both, cs-lift .17s ease-in var(--o, 0ms) both; }
+  animation: cs-mask .26s steps(${SLIP_FRAMES}, jump-none) var(--at) both, cs-land .34s cubic-bezier(.2,.8,.3,1) var(--at) both; }
+.cs.closing .cs-slipwrap { animation: cs-mask .17s steps(${SLIP_FRAMES}, jump-none) var(--o, 0ms) reverse both, cs-lift .17s ease-in var(--o, 0ms) both; }
 .cs:not(.show):not(.closing) .cs-slipwrap { animation: none; }
 .cs .cs-slipwrap.set { animation: none; mask-image: none; }
 @keyframes cs-mask { from { mask-position: 0 0%; } to { mask-position: 0 100%; } }
-@keyframes cs-land { 0% { translate: var(--sx, -16px) -9px; scale: 1 .8; rotate: -1.6deg; } 55% { translate: 0 2px; scale: 1 1.07; rotate: .4deg; } 100% { translate: 0 0; scale: 1 1; rotate: 0deg; } }
+@keyframes cs-land { 0% { translate: var(--sx, -14px) -10px; scale: .92 .82; rotate: -1.8deg; } 55% { translate: 0 2px; scale: 1.015 1.06; rotate: .4deg; } 100% { translate: 0 0; scale: 1 1; rotate: 0deg; } }
 @keyframes cs-head { 0% { opacity: 0; translate: -16px -9px; scale: 1 .8; } 55% { opacity: 1; translate: 0 2px; scale: 1 1.07; } 100% { translate: 0 0; scale: 1 1; } }   /* no mask to hide it while it waits */
 @keyframes cs-lift { to { translate: 0 -10px; scale: 1 .86; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .cs .cs-slipwrap, .cs .cs-head { animation: none !important; mask-image: none; } }
 .cs-slip { position: relative; height: ${SLIP_H}px; background-size: 100% 100%; display: flex; align-items: center; gap: 14px;
-  padding: 0 34px 0 22px; color: #2b2436; transition: color .15s; }
+  padding: 0 34px 0 22px; color: #2b2436; transition: color .15s; filter: drop-shadow(0 2px 3px rgba(32,22,18,.18)); }
 .cs-hl { position: absolute; inset: 0; background-size: 100% 100%; opacity: 0; transition: opacity .18s; pointer-events: none; }
 .cs-slipwrap.on .cs-hl { opacity: 1; }
 .cs-slipwrap.on .cs-slip { color: ${PAPER}; }
@@ -124,7 +122,7 @@ export function createSearch({ music, onPlay, suggest = null }) {
     if (e.animationName === 'cs-land' && root.classList.contains('show')) e.target.classList.add('set');
   });
 
-  // The paint is drawn to the final size once the brush font is in (sizes follow the window).
+  // The paint dabs are laid out to the final size once the brush font is in (sizes follow the window).
   let paintedW = 0;
   const paintStrokes = () => {
     const w = Math.ceil(root.getBoundingClientRect().width || 0);
@@ -134,12 +132,12 @@ export function createSearch({ music, onPlay, suggest = null }) {
     const paperRect = { x: paper.offsetLeft, y: paper.offsetTop, w: paper.offsetWidth || w - 82, h: paper.offsetHeight || BAR_H - 32 };
     paint.setLayers({
       w, h: BAR_H, paperRect,
-      ink: brushBandCanvas(w, BAR_H, { tones: TONES.ink, seed: 21, rows: 3 }),
-      paper: brushBandCanvas(paperRect.w, paperRect.h, { tones: TONES.paper, seed: 5, rows: 2 }),
+      inkDabs: layoutDabCluster(w, BAR_H, { tones: [INK], seed: 21, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.55, even: true }),
+      paperDabs: layoutDabCluster(paperRect.w, paperRect.h, { tones: [PAPER], seed: 5, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 3, impasto: 0.28, soft: true }),
     });
-    for (let i = 0; i < SLIP_COATS; i++) root.style.setProperty(`--slip${i}`, `url(${brushBand(slipW, SLIP_H, { tones: TONES.paper, seed: 200 + i * 13, rows: 2 })})`);
-    for (let i = 0; i < HOT_COATS; i++) root.style.setProperty(`--hl${i}`, `url(${brushBand(slipW, SLIP_H, { tones: TONES.hot, seed: 33 + i * 7, rows: 2 })})`);
-    root.style.setProperty('--note', `url(${brushBand(slipW - 10, SLIP_H - 6, { tones: TONES.ink, seed: 47, rows: 2 })})`);
+    for (let i = 0; i < SLIP_COATS; i++) root.style.setProperty(`--slip${i}`, `url(${dabCluster(slipW, SLIP_H, { tones: [PAPER], seed: 200 + i * 13, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.28, soft: true, solid: true })})`);
+    for (let i = 0; i < HOT_COATS; i++) root.style.setProperty(`--hl${i}`, `url(${dabCluster(slipW, SLIP_H, { tones: [HOT], seed: 33 + i * 7, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.55, even: true, solid: true })})`);
+    root.style.setProperty('--note', `url(${dabCluster(slipW - 10, SLIP_H - 6, { tones: [INK], seed: 47, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.55, even: true, solid: true })})`);
   };
   const fontReady = (document.fonts?.load(`38px ${FONT}`) ?? Promise.resolve()).then(paintStrokes, paintStrokes);
   new ResizeObserver(() => fontReady.then(paintStrokes)).observe(root);

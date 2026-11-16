@@ -108,9 +108,9 @@ export function sameCover(a, b) {
   } catch { return true; }
 }
 
-export function createSuitcase({ music = null, lidStop = DEFAULT_STOP, ground = 'shadow', big = false } = {}) {
-  const recordKit = createRecordKit();
-  const parts = buildSuitcase({ recordKit, ground, big });
+export function createSuitcase({ music = null, lidStop = DEFAULT_STOP, ground = 'shadow', big = false, lights = true, sharp = false } = {}) {
+  const recordKit = createRecordKit({ sharp });
+  const parts = buildSuitcase({ recordKit, ground, big, lights, sharp });
   const { root, tilt, caseRoot, lidPivot, seat, record, armPivot, armLift, knob: knobNode, buttons } = parts;
 
   const hinge = new LidHinge(lidStop);
@@ -537,6 +537,7 @@ export function createSuitcase({ music = null, lidStop = DEFAULT_STOP, ground = 
     get seatHas() { return seatHas; },
     set held(v) { held = v; },                    // a record is in flight: leave the platter alone
     get held() { return held; },
+    get sharp() { return sharp; },
     get playing() { return playing; },
     get hasTrack() { return hasTrack; },
     get currentCover() { return labelTex; },
