@@ -31,6 +31,28 @@ import './fonts.js';
 const params = new URLSearchParams(location.search);
 const shotMode = params.has('shot');
 
+// Hardware 2x2 PCF comparison is 1 texture sample per pixel instead of Three r187's 5-tap Vogel disk (?pcf=5 keeps 5).
+if (params.get('pcf') !== '5') {
+  const fiveTap = [
+    '\t\t\t\tvec2 texelSize = vec2( 1.0 ) / shadowMapSize;',
+    '\t\t\t\tvec2 radius = shadowRadius * texelSize;',
+    '\t\t\t\tfloat phi = interleavedGradientNoise( gl_FragCoord.xy ) * PI2;',
+    '\t\t\t\tshadow = (',
+    '\t\t\t\t\ttexture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 0, 5, phi ) * radius, shadowCoord.z ) ) +',
+    '\t\t\t\t\ttexture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 1, 5, phi ) * radius, shadowCoord.z ) ) +',
+    '\t\t\t\t\ttexture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 2, 5, phi ) * radius, shadowCoord.z ) ) +',
+    '\t\t\t\t\ttexture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 3, 5, phi ) * radius, shadowCoord.z ) ) +',
+    '\t\t\t\t\ttexture( shadowMap, vec3( shadowCoord.xy + vogelDiskSample( 4, 5, phi ) * radius, shadowCoord.z ) )',
+    '\t\t\t\t) * 0.2;',
+  ].join('\n');
+  const next = THREE.ShaderChunk.shadowmap_pars_fragment.replace(
+    fiveTap,
+    '\t\t\t\tshadow = texture( shadowMap, vec3( shadowCoord.xy, shadowCoord.z ) );',
+  );
+  if (next === THREE.ShaderChunk.shadowmap_pars_fragment) throw new Error('shadowmap_pars_fragment 5-tap PCF pattern did not match');
+  THREE.ShaderChunk.shadowmap_pars_fragment = next;
+}
+
 // painted: the scene is antialiased in its own target, the screen only gets a full-screen quad.
 // The screen keeps its picture between frames (preserveDrawingBuffer), so the painter can repaint just the
 // part of it that changed: the suitcase's corner, the boiling border (watercolour.js, `Still frames`).
