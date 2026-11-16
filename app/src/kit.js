@@ -109,6 +109,9 @@ class Part {
         out.push(twin);
       }
     });
+    // Drop build-time Matrix4/Color wrappers once packed into InstancedMesh typed arrays.
+    this.matrices.length = 0;
+    this.colors.length = 0;
     return out;
   }
   // lower-triangle twin geometry for far squares (?lod=0 keeps only RoundedBoxGeometry -> BoxGeometry)
