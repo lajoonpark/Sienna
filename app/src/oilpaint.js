@@ -31,8 +31,9 @@ const OIL_SHAPE = (params.get('oilshape')?.split(',').map(Number)) ?? [2.2, 1.0]
 const IMPASTO = Number(params.get('impasto') ?? 1.3);
 // how much of its quad a dab fills across (the rest is room for its ragged sides and the hand's waver)
 const DAB_WIDTH = Number(params.get('dabwidth')) || 0.62;
-// which of the placed layers (coat, medium, fine) are painted; ?oillayers=1,1,0 to leave the fine one out
-const OIL_LAYERS = params.get('oillayers')?.split(',').map(Number) ?? [1, 1, 0];
+// which of the placed layers (coat, medium, fine) are painted; ?oillayers=3 or 1,1,1 includes the fine one (not baked by default)
+const rawOilLayers = params.get('oillayers');
+const OIL_LAYERS = rawOilLayers == null ? [1, 1, 0] : rawOilLayers === '3' ? [1, 1, 1] : rawOilLayers.split(',').map(Number);
 // the biggest a dab may be on screen, across and along (shares of its height); ?oilmax=0.05,0.12
 const MAX_SIZE = params.get('oilmax')?.split(',').map(Number) ?? [0.045, 0.11];
 // the share of each layer's strokes painted (coat, medium, fine); ?oilkeep=0.5,0.7,1
