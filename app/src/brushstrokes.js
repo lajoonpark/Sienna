@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { rng } from './rand.js';
 import { BLOTCH_MATH } from './materials.js';
+import { forceDetailLod } from './kit.js';
 
 const NOISE = /* glsl */ `
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -455,8 +456,10 @@ export function strokeFingerprint(world, views) {
     h2 = Math.imul(h2 ^ (x >>> 7) ^ (x << 3), 2246822519) >>> 0;
   };
   add(BLOTCH_MATH ? 1 : 0);
-  world.updateMatrixWorld();
-  world.traverseVisible((o) => {
+  const restoreLod = forceDetailLod();
+  try {
+    world.updateMatrixWorld();
+    world.traverseVisible((o) => {
     if (!o.isMesh || [].concat(o.material).every((m) => m.transparent || m.opacity < 1)) return;
     const g = o.geometry;
     add(g.attributes.position?.count ?? 0); add(g.index?.count ?? -1);
@@ -469,10 +472,13 @@ export function strokeFingerprint(world, views) {
       add(sum);
     }
   });
-  for (const v of views) { add(v.pos.x); add(v.pos.y); add(v.pos.z); add(v.target.x); add(v.target.y); add(v.target.z); add(v.fov ?? 70); }
-  add(BAKE_W); add(BAKE_H); add(BAKE_STRIDE); add(FARTHEST); add(PAINT_STEP);
-  for (const l of LAYERS) for (const v of Object.values(l)) if (typeof v === 'number') add(v); else if (Array.isArray(v)) v.forEach(add);
-  return `${h1.toString(16)}${h2.toString(16)}`;
+    for (const v of views) { add(v.pos.x); add(v.pos.y); add(v.pos.z); add(v.target.x); add(v.target.y); add(v.target.z); add(v.fov ?? 70); }
+    add(BAKE_W); add(BAKE_H); add(BAKE_STRIDE); add(FARTHEST); add(PAINT_STEP);
+    for (const l of LAYERS) for (const v of Object.values(l)) if (typeof v === 'number') add(v); else if (Array.isArray(v)) v.forEach(add);
+    return `${h1.toString(16)}${h2.toString(16)}`;
+  } finally {
+    restoreLod();
+  }
 }
 
 export function createBrushStrokes(renderer, refTexture, depthTexture) {
@@ -702,6 +708,7 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     const owners = [];
     const ownerMats = new Map();
     const prepare = () => {
+      const restoreLod = forceDetailLod();
       world.updateMatrixWorld();
       watch(world);
       owners.length = 0;
@@ -757,6 +764,7 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
         world.overrideMaterial = prev.over;
         for (const o of hidden) o.visible = true;
         for (const [o, before] of tagged) o.onBeforeRender = before;
+        restoreLod();
       };
       return { evenLight, fog, restoreLightsAndFog, restore };
     };
