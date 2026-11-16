@@ -234,33 +234,57 @@ function updateShadows(t) {
   }
 }
 
-// Building a rack (sleeves, tags, covers) and compiling its shaders is far too much for one frame,
-// and the shelves usually come in while the intro pushes in, so each station is queued and built
-// one per frame (runFillJob); a built rack stays hidden until its shaders have compiled in the
-// background, so it never stalls a frame. Screenshots (?shot) build straight away.
-const fillJobs = new Map(); // station index -> shelf waiting to be built
+// Building a rack (sleeves, tags, covers) and compiling its shaders is spread across frames so no frame
+// does more than one step (create -> setShelf -> warmUp); a built rack stays hidden until its shaders
+// have compiled. Reveal bakes are queued and run one at a time via readRenderTargetPixelsAsync once the
+// intro is over and the camera is settled. Screenshots (?shot) build and bake straight away.
+const fillJobs = new Map(); // station index -> { shelf, step }
 let fillGen = 0;            // bumps when a station is refilled or cleared, so a stale reveal is dropped
 const fillGens = new Map();
+const bakeQueue = [];
+let baking = false, bakeTimer = 0;
+function pumpBakes() {
+  if (baking || bakeTimer || !bakeQueue.length || !bakeQueue[0].ready || !nav.introDone || !nav.settled || suitcase.suitcase.lidMoving) return;
+  // run on its own task so the bake's renders never stack onto a frame()
+  bakeTimer = setTimeout(() => {
+    bakeTimer = 0;
+    if (baking || !bakeQueue.length || !bakeQueue[0].ready || !nav.introDone || !nav.settled || suitcase.suitcase.lidMoving) return;
+    baking = true;
+    const { view } = bakeQueue.shift();
+    painter.bakeStrokesAsync(scene, [view]).finally(() => {
+      baking = false;
+      pacer?.kick();
+      pumpBakes();
+    });
+  }, 0);
+}
 function fill(i, shelf) {
   const key = shelfKey(shelf);
   if (placed.get(i)?.key === key) return;
   placed.set(i, { key, title: shelf.title });
-  fillJobs.set(i, shelf);
+  fillJobs.set(i, { shelf, step: 'create' });
   if (shotMode) runFillJob(Infinity);
 }
-function buildRack(i, shelf) {
-  const rack = ensureRack(i);
-  rack.setShelf(shelf);
+function revealRack(i) {
+  const rack = racks[i];
   const gen = ++fillGen;
   fillGens.set(i, gen);
+  const view = { pos: STATIONS[i].cam.pos, target: STATIONS[i].cam.target };
+  // reserve the queue slot now so bakes keep rack build order even if warmUp resolves out of order
+  const entry = !shotMode && painter ? { view, ready: false } : null;
+  if (entry) bakeQueue.push(entry);
   const reveal = () => {
-    if (fillGens.get(i) !== gen) return;
+    if (fillGens.get(i) !== gen) {
+      if (entry) { const idx = bakeQueue.indexOf(entry); if (idx >= 0) bakeQueue.splice(idx, 1); }
+      return;
+    }
     rack.root.visible = true;
     shadowsBusy(2); // the records drop in
     if (i === nav.at) warm();
     if (furniture[STATIONS[i].id]) furniture[STATIONS[i].id].visible = false;
-    // the new rack's frame gets its own strokes
-    painter?.bakeStrokes(scene, [{ pos: STATIONS[i].cam.pos, target: STATIONS[i].cam.target }]);
+    // the new rack's frame gets its own strokes (queued until settled after the intro)
+    if (shotMode) painter?.bakeStrokes(scene, [view]);
+    else if (entry) { entry.ready = true; pumpBakes(); }
   };
   if (shotMode || rack.root.visible) { reveal(); return; } // a refill of a rack on show swaps in place
   rack.root.visible = false;
@@ -268,10 +292,24 @@ function buildRack(i, shelf) {
   Promise.race([ready, new Promise((r) => setTimeout(r, 1500))]).then(reveal, reveal);
 }
 function runFillJob(n = 1) {
-  for (const [i, shelf] of fillJobs) {
+  for (const [i, job] of fillJobs) {
     if (n-- <= 0) return;
-    fillJobs.delete(i);
-    buildRack(i, shelf);
+    if (shotMode) {
+      fillJobs.delete(i);
+      ensureRack(i).setShelf(job.shelf);
+      revealRack(i);
+      continue;
+    }
+    if (job.step === 'create') {
+      ensureRack(i);
+      job.step = 'shelf';
+    } else if (job.step === 'shelf') {
+      racks[i].setShelf(job.shelf);
+      job.step = 'warm';
+    } else {
+      fillJobs.delete(i);
+      revealRack(i);
+    }
   }
 }
 function clearStation(i) {
@@ -663,7 +701,11 @@ const FOVEA = params.has('fovea') ? Number(params.get('fovea')) : 0.45; // reach
 // ?foveaAt=x,y pins where you look (uv, y up) for screenshots, e.g. 0.1,0.15 = on the suitcase
 const FOVEA_AT = params.get('foveaAt')?.split(',').map(Number) ?? null;
 let barsK = 1; // the bars' last value, so a skip mid-way never makes them jump back up
+let lastWallAt = 0, lastGapMs = 0;
 function frame(t, dtOverride, draw = true) {
+  const wallNow = performance.now();
+  lastGapMs = lastWallAt ? wallNow - lastWallAt : 0;
+  lastWallAt = wallNow;
   // wall-clock time: a slow frame rate must not stretch flights, so allow a long step (nav and racks cope)
   const dt = dtOverride ?? Math.min(0.25, Math.max(0, t - lastT));
   lastT = curT = t;
@@ -672,7 +714,9 @@ function frame(t, dtOverride, draw = true) {
   const sunNow = timeOfDay.update(t);
   const pose = nav.update(t, dt);
   if (!everPlaced && nav.introDone) placeFirst(); // the camera reached home before the last page came in
-  runFillJob();
+  const moving = nav.intro || nav.phase === 'fly';
+  if (fillJobs.size && (!moving || lastGapMs < 95)) runFillJob();
+  pumpBakes();
   const c = pinnedPose ?? pose;
   rig.position.copy(c.pos);
   // the intro's lens (nav.js SHOT) widens to BASE_FOV; a pinned ?cam keeps the normal one

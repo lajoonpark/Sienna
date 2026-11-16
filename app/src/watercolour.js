@@ -810,16 +810,26 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
   function washSize(full, scale) { return new THREE.Vector2(Math.max(1, Math.round(full.x * scale)), Math.max(1, Math.round(full.y * scale))); }
   buildWash();
 
-  // While the first, cached bake is being read, later bakes (a rack revealed) wait for it: strokes are
-  // placed in order, each skipping spots an earlier one took.
+  // While the first, cached bake is being read (or an earlier reveal bake is running), later bakes wait
+  // in order: strokes are placed sequentially, each skipping spots an earlier one took.
   let firstBake = null;
+  let bakeChain = Promise.resolve();
   let exported = null;
   function bakeStrokes(world, views) {
-    if (firstBake) { firstBake.then(() => bakeStrokes(world, views)); return; }
+    if (firstBake) { bakeChain = bakeChain.then(() => bakeStrokes(world, views)); return; }
     strokeWorld = world;
     strokeViews.push(...views);
     if (brush) brush.strokes.bake(world, views);
     invalidate(); // new strokes: the same world is painted differently now
+  }
+  function bakeStrokesAsync(world, views) {
+    bakeChain = bakeChain.then(async () => {
+      strokeWorld = world;
+      strokeViews.push(...views);
+      if (brush) await brush.strokes.bakeAsync(world, views);
+      invalidate();
+    }).catch(() => {});
+    return bakeChain;
   }
   // The shop's own views, at start: read back from the stroke cache (strokecache.js) when the shop is the
   // same as when they were placed, else placed now and kept for next time. -> resolves when they are in.
@@ -835,6 +845,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       invalidate();
     }).catch(() => {}).finally(() => { firstBake = null; });
     firstBake = done;
+    bakeChain = done;
     return done;
   }
 
@@ -842,6 +853,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     // Brush mode: views ([{ pos, target, fov }]) the camera will see, so strokes get placed there, now
     // (not during a frame). In the other modes they are only kept, for when brush mode is switched on.
     bakeStrokes,
+    bakeStrokesAsync,
     // the same, for the shop's own views at start: kept between runs (strokecache.js); -> Promise
     bakeStrokesCached,
     // ?bakeexport: the first bake, packed (strokepack.js), for scripts/bake-strokes.mjs

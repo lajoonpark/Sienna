@@ -527,7 +527,8 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
   // in the turning thing's own frame (STROKE_FRAME)
   const toLocal = new THREE.Matrix4(), pl = new THREE.Vector3(), nl = new THREE.Vector3(), handL = new THREE.Vector3(), acrossL = new THREE.Vector3(), cl = new THREE.Vector3(), tl = new THREE.Vector3();
   // onlyTurning: just the places on the thing that turns (it has been turned for this look)
-  const place = (cam, data, albedo, glow, ids, onlyTurning = false) => {
+  // Returns whether any pixel in this view lay inside the turning box.
+  function* placeGen(cam, data, albedo, glow, ids, onlyTurning = false, out = { sawTurner: false }) {
     const box = turner?.userData.strokeTurn;
     if (box) toLocal.copy(turner.matrixWorld).invert();
     const at = (x, y, out) => { if (x < 0 || y < 0 || x >= BAKE_W || y >= BAKE_H) return null; const i = (y * BAKE_W + x) * 4; if (!data[i + 3]) return null; return out.set(data[i], data[i + 1], data[i + 2]); };
@@ -546,6 +547,7 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
         // On the thing that turns: its places are laid out in its own frame, and kept there, so they go round
         // with it and a later bake from another angle finds them taken.
         const turning = !!box && inTurnBox(pl.copy(p).applyMatrix4(toLocal), box);
+        if (turning) out.sawTurner = true;
         if (onlyTurning && !turning) continue;
         const id = idAt(px, py);
         const mine = (x, y) => x >= 0 && y >= 0 && x < BAKE_W && y < BAKE_H && idAt(x, y) === id;
@@ -666,74 +668,103 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
           else buffers.aCol.setXYZW(i, Math.max(0, albedo[j] - glow[j]), Math.max(0, albedo[j + 1] - glow[j + 1]), Math.max(0, albedo[j + 2] - glow[j + 2]), lit + tag);
         }
       }
+      yield;
     }
+  }
+  const place = (cam, data, albedo, glow, ids, onlyTurning = false) => {
+    const out = { sawTurner: false };
+    for (const _ of placeGen(cam, data, albedo, glow, ids, onlyTurning, out)) {}
+    return out.sawTurner;
+  };
+  const placeAsync = async (cam, data, albedo, glow, ids, onlyTurning = false, tick) => {
+    const out = { sawTurner: false };
+    let t0 = performance.now();
+    for (const _ of placeGen(cam, data, albedo, glow, ids, onlyTurning, out)) {
+      if (performance.now() - t0 > 20) { await tick(); t0 = performance.now(); }
+    }
+    return out.sawTurner;
   };
 
   // views: [{ pos, target, fov }]. Adds strokes for whatever those views can see that has none yet.
-  function bake(world, views) {
+  // Sync for ?shot / initial bake; bakeAsync uses readRenderTargetPixelsAsync and restores world state
+  // before awaiting so normal frames can render between passes.
+  function startBake(world) {
     const rt = new THREE.WebGLRenderTarget(BAKE_W, BAKE_H, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false });
     const mat = positionMaterial();
-    // things that come and go (station furniture, userData.ownStrokes = k, a number from 1): drawn again over
-    // the positions, alpha 1 + k where they are in front, so their strokes know which one they belong to and
-    // can go when it goes (oilpaint.js). (Each listed in a scene of its own without being moved: the renderer
-    // only walks `children` and reads the world matrices they already have.)
+    const idMat = idMaterial();
     const ownScene = new THREE.Scene();
     ownScene.matrixWorldAutoUpdate = false;
-    world.updateMatrixWorld();
-    watch(world);
-    const owners = [];
-    world.traverseVisible((o) => { if (o.userData.ownStrokes) owners.push([o, positionMaterial(1 + Math.min(8, Number(o.userData.ownStrokes) || 1))]); });
     const cam = new THREE.PerspectiveCamera(70, BAKE_W / BAKE_H, 0.1, 200);
     const data = new Float32Array(BAKE_W * BAKE_H * 4);
     const albedo = new Float32Array(BAKE_W * BAKE_H * 4), glow = new Float32Array(BAKE_W * BAKE_H * 4), ids = new Float32Array(BAKE_W * BAKE_H * 4);
-    // Every object gets a number of its own for the id picture (and every piece of one marked strokeEach: the
-    // instanced filler records, each a spine of its own), so a stroke is fitted to one object, not to a row of
-    // them that happens to lie flat. Set as three draws each one (onBeforeRender sees the override material).
-    const idMat = idMaterial();
-    let nextId = 1;
-    const tagged = [];
-    world.traverse((o) => {
-      if (!o.isMesh) return;
-      const id = nextId++, each = o.userData.strokeEach ? 1 : 0, before = o.onBeforeRender;
-      tagged.push([o, before]);
-      o.onBeforeRender = function (rr, s, c, g, m, grp) {
-        if (m === idMat) { m.uniforms.oid.value = id; m.uniforms.each.value = each; m.uniformsNeedUpdate = true; }
-        before.call(this, rr, s, c, g, m, grp);
+    const owners = [];
+    const ownerMats = new Map();
+    const prepare = () => {
+      world.updateMatrixWorld();
+      watch(world);
+      owners.length = 0;
+      world.traverseVisible((o) => {
+        if (!o.userData.ownStrokes) return;
+        const k = 1 + Math.min(8, Number(o.userData.ownStrokes) || 1);
+        if (!ownerMats.has(k)) ownerMats.set(k, positionMaterial(k));
+        owners.push([o, ownerMats.get(k)]);
+      });
+      let nextId = 1;
+      const tagged = [];
+      const lights = [];
+      const hidden = [];
+      world.traverse((o) => {
+        if (o.isLight) lights.push([o, o.intensity, o.isHemisphereLight ? [o.color.clone(), o.groundColor.clone()] : null]);
+        if (o.isMesh) {
+          const id = nextId++, each = o.userData.strokeEach ? 1 : 0, before = o.onBeforeRender;
+          tagged.push([o, before]);
+          o.onBeforeRender = function (rr, s, c, g, m, grp) {
+            if (m === idMat) { m.uniforms.oid.value = id; m.uniforms.each.value = each; m.uniformsNeedUpdate = true; }
+            before.call(this, rr, s, c, g, m, grp);
+          };
+        }
+        if (!o.visible) return;
+        if (o.userData.noStrokes) { hidden.push(o); o.visible = false; return; }
+        const solid = o.isMesh && ![].concat(o.material).every((m) => m.transparent || m.opacity < 1);
+        if (!solid && (o.isSprite || o.isLine || o.isPoints || o.isMesh)) { hidden.push(o); o.visible = false; }
+      });
+      const fog = world.fog && 'near' in world.fog ? [world.fog.near, world.fog.far] : null;
+      const prev = { target: renderer.getRenderTarget(), bg: world.background, over: world.overrideMaterial, autoClear: renderer.autoClear, shadows: renderer.shadowMap.needsUpdate, clear: renderer.getClearColor(new THREE.Color()), alpha: renderer.getClearAlpha() };
+      world.background = null;
+      world.overrideMaterial = mat;
+      renderer.shadowMap.needsUpdate = false;
+      renderer.autoClear = true;
+      renderer.setClearColor(0x000000, 0);
+      renderer.setRenderTarget(rt);
+      const evenLight = (k) => {
+        for (const [l, , hemi] of lights) {
+          if (hemi) { l.color.set(0xffffff); l.groundColor.set(0xffffff); l.intensity = Math.PI * k; } else l.intensity = 0;
+        }
       };
-    });
-    // The paint each object is: the world drawn as it is, but lit only by an even white sky of strength pi (a
-    // lit material then shows exactly its own colour) and with no fog; once more with no light at all, which
-    // leaves what glows by itself. Lights are turned down, not off, so no shader has to be built again.
-    const lights = [];
-    world.traverse((o) => { if (o.isLight) lights.push([o, o.intensity, o.isHemisphereLight ? [o.color.clone(), o.groundColor.clone()] : null]); });
-    const fog = world.fog && 'near' in world.fog ? [world.fog.near, world.fog.far] : null;
-    const evenLight = (k) => {
-      for (const [l, , hemi] of lights) {
-        if (hemi) { l.color.set(0xffffff); l.groundColor.set(0xffffff); l.intensity = Math.PI * k; } else l.intensity = 0;
-      }
+      const restoreLightsAndFog = () => {
+        for (const [l, k, hemi] of lights) { l.intensity = k; if (hemi) { l.color.copy(hemi[0]); l.groundColor.copy(hemi[1]); } }
+        if (fog) [world.fog.near, world.fog.far] = fog;
+      };
+      const restore = () => {
+        restoreLightsAndFog();
+        renderer.setRenderTarget(prev.target);
+        renderer.setClearColor(prev.clear, prev.alpha);
+        renderer.autoClear = prev.autoClear;
+        renderer.shadowMap.needsUpdate = prev.shadows;
+        world.background = prev.bg;
+        world.overrideMaterial = prev.over;
+        for (const o of hidden) o.visible = true;
+        for (const [o, before] of tagged) o.onBeforeRender = before;
+      };
+      return { evenLight, fog, restoreLightsAndFog, restore };
     };
-    // only solid, drawn meshes: glows, lines and glass have no surface to paint on
-    const hidden = [];
-    world.traverse((o) => {
-      if (!o.visible) return;
-      // records, which move: painted as drawn, never stroked (a stroke left in the air when one lifts)
-      if (o.userData.noStrokes) { hidden.push(o); o.visible = false; return; }
-      const solid = o.isMesh && ![].concat(o.material).every((m) => m.transparent || m.opacity < 1);
-      if (!solid && (o.isSprite || o.isLine || o.isPoints || o.isMesh)) { hidden.push(o); o.visible = false; }
-    });
-    const prev = { target: renderer.getRenderTarget(), bg: world.background, over: world.overrideMaterial, autoClear: renderer.autoClear, shadows: renderer.shadowMap.needsUpdate, clear: renderer.getClearColor(new THREE.Color()), alpha: renderer.getClearAlpha() };
-    world.background = null;
-    world.overrideMaterial = mat;
-    renderer.shadowMap.needsUpdate = false;
-    renderer.autoClear = true;
-    renderer.setClearColor(0x000000, 0);
-    renderer.setRenderTarget(rt);
-    const shoot = (v, onlyTurning) => {
+    const renderPasses = (v, state, read) => {
       cam.fov = v.fov ?? 70;
       cam.updateProjectionMatrix();
       cam.position.copy(v.pos);
       cam.lookAt(v.target);
       cam.updateMatrixWorld();
+      world.overrideMaterial = mat;
       renderer.render(world, cam);
       if (owners.length) {
         renderer.autoClear = false;
@@ -744,58 +775,99 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
         }
         renderer.autoClear = true;
       }
-      renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, data);
+      read(rt, data);
       world.overrideMaterial = idMat;
       renderer.render(world, cam);
-      renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, ids);
+      read(rt, ids);
       world.overrideMaterial = null;
-      if (fog) { world.fog.near = 1e5; world.fog.far = 1e6; }
-      evenLight(1);
+      if (state.fog) { world.fog.near = 1e5; world.fog.far = 1e6; }
+      state.evenLight(1);
       renderer.render(world, cam);
-      renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, albedo);
-      evenLight(0);
+      read(rt, albedo);
+      state.evenLight(0);
       renderer.render(world, cam);
-      renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, glow);
-      for (const [l, k, hemi] of lights) { l.intensity = k; if (hemi) { l.color.copy(hemi[0]); l.groundColor.copy(hemi[1]); } }
-      if (fog) [world.fog.near, world.fog.far] = fog;
-      world.overrideMaterial = mat;
-      place(cam, data, albedo, glow, ids, onlyTurning);
+      read(rt, glow);
     };
-    for (const v of views) shoot(v, false);
-    // The thing that turns (STROKE_FRAME) shows its other sides only once it has turned: it is turned a quarter
-    // at a time (for this bake only) and painted again from the views that see it, so every side is painted
-    // from nearly square on, as the side you see first was.
-    if (turner?.userData.strokeTurn && shownAll(turner)) {
-      const base = turner.rotation.y, frustum = new THREE.Frustum(), mid = turner.getWorldPosition(new THREE.Vector3());
-      const sees = (v) => {
+    const turningViews = (views) => {
+      if (!(turner?.userData.strokeTurn && shownAll(turner))) return [];
+      const frustum = new THREE.Frustum(), mid = turner.getWorldPosition(new THREE.Vector3());
+      return views.filter((v) => {
         cam.fov = v.fov ?? 70; cam.updateProjectionMatrix(); cam.position.copy(v.pos); cam.lookAt(v.target); cam.updateMatrixWorld();
         return frustum.setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse)).containsPoint(mid);
-      };
-      const seeing = views.filter(sees);
-      if (seeing.length) {
-        for (let k = 1; k < 4; k++) {
-          turner.rotation.y = base + (k * Math.PI) / 2;
-          world.updateMatrixWorld();
-          for (const v of seeing) shoot(v, true);
-        }
+      });
+    };
+    const dispose = () => {
+      idMat.dispose();
+      rt.dispose();
+      mat.dispose();
+      for (const m of ownerMats.values()) m.dispose();
+      ownScene.children.length = 0;
+    };
+    return { cam, data, albedo, glow, ids, prepare, renderPasses, turningViews, dispose };
+  }
+
+  function bake(world, views) {
+    const s = startBake(world);
+    const st = s.prepare();
+    const shoot = (v, onlyTurning) => {
+      s.renderPasses(v, st, (rt, buf) => renderer.readRenderTargetPixels(rt, 0, 0, BAKE_W, BAKE_H, buf));
+      st.restoreLightsAndFog();
+      return place(s.cam, s.data, s.albedo, s.glow, s.ids, onlyTurning);
+    };
+    const saw = new Set();
+    for (const v of views) if (shoot(v, false)) saw.add(v);
+    const seeing = s.turningViews(views).filter((v) => saw.has(v));
+    if (seeing.length) {
+      const base = turner.rotation.y;
+      for (let k = 1; k < 4; k++) {
+        turner.rotation.y = base + (k * Math.PI) / 2;
+        world.updateMatrixWorld();
+        for (const v of seeing) shoot(v, true);
+      }
+      turner.rotation.y = base;
+      world.updateMatrixWorld();
+    }
+    st.restore();
+    s.dispose();
+    upload();
+  }
+
+  async function bakeAsync(world, views) {
+    const s = startBake(world);
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    const shootAsync = async (v, onlyTurning, turnAngle = 0) => {
+      const st = s.prepare();
+      let base = 0;
+      if (turnAngle) {
+        base = turner.rotation.y;
+        turner.rotation.y = base + turnAngle;
+        world.updateMatrixWorld();
+      }
+      const reads = [];
+      s.renderPasses(v, st, (rt, buf) => reads.push(renderer.readRenderTargetPixelsAsync(rt, 0, 0, BAKE_W, BAKE_H, buf)));
+      if (turnAngle) {
         turner.rotation.y = base;
         world.updateMatrixWorld();
       }
+      // restore world and renderer state before yielding so live frames render normally while the PBO completes
+      st.restore();
+      await Promise.all(reads);
+      await tick();
+      const hit = await placeAsync(s.cam, s.data, s.albedo, s.glow, s.ids, onlyTurning, tick);
+      await tick();
+      return hit;
+    };
+    try {
+      const saw = new Set();
+      for (const v of views) if (await shootAsync(v, false)) saw.add(v);
+      const seeing = s.turningViews(views).filter((v) => saw.has(v));
+      for (let k = 1; k < 4 && seeing.length; k++) {
+        for (const v of seeing) await shootAsync(v, true, (k * Math.PI) / 2);
+      }
+      upload();
+    } finally {
+      s.dispose();
     }
-    renderer.setRenderTarget(prev.target);
-    renderer.setClearColor(prev.clear, prev.alpha);
-    renderer.autoClear = prev.autoClear;
-    renderer.shadowMap.needsUpdate = prev.shadows;
-    world.background = prev.bg;
-    world.overrideMaterial = prev.over;
-    for (const o of hidden) o.visible = true;
-    for (const [o, before] of tagged) o.onBeforeRender = before;
-    idMat.dispose();
-    rt.dispose();
-    mat.dispose();
-    for (const [, m] of owners) m.dispose();
-    ownScene.children.length = 0;
-    upload();
   }
 
   // The placed strokes as plain arrays, and back (the stroke cache, strokecache.js): placing them from the
@@ -841,6 +913,7 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     parts: layers.map((part) => ({ geo: part.geo, layer: part.layer })),
     shared,
     bake,
+    bakeAsync,
     save,
     load,
     // the thing that turns: found in a world (bake does it too), or given
