@@ -71,19 +71,61 @@ function addPigmentBlotches(material) {
   return material;
 }
 
-export function toon(color, extra = {}) {
+const _tmpCol = new THREE.Color();
+const matCache = new Map();
+const matSpec = new WeakMap();
+const STATIC_TOON_KEYS = new Set(['side', 'transparent', 'opacity', 'alphaTest', 'depthWrite', 'depthTest', 'fog']);
+
+function canonicalToonKey(color, extra) {
+  for (const k in extra) if (!STATIC_TOON_KEYS.has(k) && extra[k] !== undefined) return null;
+  const hex = _tmpCol.set(color).getHexString();
+  return `toon|${hex}|${extra.side ?? 0}|${extra.transparent ? 1 : 0}|${extra.opacity ?? 1}|${extra.alphaTest ?? 0}|${extra.depthWrite === false ? 0 : 1}|${extra.depthTest === false ? 0 : 1}|${extra.fog === false ? 0 : 1}`;
+}
+
+function makeToon(color, extra) {
   const m = new THREE.MeshToonMaterial({ color, gradientMap, ...extra });
   return WATERCOLOUR ? addPigmentBlotches(m) : m;
 }
 
+function shareTagged(m, tag, apply) {
+  const spec = matSpec.get(m);
+  if (!spec) return apply(m);
+  const key = `${spec.key}|${tag}`;
+  const hit = matCache.get(key);
+  if (hit) return hit;
+  const out = makeToon(spec.color, spec.extra);
+  const applies = [...spec.applies, apply];
+  for (const fn of applies) fn(out);
+  matCache.set(key, out);
+  matSpec.set(out, { color: spec.color, extra: spec.extra, key, applies });
+  return out;
+}
+
+export function toon(color, extra = {}) {
+  const { unique, ...opts } = extra;
+  const key = unique ? null : canonicalToonKey(color, opts);
+  if (key) {
+    const hit = matCache.get(key);
+    if (hit) return hit;
+    const m = makeToon(color, opts);
+    matCache.set(key, m);
+    matSpec.set(m, { color, extra: opts, key, applies: [] });
+    return m;
+  }
+  return makeToon(color, opts);
+}
+
 export function glow(color) {
-  return new THREE.MeshBasicMaterial({ color });
+  const key = `glow|${_tmpCol.set(color).getHexString()}`;
+  let m = matCache.get(key);
+  if (!m) { m = new THREE.MeshBasicMaterial({ color }); matCache.set(key, m); }
+  return m;
 }
 
 // Album art and labels: lit like everything else, but flagged (alpha 0 in the scene buffer) so
 // the watercolour pass leaves them sharp. Covers are the one thing you need to read exactly.
 // Any material: flag it like crisp() so the watercolour pass leaves it sharp (signs you need to read).
-export function keepSharp(m) {
+function applyKeepSharp(m) {
   if (!WATERCOLOUR) return m;
   m.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n  gl_FragColor.a = 0.0;');
@@ -91,12 +133,15 @@ export function keepSharp(m) {
   m.customProgramCacheKey = () => `sharp-${m.type}`;
   return m;
 }
+export function keepSharp(m) {
+  return shareTagged(m, 'sharp', applyKeepSharp);
+}
 
 // Things that move (records, their discs): flagged (alpha 0.99 in the scene buffer, too little for the other
 // looks to notice) so Oil paint's under-coat, which is pinned to the world, does not slide over them as they
 // go. They show as drawn there, like everything the strokes are not pinned to.
 export const UNPINNED_ALPHA = 0.99;
-export function unpinned(m) {
+function applyUnpinned(m) {
   const before = m.onBeforeCompile, key = m.customProgramCacheKey?.bind(m);
   m.onBeforeCompile = (shader, r) => {
     before?.call(m, shader, r);
@@ -105,6 +150,9 @@ export function unpinned(m) {
   m.customProgramCacheKey = () => `unpinned-${key ? key() : m.type}`;
   return m;
 }
+export function unpinned(m) {
+  return shareTagged(m, 'unpinned', applyUnpinned);
+}
 
 // Rows of thin things side by side, each its own colour (the decor record spines on the shelves and in the
 // crates, interior.js): flagged (alpha OWN_ALPHA in the scene buffer) so Oil paint's under-coat keeps each
@@ -112,7 +160,7 @@ export function unpinned(m) {
 // wider than a spine, so it took a neighbour's colour and switched as the camera moved: the dabs there
 // flickered (Lajoon, 2026-11-13). The under-coat's ridges stay, so they still read as painted.
 export const OWN_ALPHA = 0.997;
-export function ownColour(m) {
+function applyOwnColour(m) {
   const before = m.onBeforeCompile, key = m.customProgramCacheKey?.bind(m);
   m.onBeforeCompile = (shader, r) => {
     before?.call(m, shader, r);
@@ -120,6 +168,9 @@ export function ownColour(m) {
   };
   m.customProgramCacheKey = () => `own-${key ? key() : m.type}`;
   return m;
+}
+export function ownColour(m) {
+  return shareTagged(m, 'own', applyOwnColour);
 }
 
 // Glass (windows, the door's panes, lantern panes): flagged (alpha GLASS_ALPHA in the scene buffer, as little
@@ -136,7 +187,7 @@ export const GLOW_BLENDING = {
   blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
   blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
 };
-export function glass(m) {
+function applyGlass(m) {
   if (m.transparent) {
     Object.assign(m, {
       blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
@@ -152,6 +203,9 @@ export function glass(m) {
   };
   m.customProgramCacheKey = () => `glass-${key ? key() : m.type}`;
   return m;
+}
+export function glass(m) {
+  return shareTagged(m, 'glass', applyGlass);
 }
 
 export function crisp(params) {

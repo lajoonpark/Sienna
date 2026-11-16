@@ -948,10 +948,11 @@ if (shotMode) {
   const warmed = Promise.all([
     warmUp(renderer, scene, camera, scene, painter?.target ?? null),
     warmUp(renderer, suitcase.overlay.scene, suitcase.overlay.camera, suitcase.overlay.scene, painter?.target ?? null, { draw: true }),
-  ]);
-  scene.remove(rackWarm);
-  rackWarmGeo.dispose();
-  for (const m of rackWarmMats) m.dispose();
+  ]).finally(() => {
+    scene.remove(rackWarm);
+    rackWarmGeo.dispose();
+    rackWarmTex.dispose();
+  });
   renderer.info.render.frame = 0; // atlas bakes and warm-up scratch draws are not intro frames
   Promise.all([strokesIn, Promise.race([warmed, new Promise((r) => setTimeout(r, 4000))])]).catch(() => {}).then(() => {
     const t0 = Number(params.get('t')) || 0;

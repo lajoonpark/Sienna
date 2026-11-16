@@ -18,7 +18,7 @@ import {
 export const caseSpace = { value: new THREE.Matrix4() };
 
 export function painted(color, extra) {
-  const m = toon(color, extra);
+  const m = toon(color, { ...extra, unique: true });
   const base = m.onBeforeCompile;
   if (base) {
     m.onBeforeCompile = (shader, renderer) => {

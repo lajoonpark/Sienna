@@ -228,20 +228,26 @@ export function spiralStair(kit, M, { radius = 0.8, rise = 3.0, turn = Math.PI *
 }
 
 // Pendant lamp hanging from height `top` by `hang`; returns glow meshes and a point light.
+let pendantMats = null;
 export function pendant(kit, M, top, hang, { light = true, shade = '#3f6e6a' } = {}) {
   rod(kit, M, [0, top, 0], [0, top - hang, 0], 0.008, '#2b2a2e');
   kit.pot.add(mul(M, trs(0, top - hang - 0.15, 0, Math.PI, 0, 0, 0.55, 0.3, 0.55)), shade);
   const out = [];
+  if (!pendantMats) pendantMats = {
+    lining: new THREE.MeshBasicMaterial({ color: '#f7dfae' }),
+    bulb: glass(new THREE.MeshBasicMaterial({ color: '#ffe2a8' })),
+    halo: new THREE.MeshBasicMaterial({ color: '#ffb85a', transparent: true, opacity: 0.14, depthWrite: false }),
+  };
   // the shade's warm lining, where the bulb lights it: the shade's own underside (green on the hall's) lit that
   // close glowed lime, and Oil paint laid greenish dabs round the light (Lajoon, 2026-11-13)
-  const lining = new THREE.Mesh(new THREE.CircleGeometry(0.27, 20).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#f7dfae' }));
+  const lining = new THREE.Mesh(new THREE.CircleGeometry(0.27, 20).rotateX(Math.PI / 2), pendantMats.lining);
   lining.applyMatrix4(mul(M, trs(0, top - hang - 0.302, 0)));
   out.push(lining);
   // the bulb is glass (materials.js glass): no dabs, shown as drawn
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), glass(new THREE.MeshBasicMaterial({ color: '#ffe2a8' })));
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), pendantMats.bulb);
   bulb.applyMatrix4(mul(M, trs(0, top - hang - 0.28, 0)));
   out.push(bulb);
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), new THREE.MeshBasicMaterial({ color: '#ffb85a', transparent: true, opacity: 0.14, depthWrite: false }));
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), pendantMats.halo);
   halo.applyMatrix4(mul(M, trs(0, top - hang - 0.3, 0)));
   out.push(halo);
   if (light) {

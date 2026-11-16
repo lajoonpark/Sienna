@@ -308,7 +308,7 @@ export class Sleeve {
     const small = getCover(item.art, 256);
     this.small = small;
     this.big = null;
-    this.spineMat = unpinned(toon(small.color ?? new THREE.Color().setHSL(rng(seed * 7 + 3)(), 0.3, 0.5)));
+    this.spineMat = unpinned(toon(small.color ?? new THREE.Color().setHSL(rng(seed * 7 + 3)(), 0.3, 0.5), { unique: true }));
     if (!small.color) small.loaded.then(() => { if (small.color) this.spineMat.color.copy(small.color); });
     this.coverMat = crisp({ map: small.tex });
     // box faces: +x, -x, +y, -y (spine colour), +z (cover), -z (back: shows the art too, because
