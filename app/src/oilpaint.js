@@ -373,16 +373,32 @@ void main() {
 `;
 
 // The under-coat (see UNDER) and the scene's depth (see depthDown), in one pass.
+const underVertex = /* glsl */ `
+uniform vec3 ray00;
+uniform vec3 rayDu;
+uniform vec3 rayDv;
+varying vec2 vUv;
+varying vec3 vRay;
+void main() {
+  vUv = uv;
+  vRay = ray00 + rayDu * uv.x + rayDv * uv.y;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`;
+
 const underFragment = /* glsl */ `
 uniform sampler2D tDepth;
 uniform sampler2D tScene;
 uniform sampler2D tAtlas;
 uniform vec2 texel;          // one paint-target pixel, in uv
 uniform vec2 full;           // one scene pixel, in uv
-uniform mat4 projInv;
-uniform mat4 viewInv;
+uniform vec3 ray00;
+uniform vec3 rayDu;
+uniform vec3 rayDv;
+uniform vec2 depthK;         // linear view depth = 1 / (depthK.x * d + depthK.y)
 uniform mat4 viewProj;
 uniform vec3 eye;
+uniform vec3 eyeTurn;
 uniform float heightAt1m;
 uniform float aspect;
 uniform vec2 under;          // dab size (share of the screen's height), on (1) or off (0)
@@ -392,16 +408,13 @@ uniform mat4 turnInv;
 uniform vec3 turnBox;        // the box it fills in its frame: half width, bottom, top
 uniform float turnOn;
 varying vec2 vUv;
+varying vec3 vRay;
 const float COLS = ${ATLAS_COLS}.0, ROWS = ${ATLAS_ROWS}.0;
 // A dab's quad, in cells (the paint fills about 0.85 of it along, 0.6 across), and how far off its cell's
 // middle it may sit: small enough that the painted part never reaches past the 2 x 2 cells nearest a pixel,
 // so only those four are looked at.
 const float LEN = 1.5, WID = 1.2, JITTER = 0.3;
-vec3 worldAt(vec2 uv) {
-  float z = texture2D(tDepth, uv).x * 2.0 - 1.0;
-  vec4 v = projInv * vec4(uv * 2.0 - 1.0, z, 1.0);
-  return (viewInv * vec4(v.xyz / v.w, 1.0)).xyz;
-}
+float linZ(float d) { return 1.0 / (depthK.x * d + depthK.y); }
 // (hashes without sine: cheaper, and the same on every GPU)
 float h21(vec2 p) { vec3 p3 = fract(p.xyx * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec2 h22(vec2 p) { vec3 p3 = fract(p.xyx * vec3(0.1031, 0.1030, 0.0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz) * p3.zy); }
@@ -418,33 +431,41 @@ void main() {
   if (z0 >= 0.99999 || here.a < 0.995) return;
   // where this pixel is, and which way its surface faces (from the nearer neighbour each way, so an edge
   // does not bend it)
-  vec3 P = worldAt(vUv);
-  vec3 px1 = worldAt(vUv + vec2(full.x, 0.0)) - P, px0 = P - worldAt(vUv - vec2(full.x, 0.0));
-  vec3 py1 = worldAt(vUv + vec2(0.0, full.y)) - P, py0 = P - worldAt(vUv - vec2(0.0, full.y));
+  vec3 rayP = vRay * linZ(z0);
+  vec3 P = eye + rayP;
+  vec3 rx = rayDu * full.x, ry = rayDv * full.y;
+  vec3 px1 = (vRay + rx) * linZ(texture2D(tDepth, vUv + vec2(full.x, 0.0)).x) - rayP;
+  vec3 px0 = rayP - (vRay - rx) * linZ(texture2D(tDepth, vUv - vec2(full.x, 0.0)).x);
+  vec3 py1 = (vRay + ry) * linZ(texture2D(tDepth, vUv + vec2(0.0, full.y)).x) - rayP;
+  vec3 py0 = rayP - (vRay - ry) * linZ(texture2D(tDepth, vUv - vec2(0.0, full.y)).x);
   vec3 dx = dot(px1, px1) < dot(px0, px0) ? px1 : px0, dy = dot(py1, py1) < dot(py0, py0) ? py1 : py0;
   vec3 N = normalize(cross(dx, dy));
   // On the spinner, the grid is laid in its own frame, so the dabs go round with it: everything below is
-  // worked out there (toL), and taken back to the world (toW) to be looked up in the picture.
-  mat4 toW = mat4(1.0), toL = mat4(1.0);
+  // worked out there, and taken back to the world via turnM when needed.
+  bool onTurn = false;
+  vec3 E = eye;
   if (turnOn > 0.5) {
     vec3 L = (turnInv * vec4(P, 1.0)).xyz;
-    if (abs(L.x) < turnBox.x && abs(L.z) < turnBox.x && L.y > turnBox.y && L.y < turnBox.z) { toW = turnM; toL = turnInv; }
+    if (abs(L.x) < turnBox.x && abs(L.z) < turnBox.x && L.y > turnBox.y && L.y < turnBox.z) {
+      onTurn = true; E = eyeTurn; P = L; N = normalize(mat3(turnInv) * N);
+    }
   }
-  mat4 VP = viewProj * toW;
-  vec3 E = (toL * vec4(eye, 1.0)).xyz;
-  P = (toL * vec4(P, 1.0)).xyz;
-  N = normalize(mat3(toL) * N);
-  float dist = length(P - E);
+  vec3 PE = P - E;
+  float dist = length(PE);
   // the surface's grid: on the plane of the axis it faces most (so it holds still as the camera moves)
   vec3 an = abs(N);
   int ax = an.x > an.y && an.x > an.z ? 0 : an.y > an.z ? 1 : 2;
   vec3 U = ax == 0 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0), V = ax == 1 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
   vec3 W = ax == 0 ? vec3(1.0, 0.0, 0.0) : ax == 1 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+  float wN = dot(W, N);
+  vec2 slope = -vec2(dot(U, N), dot(V, N)) * sign(wN) / max(abs(wN), 0.3);
   vec2 q = vec2(dot(P, U), dot(P, V));
   // its cells: about UNDER of the screen's height wherever they are, a power of two in metres, so they only
   // ever halve or double (and then dab by dab, not all at once)
   float oct = log2(max(under.x * dist * heightAt1m, 1e-4) / 0.05);
   float o0 = floor(oct);
+  float s0 = 0.05 * exp2(o0);
+  float lod0 = log2(256.0 * dist * heightAt1m * texel.y / (s0 * LEN));
   float bestR = -1.0;
   vec4 bestT = vec4(0.0);
   vec2 bestC = vec2(0.0), bestA = vec2(1.0, 0.0);
@@ -452,22 +473,24 @@ void main() {
   float fbOff = 1e9, fbS = 1.0;
   vec2 fbC = q, fbA = vec2(1.0, 0.0);
   for (int k = 0; k < 2; k++) {   // this octave and the next
-    float ok = o0 + float(k), s = 0.05 * exp2(ok);
+    float ok = o0 + float(k), s = k == 0 ? s0 : s0 * 2.0;
     // (the sheet's level for a dab this size on screen: no shimmer, no blur)
-    float lod = max(0.0, log2(256.0 * dist * heightAt1m * texel.y / (s * LEN)));
+    float lod = max(0.0, lod0 - float(k));
     for (int layer = 0; layer < 2; layer++) {   // two grids, half a cell apart
       vec2 shift = layer == 1 ? vec2(0.5) : vec2(0.0);
       vec2 g = q / s + shift;
       vec2 base = floor(g - 0.5);
+      float slant = layer == 1 ? 0.5 : -0.35;
+      vec2 idOff = vec2(float(layer) * 31.7 + ok * 7.1, float(ax) * 13.3);
       for (int c = 0; c < 4; c++) {
         vec2 cell = base + vec2(float(c & 1), float(c >> 1));
-        vec2 id = cell + vec2(float(layer) * 31.7 + ok * 7.1, float(ax) * 13.3);
+        vec2 id = cell + idOff;
         float r = h21(id + 5.3);
         if (r < bestR) continue;   // under one already found
         vec2 j = h22(id);
         vec2 cen = cell + 0.5 + (j - 0.5) * JITTER;
         // which way it runs: mostly one way per grid, as a hand lays them (no trig: a slope, normalised)
-        vec2 al = normalize(vec2(1.0, (j.y - j.x) * 0.6 + (layer == 1 ? 0.5 : -0.35))), ac = vec2(-al.y, al.x);
+        vec2 al = normalize(vec2(1.0, (j.y - j.x) * 0.6 + slant)), ac = vec2(-al.y, al.x);
         vec2 d = g - cen;
         float u = dot(d, al) / LEN + 0.5, v = dot(d, ac) / WID + 0.5;
         // (the nearest dab, in case none has paint here: its colour, without its ridges, fills the hole)
@@ -477,9 +500,9 @@ void main() {
         if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) continue;
         // the octave where its middle is: it is there for the near half of that octave's dabs and the far half
         // of the next one's, so the cells halve and double dab by dab (log2 of a ratio this near 1, by series)
-        vec3 C = P + U * (qc.x - q.x) + V * (qc.y - q.y);
-        C -= W * dot(C - P, N) / max(abs(dot(W, N)), 0.3) * sign(dot(W, N));
-        float x = length(C - E) / dist - 1.0;
+        vec2 dqc = qc - q;
+        vec3 offC = U * dqc.x + V * dqc.y + W * dot(slope, dqc);
+        float x = length(PE + offC) / dist - 1.0;
         float f = oct + 1.442695 * x * (1.0 - 0.5 * x) - ok;   // in [-1, 1) where it may be shown
         if (f >= 1.0 || f < -1.0) continue;
         float h = h21(id + 9.1);
@@ -501,9 +524,10 @@ void main() {
   // sign board lies in the plane of the board's underside) and a colour near this pixel's own: a far tolerance
   // that grew with distance let a dab on the sign board take the wall's colour, 8 cm behind it (Lajoon,
   // 2026-11-13). UNDER_TOL, UNDER_COL; scripts/oil-bleed-check.mjs measures what still crosses.
-  vec3 C = P + U * (bestC.x - q.x) + V * (bestC.y - q.y);
-  C -= W * dot(C - P, N) / max(abs(dot(W, N)), 0.3) * sign(dot(W, N));
-  vec4 cc = VP * vec4(C, 1.0);
+  vec2 bdqc = bestC - q;
+  vec3 C = P + U * bdqc.x + V * bdqc.y + W * dot(slope, bdqc);
+  vec3 Cw = onTurn ? (turnM * vec4(C, 1.0)).xyz : C;
+  vec4 cc = viewProj * vec4(Cw, 1.0);
   vec2 cuv = cc.xy / cc.w * 0.5 + 0.5;
   vec3 col = here.rgb;
   // (the decor spines, materials.js ownColour: each pixel keeps its own colour; only the ridges are laid on)
@@ -514,9 +538,9 @@ void main() {
     float wsum = 0.0;
     for (int i = 0; i < 4; i++) {
       vec2 tuv = clamp(cuv + vec2(i == 0 || i == 2 ? -1.5 : 1.5, i < 2 ? -1.5 : 1.5) * full, 0.0, 1.0);
-      vec3 Q = (toL * vec4(worldAt(tuv), 1.0)).xyz;
+      vec3 Qw = eye + (ray00 + rayDu * tuv.x + rayDv * tuv.y) * linZ(texture2D(tDepth, tuv).x);
       vec4 there = texture2D(tScene, tuv);
-      float wt = (1.0 - smoothstep(tol, tol * 2.0, length(Q - C))) * smoothstep(0.4, 0.6, there.a)
+      float wt = (1.0 - smoothstep(tol, tol * 2.0, length(Qw - Cw))) * smoothstep(0.4, 0.6, there.a)
         * (1.0 - smoothstep(${f4(UNDER_COL[0])}, ${f4(UNDER_COL[1])}, length(sqrt(max(there.rgb, 0.0)) - mine)));
       sum += there.rgb * wt;
       wsum += wt;
@@ -529,7 +553,8 @@ void main() {
   // which way it runs on the screen, for the light raking across its ridges
   vec3 Dw = U * bestA.x + V * bestA.y;
   Dw -= N * dot(Dw, N);
-  vec4 cb = VP * vec4(C + Dw * bestS * 0.5, 1.0);
+  if (onTurn) Dw = mat3(turnM) * Dw;
+  vec4 cb = viewProj * vec4(Cw + Dw * bestS * 0.5, 1.0);
   vec2 along = (cb.xy / cb.w - cc.xy / cc.w) * vec2(aspect, 1.0);
   along = dot(along, along) > 1e-10 ? normalize(along) : vec2(1.0, 0.0);
   vec2 across = vec2(-along.y, along.x);
@@ -695,12 +720,15 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
     uniforms: {
       tDepth: { value: sceneTarget.depthTexture }, tScene: { value: sceneTarget.texture }, tAtlas: { value: atlas.texture },
       texel: { value: new THREE.Vector2(1, 1) }, full: { value: new THREE.Vector2(1, 1) },
-      projInv: { value: new THREE.Matrix4() }, viewInv: { value: new THREE.Matrix4() },
-      viewProj: strokes.shared.viewProj, eye: strokes.shared.eye, heightAt1m: strokes.shared.heightAt1m, aspect: strokes.shared.aspect,
+      ray00: { value: new THREE.Vector3() }, rayDu: { value: new THREE.Vector3() }, rayDv: { value: new THREE.Vector3() },
+      depthK: { value: new THREE.Vector2() },
+      viewProj: strokes.shared.viewProj,
+      eye: strokes.shared.eye, eyeTurn: { value: new THREE.Vector3() },
+      heightAt1m: strokes.shared.heightAt1m, aspect: strokes.shared.aspect,
       under: { value: UNDER }, impasto: { value: IMPASTO },
       turnM: strokes.shared.turnM, turnInv: strokes.shared.turnInv, turnBox: strokes.shared.turnBox, turnOn: strokes.shared.turnOn,
     },
-    vertexShader: quadVertex,
+    vertexShader: underVertex,
     fragmentShader: underFragment,
     depthTest: true, depthFunc: THREE.AlwaysDepth, depthWrite: true, blending: THREE.NoBlending,
   });
@@ -833,6 +861,13 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
     if (fog && 'near' in fog) { light.fogColor.value.copy(fog.color); light.fogRange.value.set(fog.near, fog.far); } else light.fogRange.value.set(0, 0);
   }
 
+  const rayTmp = new THREE.Vector4();
+  const rayAt = (nx, ny, camera, out) => {
+    rayTmp.set(nx, ny, 0, 1).applyMatrix4(camera.projectionMatrixInverse);
+    const s = 1 / -rayTmp.z;
+    rayTmp.set(rayTmp.x * s, rayTmp.y * s, -1, 0).applyMatrix4(camera.matrixWorld);
+    return out.set(rayTmp.x, rayTmp.y, rayTmp.z);
+  };
   return {
     texture: paintT.texture,
     target: paintT,
@@ -847,8 +882,14 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
       updateLights(world);
       strokes.parts.forEach(({ geo }, i) => { geos[i].instanceCount = geo.instanceCount; });
       strokes.setCamera(camera);
-      depthDown.uniforms.projInv.value.copy(camera.projectionMatrixInverse);
-      depthDown.uniforms.viewInv.value.copy(camera.matrixWorld);
+      const u = depthDown.uniforms, pe = camera.projectionMatrixInverse.elements;
+      u.depthK.value.set(2 * pe[11], pe[15] - pe[11]);
+      rayAt(-1, -1, camera, u.ray00.value);
+      rayAt(1, -1, camera, u.rayDu.value).sub(u.ray00.value);
+      rayAt(-1, 1, camera, u.rayDv.value).sub(u.ray00.value);
+      if (strokes.shared.turnOn.value > 0.5) {
+        u.eyeTurn.value.copy(strokes.shared.eye.value).applyMatrix4(strokes.shared.turnInv.value);
+      }
       renderer.setRenderTarget(paintT);
       const prev = renderer.getClearAlpha(), col = renderer.getClearColor(new THREE.Color());
       renderer.setClearColor(0x000000, 0);
