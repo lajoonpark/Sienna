@@ -2,7 +2,9 @@
 // cache), one GPU sync at the end, ms per frame. Also the JS side alone: a frame in which nothing changed
 // (the watchers' look at the scene, nothing drawn) and three's render call for the scene.
 // Variants turn parts off to see what they cost: noOverlay (the suitcase), noPoint (every lamp light),
-// noBricks (the big instanced parts). Compare before/after on the same machine.
+// noBricks (the big instanced parts), noUnder (Oil paint's under-coat), noDabs (placed dabs),
+// noBlotch (pigment blotches), noSunShadow (sun shadow sampling), msaa (scene MSAA sample count).
+// Compare before/after on the same machine.
 //   node scripts/frame-bench.mjs [at=home,0] [dpr=2] [query]      e.g. node scripts/frame-bench.mjs home 2 "sharp=full"
 //   VARIANTS='[{},{"noPoint":true}]'  SIENNA_VIEWPORT=1440x900  SIENNA_PORT
 import { chromium } from 'playwright';
@@ -23,18 +25,31 @@ for (const at of ats) {
   const gpu = await page.evaluate(() => { const gl = window.__siennaDebug.renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : '?'; });
   const rows = [];
   for (const v of variants) {
-    rows.push([JSON.stringify(v), await page.evaluate((v) => {
+    rows.push([JSON.stringify(v), await page.evaluate(async (v) => {
       const d = window.__siennaDebug, R = d.renderer, gl = R.getContext(), px = new Uint8Array(4);
+      const oil = d.painter.oil;
       d.pacer.stop();
       const undo = [];
       d.scene.traverse((o) => {
         const off = (v.noPoint && o.isPointLight) || (v.noBricks && o.isInstancedMesh && o.count > 200);
         if (off && o.visible) { o.visible = false; undo.push(() => { o.visible = true; }); }
       });
+      if (v.noUnder && oil) { const u = oil.underUniforms.under.value, y = u.y; u.y = 0; undo.push(() => { u.y = y; }); }
+      if (v.noDabs && oil) for (const m of oil.scene.children) if (m.visible) { m.visible = false; undo.push(() => { m.visible = true; }); }
+      if (v.noBlotch) {
+        const saved = [];
+        d.scene.traverse((o) => { for (const m of [].concat(o.material ?? [])) if (m.customProgramCacheKey?.() === 'wc-blotch') { saved.push([m, m.onBeforeCompile, m.customProgramCacheKey]); m.onBeforeCompile = () => {}; m.customProgramCacheKey = () => 'noblotch'; m.needsUpdate = true; } });
+        undo.push(() => { for (const [m, ob, ck] of saved) { m.onBeforeCompile = ob; m.customProgramCacheKey = ck; m.needsUpdate = true; } });
+      }
+      if (v.noSunShadow) { const sun = d.scene.children.find((c) => c.isDirectionalLight); if (sun?.castShadow) { sun.castShadow = false; undo.push(() => { sun.castShadow = true; }); } }
+      if (v.msaa !== undefined) { const t = d.painter.target, was = t.samples; t.samples = v.msaa; t.dispose(); undo.push(() => { t.samples = was; t.dispose(); }); }
       const overlay = v.noOverlay ? null : d.suitcase.overlay;
       const one = () => { d.painter.invalidate(); d.painter.render(d.scene, d.camera, d.lastFrame.t, overlay); };
       const sync = () => { R.setRenderTarget(null); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); };
       for (let i = 0; i < 3; i++) one(); // (compiles, uploads)
+      sync();
+      if (v.noBlotch || v.noSunShadow) await new Promise((r) => setTimeout(r, 3000)); // their shaders compile again
+      for (let i = 0; i < 3; i++) one();
       sync();
       const N = 20;
       let s = performance.now();
