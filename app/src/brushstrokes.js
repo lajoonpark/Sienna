@@ -16,30 +16,6 @@ import { rng } from './rand.js';
 import { BLOTCH_MATH } from './materials.js';
 import { forceDetailLod } from './kit.js';
 
-const NOISE = /* glsl */ `
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float noise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
-}
-float fbm(vec2 p) { return noise(p) * 0.55 + noise(p * 2.1 + 7.3) * 0.3 + noise(p * 4.3 + 1.7) * 0.15; }
-`;
-
-// metres from the camera at a screen position
-const SCENE_DEPTH = /* glsl */ `
-float sceneDepth(vec2 uv) {
-  float z = textureLod(tDepth, uv, 0.0).x * 2.0 - 1.0;
-  return (2.0 * clipRange.x * clipRange.y) / (clipRange.y + clipRange.x - z * (clipRange.y - clipRange.x));
-}
-// 1 where a point d metres away is on the surface drawn at that position, 0 where it is on something else
-uniform float slack;         // a long stroke lying across bricks or a curve needs more give than a small one
-float sameSurface(vec2 uv, float d) {
-  float tol = (0.02 + 0.006 * d) * slack;
-  return 1.0 - smoothstep(tol, tol * 1.6, abs(sceneDepth(uv) - d));
-}
-`;
-
 // Things that turn in place (the plant room's spinner: userData.strokeTurn = { half, y0, y1 }, the box it
 // fills in its own frame, half its width and its height). Strokes placed on one are kept in its own frame,
 // tagged in aCol.w (+ TURN_TAG), and go round with it: turnM is its frame -> world now, turnOn 0 when it
@@ -64,235 +40,6 @@ bool strokeFrame() {
 const TURN_FACING = 0.45;
 const inTurnBox = (l, box) => Math.abs(l.x) < box.half && Math.abs(l.z) < box.half && l.y > box.y0 && l.y < box.y1;
 
-const quadVertex = /* glsl */ `
-varying vec2 vUv;
-void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
-`;
-
-// Atlas of brush marks, baked once. R coverage (ragged sides, frayed tail), G pigment density (bristle
-// streaks), B wet rim (where pigment pools at the edge of the mark).
-const ATLAS_COLS = 2, ATLAS_ROWS = 4;
-const atlasFragment = /* glsl */ `
-varying vec2 vUv;
-${NOISE}
-void main() {
-  vec2 g = vUv * vec2(${ATLAS_COLS}.0, ${ATLAS_ROWS}.0);
-  vec2 id = floor(g), f = fract(g);
-  float seed = id.x * 7.3 + id.y * 13.1 + 1.0;
-  float u = f.x, v = f.y * 2.0 - 1.0;
-  // the brush lands, loads the paper, then lifts off and runs dry
-  float body = smoothstep(0.0, 0.05, u) * (1.0 - pow(smoothstep(0.7, 0.99, u), 2.0));
-  float centre = (fbm(vec2(u * 1.3, seed + 9.0)) - 0.5) * 0.45;
-  float width = 0.6 * body * (1.0 + (fbm(vec2(u * 2.5, seed)) - 0.5) * 0.6)
-    + (fbm(vec2(u * 9.0, seed + 3.0)) - 0.5) * 0.2 * body;
-  float d = abs(v - centre) / max(width, 0.001);
-  d += (noise(vec2(u * 26.0, v * 7.0 + seed)) - 0.5) * 0.22; // a torn, uneven edge
-  float cover = 1.0 - smoothstep(0.84, 1.0, d);
-  // dry brush: bristle tracks open up toward the tail
-  float bristle = fbm(vec2(u * 1.5, v * 9.0 + seed * 2.0));
-  float dry = smoothstep(0.35, 1.0, u) * 0.75 + (fbm(vec2(u * 6.0, v * 4.0 + seed)) - 0.5) * 0.35;
-  cover *= smoothstep(dry - 0.16, dry + 0.16, bristle + 0.14);
-  float density = 0.8 + 0.2 * smoothstep(0.25, 0.75, bristle);
-  float rim = smoothstep(0.7, 0.98, d) * cover;
-  gl_FragColor = vec4(cover, density, rim, 1.0);
-}
-`;
-
-const strokeVertex = /* glsl */ `
-attribute vec4 aPos;         // world position, stroke length in metres
-attribute vec4 aTan;         // direction along the surface, random
-attribute vec4 aNor;         // surface normal, random
-attribute vec4 aShape;       // length and width after fitting to the shape it sits on, and the room there (metres)
-attribute vec4 aCol;         // (here only its w: + TURN_TAG when it is on something that turns)
-uniform sampler2D tRef;
-uniform sampler2D tDepth;
-uniform mat4 viewProj;
-uniform vec3 eye;
-uniform vec2 clipRange;      // camera near, far
-uniform float heightAt1m;    // metres of world filling the screen's height, 1 m from the camera
-uniform float lodShift;      // keeps stroke colours at the same scale at any window size
-uniform float aspect;        // width / height of the picture
-uniform vec2 window;         // stroke length on screen (fraction of its height) where it is fully shown
-uniform vec3 farGrow;        // near m, far m, factor: the smallest size grows this much with distance
-uniform vec3 fovea;          // where you look (uv) and the reach of full detail (share of the height; 0 = all)
-uniform vec2 lods;           // fine, coarse colour levels
-uniform vec2 gate;           // detail difference that starts / fully shows a stroke (0 0: always)
-uniform float power;         // the coat is lighter than the scene: thin paint with the paper glowing through it
-uniform vec2 calm;           // the coat: picture detail that starts / fully stops it, for smaller marks to paint
-varying vec2 vAtlas;
-varying vec3 vPigment;
-varying vec3 vWants;         // the colour this mark is painting: it stops where the picture stops being that
-varying float vFade;
-varying float vDepth;
-float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
-${SCENE_DEPTH}
-${STROKE_FRAME}
-void main() {
-  // anything not on show collapses off screen before the costly part
-  gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-  vAtlas = vec2(0.0); vPigment = vec3(1.0); vWants = vec3(1.0); vFade = 0.0; vDepth = 0.0;
-  if (!strokeFrame()) return;
-  vec4 clipA = viewProj * vec4(sPos, 1.0);
-  if (clipA.w < 0.15) return;
-  vec2 a = clipA.xy / clipA.w * 0.5 + 0.5;
-  if (a.x < -0.5 || a.x > 1.5 || a.y < -0.5 || a.y > 1.5) return;
-  if (dot(sNor, eye - sPos) <= 0.0) return;
-  float onScreen = aPos.w / (clipA.w * heightAt1m);
-  // Far away, fewer and bigger: the smallest size a mark may be on screen grows with distance (farGrow:
-  // from x metres to y metres it grows up to z times), so a far wall is painted in a few broad marks
-  // rather than many small ones on top of each other (most of this pass's cost is that overlap).
-  float minSize = window.x * mix(1.0, farGrow.z, smoothstep(farGrow.x, farGrow.y, clipA.w));
-  float fade = smoothstep(minSize * 0.6, minSize, onScreen) * (1.0 - smoothstep(window.y, window.y * 1.5, onScreen));
-  if (fade <= 0.01) return;
-
-  // hidden behind something nearer? Several taps, so a stroke fades as it goes behind an edge
-  float bias = 0.05 + 0.012 * clipA.w;
-  vec2 ua = clamp(a, 0.0, 1.0);
-  float seen = 0.0;
-  vec2 seenAt = vec2(0.0);
-  for (int i = 0; i < 4; i++) {
-    vec2 o = vec2(i < 2 ? -0.006 : 0.006, (i == 0 || i == 2) ? -0.009 : 0.009);
-    float tap = step(clipA.w - bias, sceneDepth(clamp(ua + o, 0.0, 1.0)));
-    seen += tap * 0.25;
-    seenAt += o * tap;
-  }
-  // half in view is enough: the fragment shader cuts it off at whatever is in front
-  fade *= smoothstep(0.0, 0.5, seen);
-  if (fade <= 0.01) return;
-
-  // its colour comes from the part in view, not from what is covering its middle
-  vec2 uc = clamp(ua + seenAt / max(seen * 4.0, 1.0), 0.0, 1.0);
-  // Read over the mark's own patch, not at one point: a single texel of a mip level jumps as the
-  // picture slides under it, and the whole mark would flicker to a new colour with it.
-  vec2 spread = vec2(onScreen * 0.25 / aspect, onScreen * 0.25);
-  vec3 fine = vec3(0.0), coarse = vec3(0.0);
-  for (int i = 0; i < 5; i++) {
-    vec2 o = i == 0 ? vec2(0.0) : vec2(i == 1 ? -1.0 : i == 2 ? 1.0 : 0.0, i == 3 ? -1.0 : i == 4 ? 1.0 : 0.0) * spread;
-    vec2 at = clamp(uc + o, 0.0, 1.0);
-    float k = i == 0 ? 0.4 : 0.15;
-    fine += textureLod(tRef, at, lods.x + lodShift).rgb * k;
-    coarse += textureLod(tRef, at, lods.y + lodShift).rgb * k;
-  }
-  // Album covers are not paint on this surface: a stroke beside one must not pick up its colours.
-  // (Covers wrote alpha 0, which the blurred level still shows.)
-  fade *= smoothstep(0.9, 0.99, textureLod(tRef, uc, lods.x + lodShift).a);
-  if (gate.y > 0.0) fade *= smoothstep(gate.x, gate.y, length(fine - coarse));
-  // away from where you look (other-optimizations, C4): 1
-  float periph = fovea.z > 0.0 ? smoothstep(fovea.z, fovea.z * 1.7, length((a - fovea.xy) * vec2(aspect, 1.0))) : 0.0;
-#if defined(CORRECT) || defined(TOUCH)
-  // the detail marks only around where you look; the coat covers everywhere
-  fade *= 1.0 - periph;
-#endif
-#ifdef GROUND
-  // The coat steps aside where the picture has detail, for the smaller marks to paint it. Those are left
-  // out away from where you look, so there it stays: else that detail was bare (gaps on busy brick walls).
-  fade *= 1.0 - smoothstep(calm.x, calm.y, length(textureLod(tRef, uc, 1.2 + lodShift).rgb - fine)) * (1.0 - periph);
-#endif
-  if (fade <= 0.01) return;
-  vFade = fade;
-
-  // a hand swings in an arc, so no mark is straight
-  float len = aShape.x * (0.8 + 0.2 * aNor.w);
-  float wid = aShape.y * (0.8 + 0.2 * fract(aNor.w * 7.13));
-  float bend = (fract(aNor.w * 11.3) - 0.5) * 0.7;
-  vec2 lp = vec2(position.x, position.y + bend * (position.x * position.x - 0.15));
-  vec3 side = cross(sNor, sTan);
-  vec3 world = sPos + sTan * lp.x * len + side * lp.y * wid + sNor * 0.01;
-  gl_Position = viewProj * vec4(world, 1.0);
-  vDepth = gl_Position.w;
-  vWants = fine;
-
-  float cell = floor(aTan.w * 97.0);
-  vec2 id = vec2(mod(cell, ${ATLAS_COLS}.0), mod(floor(cell / ${ATLAS_COLS}.0), ${ATLAS_ROWS}.0));
-  vAtlas = (id + uv) / vec2(${ATLAS_COLS}.0, ${ATLAS_ROWS}.0);
-#ifdef CORRECT
-  // a correction on top of the coat: only what this spot needs beyond the coarser colour
-  vPigment = clamp(fine / max(coarse, vec3(0.04)), 0.0, 1.0);
-#elif defined(GROUND)
-  // opaque, so each stroke shows; no two come off the brush quite the same tone
-  vPigment = pow(clamp(mix(vec3(lum(fine)), fine, 1.25), 0.0, 1.0), vec3(power)) * (0.96 + 0.08 * fract(aNor.w * 5.37));
-#elif defined(TOUCH)
-  vPigment = fine;
-#endif
-  // each mark leans a little warm or cool, as if the brush was not rinsed between loads
-  vPigment *= mix(vec3(1.04, 1.0, 0.95), vec3(0.96, 1.0, 1.05), fract(aNor.w * 3.71));
-}
-`;
-
-const strokeFragment = /* glsl */ `
-uniform sampler2D tAtlas;
-uniform sampler2D tRef;
-uniform sampler2D tDepth;
-uniform vec2 clipRange;
-uniform float opacity;
-uniform float rimPower;
-uniform float lodShift;
-uniform vec3 clip;           // reference level, colour distance where the mark starts to break, and stops
-varying vec2 vAtlas;
-varying vec3 vPigment;
-varying vec3 vWants;
-varying float vFade;
-varying float vDepth;
-${SCENE_DEPTH}
-void main() {
-  vec4 s = texture2D(tAtlas, vAtlas);
-  if (s.r < 0.01) discard; // the empty part of the quad: most of the overdraw, so out before the costly reads
-  // The mark stops at the edge of the shape it is painting, raggedly: the bristle pattern shifts
-  // where it looks, so the edge is uneven and sometimes overshoots.
-  vec2 screen = gl_FragCoord.xy / vec2(textureSize(tRef, 0));
-  vec2 off = (s.gb - vec2(0.8, 0.2)) * 0.022;
-  // Its own surface only. The second look, shifted by the bristles, stops the mark a hair short of the
-  // edge, unevenly, the way a careful hand cuts in: it can fall short but never crosses.
-  float own = sameSurface(screen, vDepth);
-  if (own <= 0.0) discard;
-  own *= sameSurface(screen + off * 0.2, vDepth);
-  vec3 here = textureLod(tRef, screen + off, clip.x + lodShift).rgb;
-  float stay = 1.0 - smoothstep(clip.y, clip.z, length(here - vWants));
-  float cover = s.r * stay * vFade * own;
-  vec3 pig = pow(max(vPigment, vec3(0.001)), vec3(1.0 + s.b * rimPower));
-#if defined(GROUND)
-  gl_FragColor = vec4(pig * (0.9 + 0.5 * (s.g - 0.8)), cover * opacity);
-#elif defined(TOUCH)
-  gl_FragColor = vec4(pig, cover * opacity);
-#else
-  gl_FragColor = vec4(mix(vec3(1.0), pig, cover * s.g * opacity), 1.0);
-#endif
-}
-`;
-
-// The first thin wash under everything: moving things (records, the door) get no pinned strokes, and
-// gaps between strokes show this, not white.
-const underFragment = /* glsl */ `
-uniform sampler2D tRef;
-uniform float lodShift;
-uniform float power;
-uniform vec2 pan;
-uniform float aspect;
-uniform sampler2D tDepth;
-uniform vec2 clipRange;
-varying vec2 vUv;
-${NOISE}
-${SCENE_DEPTH}
-float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
-void main() {
-  vec2 q = (vUv + pan) * vec2(aspect, 1.0);
-  // every shape's edge wanders here, in the first wash, before a brush touches it
-  vec2 wander = (vec2(fbm(q * 5.0 + 11.0), fbm(q * 5.0 + 37.0)) - 0.5) * 0.028
-              + (vec2(fbm(q * 19.0 + 3.0), fbm(q * 19.0 + 23.0)) - 0.5) * 0.009;
-  // ...but only within its own surface: past an outline this wash keeps its own colour
-  vec3 c = mix(textureLod(tRef, vUv, 1.0 + lodShift).rgb, textureLod(tRef, vUv + wander, 2.2 + lodShift).rgb, sameSurface(vUv + wander, sceneDepth(vUv)));
-  c = clamp(mix(vec3(lum(c)), c, 1.3), 0.0, 1.0);
-  // Busy things (records in a bin, railings, leaves) are too small for the coat, which leaves them to
-  // this wash: keep what they look like here, at full strength.
-  // (Not finer than this: at full detail thin bars and leaves shimmer as the camera moves.)
-  vec3 near = textureLod(tRef, vUv, 1.4 + lodShift).rgb;
-  float busy = smoothstep(0.05, 0.16, length(textureLod(tRef, vUv, 1.8 + lodShift).rgb - textureLod(tRef, vUv, 3.4 + lodShift).rgb));
-  // left bare in places: the paper shows through as light catches
-  float thin = smoothstep(0.5, 0.74, fbm(q * 2.6 + 3.0));
-  gl_FragColor = vec4(mix(mix(pow(c, vec3(power)), vec3(1.0), thin * 0.12), near, busy), 1.0);
-}
-`;
-
 // reach: stroke length as a fraction of its distance from the view that placed it.
 // rowGap, colGap: distance between rows of strokes and along a row, as fractions of stroke length.
 const LAYERS = [
@@ -310,25 +57,6 @@ const MAX_OCTAVE = 6;
 const BAKE_W = 320, BAKE_H = 200;
 const BAKE_STRIDE = 3;
 const FARTHEST = 70; // metres: the sky dome is painted by the first wash alone
-
-function bakeAtlas(renderer) {
-  const t = new THREE.WebGLRenderTarget(1024, 1024, {
-    generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false,
-  });
-  const m = new THREE.ShaderMaterial({ vertexShader: quadVertex, fragmentShader: atlasFragment, depthTest: false, depthWrite: false });
-  const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), m);
-  q.frustumCulled = false;
-  const sc = new THREE.Scene();
-  sc.add(q);
-  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const prev = renderer.getRenderTarget();
-  renderer.setRenderTarget(t);
-  renderer.render(sc, cam);
-  renderer.setRenderTarget(prev);
-  m.dispose();
-  q.geometry.dispose();
-  return t;
-}
 
 // alpha 1 + k: the point is on something that comes and goes, number k (see `ownStrokes` in bake)
 const positionMaterial = (tag = 1) => new THREE.ShaderMaterial({
@@ -371,13 +99,9 @@ void main() { gl_FragColor = vec4(oid, each > 0.5 ? floor(vPiece + 0.5) : 0.0, 0
   side: THREE.DoubleSide,
 });
 
-function layerMesh(layer, shared, atlas) {
+// Instance attributes for placed strokes (rendered by oilpaint.js).
+function layerData(layer) {
   const geo = new THREE.InstancedBufferGeometry();
-  // x -0.5..0.5 along the stroke, y -0.5..0.5 across; enough segments to bend (small marks need few)
-  const plane = new THREE.PlaneGeometry(1, 1, layer.segments, 1);
-  geo.index = plane.index;
-  geo.setAttribute('position', plane.getAttribute('position'));
-  geo.setAttribute('uv', plane.getAttribute('uv'));
   const attr = (name, size = 4) => {
     const a = new THREE.InstancedBufferAttribute(new Float32Array(layer.cap * size), size);
     a.setUsage(THREE.DynamicDrawUsage);
@@ -387,38 +111,10 @@ function layerMesh(layer, shared, atlas) {
   // aCol: the paint of the object under it (rgb, linear) and how it is lit: 1 by the lights, 0 it glows by
   // itself (lamps, windows), -1 a crisp thing that is never painted over (covers, labels); plus 10 x k when it
   // is on station furniture number k (ownStrokes), which a rack replaces. Oil paint (oilpaint.js)
-  // colours its strokes from this; the other looks read the rendered picture instead.
+  // colours its strokes from this.
   const buffers = { aPos: attr('aPos'), aTan: attr('aTan'), aNor: attr('aNor'), aShape: attr('aShape'), aCol: attr('aCol') };
   geo.instanceCount = 0;
-  const blend = layer.mode === 'TOUCH' || layer.mode === 'GROUND'
-    ? { blending: THREE.NormalBlending }
-    : { blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.ZeroFactor, blendDst: THREE.SrcColorFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor };
-  const mat = new THREE.ShaderMaterial({
-    vertexShader: strokeVertex,
-    fragmentShader: strokeFragment,
-    defines: { [layer.mode]: '' },
-    uniforms: {
-      ...shared,
-      tAtlas: { value: atlas.texture },
-      window: { value: new THREE.Vector2(...layer.window) },
-      lods: { value: new THREE.Vector2(...layer.lods) },
-      gate: { value: new THREE.Vector2(...layer.gate) },
-      power: { value: layer.power ?? 1 },
-      calm: { value: new THREE.Vector2(...(layer.calm ?? [0, 0])) },
-      opacity: { value: layer.opacity },
-      rimPower: { value: layer.rim },
-      slack: { value: layer.slack },
-      clip: { value: new THREE.Vector3(...layer.clip) },
-    },
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    ...blend,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;
-  return { mesh, geo, mat, plane, buffers, layer, count: 0, taken: new Set() };
+  return { geo, buffers, layer, count: 0, taken: new Set() };
 }
 
 // The one direction a painter pulls the brush across an open surface: left to right as you face it,
@@ -481,19 +177,14 @@ export function strokeFingerprint(world, views) {
   }
 }
 
-export function createBrushStrokes(renderer, refTexture, depthTexture) {
+export function createBrushStrokes(renderer) {
   const shared = {
-    tRef: { value: refTexture },
-    tDepth: { value: depthTexture },
     viewProj: { value: new THREE.Matrix4() },
     eye: { value: new THREE.Vector3() },
     clipRange: { value: new THREE.Vector2(0.1, 100) },
     heightAt1m: { value: 1 },
-    pan: { value: new THREE.Vector2() },
     aspect: { value: 1 },
-    lodShift: { value: 0 },
     farGrow: { value: new THREE.Vector3(...FAR_GROW) },
-    fovea: { value: new THREE.Vector3(0.5, 0.5, 0) },
     // the thing that turns (STROKE_FRAME): its frame -> world and back, now, and its box (half, y0, y1)
     turnM: { value: new THREE.Matrix4() },
     turnInv: { value: new THREE.Matrix4() },
@@ -509,25 +200,7 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     if (found) turner = found;
     return turner;
   }
-  const atlas = bakeAtlas(renderer);
-  const scene = new THREE.Scene();
-  const under = new THREE.ShaderMaterial({
-    vertexShader: quadVertex,
-    fragmentShader: underFragment,
-    uniforms: { slack: { value: 1 }, tRef: shared.tRef, tDepth: shared.tDepth, clipRange: shared.clipRange, lodShift: shared.lodShift, pan: shared.pan, aspect: shared.aspect, power: { value: 0.82 } },
-    depthTest: false, depthWrite: false, blending: THREE.NoBlending,
-  });
-  const underQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), under);
-  underQuad.frustumCulled = false;
-  underQuad.renderOrder = 0;
-  scene.add(underQuad);
-  const layers = LAYERS.map((l, i) => {
-    const part = layerMesh(l, shared, atlas);
-    part.mesh.renderOrder = i + 1;
-    part.mesh.visible = false; // until the first bake
-    scene.add(part.mesh);
-    return part;
-  });
+  const layers = LAYERS.map((l) => layerData(l));
 
   const r = rng(7);
   const p = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), e = new THREE.Vector3(), n = new THREE.Vector3(), toEye = new THREE.Vector3(), side = new THREE.Vector3(), centre = new THREE.Vector3(), long = new THREE.Vector3(), mid = new THREE.Vector3(), hit = new THREE.Vector3(), hand = new THREE.Vector3(), across = new THREE.Vector3();
@@ -912,13 +585,11 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
   function upload() {
     for (const part of layers) {
       part.geo.instanceCount = part.count;
-      part.mesh.visible = part.count > 0;
       for (const buf of Object.values(part.buffers)) { buf.clearUpdateRanges(); buf.addUpdateRange(0, part.count * buf.itemSize); buf.needsUpdate = true; }
     }
   }
 
   return {
-    scene,
     // for oil paint (oilpaint.js): the same placed strokes, drawn its own way
     parts: layers.map((part) => ({ geo: part.geo, layer: part.layer })),
     shared,
@@ -933,10 +604,7 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
     get caps() { return layers.map((l) => l.buffers.aPos.count); },
     setSize(w, h) {
       shared.aspect.value = w / h;
-      shared.lodShift.value = Math.log2(Math.max(1, h) / 720);
     },
-    setPan(x, y) { shared.pan.value.set(x, y); },
-    setFovea(v) { shared.fovea.value.copy(v); },
     setCamera(camera) {
       const on = !!turner && shownAll(turner);
       shared.turnOn.value = on ? 1 : 0;
@@ -952,10 +620,7 @@ export function createBrushStrokes(renderer, refTexture, depthTexture) {
       shared.heightAt1m.value = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
     },
     dispose() {
-      atlas.dispose();
-      under.dispose();
-      underQuad.geometry.dispose();
-      for (const part of layers) { part.mat.dispose(); part.geo.dispose(); part.plane.dispose(); }
+      for (const part of layers) part.geo.dispose();
     },
   };
 }

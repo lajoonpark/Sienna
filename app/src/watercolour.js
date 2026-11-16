@@ -467,7 +467,6 @@ export function createWatercolour(renderer, { card = false, unpainted = UNPAINTE
   const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
   const dir = new THREE.Vector3();
-  const pan = new THREE.Vector2();
 
   // wash + bleed passes (the card window's look, and the suitcase overlay's), rebuilt when the pixel ratio changes.
   // Two copies: `full`, and `lite` at half the size (a quarter of the pixels, half the radius: about
@@ -533,16 +532,13 @@ export function createWatercolour(renderer, { card = false, unpainted = UNPAINTE
   const strokeViews = [];
   let strokeWorld = null;
   function makeBrush() {
-    const strokes = createBrushStrokes(renderer, null, target.depthTexture);
+    const strokes = createBrushStrokes(renderer);
     const oil = createOilPaint(renderer, strokes, target);
     const b = {
       texture: oil.texture,
       strokes,
       oil,
-      render(pan, camera, sync, world) {
-        strokes.setPan(pan.x, pan.y);
-        strokes.setFovea(material.uniforms.fovea.value);
-        strokes.setCamera(camera);
+      render(camera, sync, world) {
         oil.render(world, camera, sync);
       },
       setSize(full) { oil.setSize(full, renderer.getPixelRatio()); },
@@ -951,8 +947,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
         }
         drawWorld();
         sync?.('scene');
-        pan.set((yaw * pxPerRad) / u.resolution.value.x, (pitch * pxPerRad) / u.resolution.value.y);
-        brush.render(pan, camera, sync, scene);
+        brush.render(camera, sync, scene);
         // keep what is under the overlay, so that frames in which only the overlay moves can redraw it alone
         saveUnder(overlay, rect);
         wholeTarget();
@@ -1031,7 +1026,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     get why() { return watchWorld.why; },
     get last() { return { ...last, saved: !!capBox }; },
     // strokes placed so far, per layer, and how many their buffers hold
-    get strokes() { return brush ? { counts: brush.strokes.counts, caps: brush.strokes.caps, scene: brush.strokes.scene } : null; },
+    get strokes() { return brush ? { counts: brush.strokes.counts, caps: brush.strokes.caps } : null; },
     // where the world is drawn: warm-up compiles must use it too (it picks the shader's output variant)
     get target() { return target; },
   };
