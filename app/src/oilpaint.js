@@ -551,6 +551,7 @@ uniform sampler2D tPaper;
 uniform vec2 resolution;
 uniform vec2 paperOffset;
 uniform float overlayOn;
+uniform vec4 overlayBox;
 uniform float bars;
 uniform float wipe;
 uniform float wipeSeed;
@@ -622,14 +623,15 @@ void main() {
   // it, nor on what is seen through it) and the suitcase overlay are shown as drawn
   float keep = clamp(1.0 - base.a, 0.0, 1.0);
   keep = max(keep, step(${GLASS_ALPHA - 0.0015}, base.a) * step(base.a, ${GLASS_ALPHA + 0.0015}));
-  if (overlayOn > 0.5) keep = max(keep, step(texture2D(tDepth, vUv).x, 0.99999));
+  bool inOv = overlayOn > 0.5 && vUv.x > overlayBox.x && vUv.y > overlayBox.y && vUv.x < overlayBox.z && vUv.y < overlayBox.w;
+  if (inOv) keep = max(keep, step(texture2D(tDepth, vUv).x, 0.99999));
   col = mix(col, base.rgb, keep);
   col = toSRGB(clamp(col, 0.0, 1.0));
   // the paint wipe of a long trip, under the suitcase (overlay pixels keep the overlay) and under the canvas's
   // weave, which shows through it like through the rest of the paint
   if (wipe > 0.001 && wipe < 1.999) {
     vec4 w = paintWipe(vUv * vec2(aspect, 1.0), aspect);
-    float under = overlayOn > 0.5 ? step(0.99999, texture2D(tDepth, vUv).x) : 1.0;
+    float under = inOv ? step(0.99999, texture2D(tDepth, vUv).x) : 1.0;
     col = mix(col, w.rgb, w.a * under);
     keep *= 1.0 - w.a * under;
   }
@@ -875,7 +877,7 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
         fragmentShader: finalFragment,
         uniforms: {
           tScene: u.tScene, tDepth: u.tDepth, tPaper: u.tPaper, resolution: u.resolution, paperOffset: u.paperOffset,
-          overlayOn: u.overlayOn, bars: u.bars, wipe: u.wipe, wipeSeed: u.wipeSeed, grade: u.grade, vignette: u.vignette, borderSeed: u.borderSeed,
+          overlayOn: u.overlayOn, overlayBox: u.overlayBox, bars: u.bars, wipe: u.wipe, wipeSeed: u.wipeSeed, grade: u.grade, vignette: u.vignette, borderSeed: u.borderSeed,
           tPaint: { value: paintT.texture },
         },
         depthTest: false, depthWrite: false,

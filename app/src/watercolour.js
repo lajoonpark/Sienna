@@ -444,6 +444,7 @@ export function createWatercolour(renderer, { card = false, unpainted = UNPAINTE
       lift: { value: 0.07 },
       tOver: { value: null },
       overlayOn: { value: 0 },
+      overlayBox: { value: new THREE.Vector4(0, 0, 1, 1) },
       overBox: { value: new THREE.Vector4(2, 2, 2, 2) },
       overClean: { value: 1 - OVER_WASH },
       grainAmt: { value: 1 },
@@ -751,6 +752,11 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     renderer.autoClear = auto;
   }
   function wholeTarget() { target.scissorTest = false; target.scissor.set(0, 0, target.width, target.height); }
+  function setOverlayBox(box) {
+    if (!box) { material.uniforms.overlayBox.value.set(0, 0, 1, 1); return; }
+    renderer.getDrawingBufferSize(full);
+    material.uniforms.overlayBox.value.set(box.x / full.x, box.y / full.y, (box.x + box.w) / full.x, (box.y + box.h) / full.y);
+  }
   // the final pass, on one part of the screen (drawing-buffer px, y up)
   function finalPart(x, y, w, h) {
     const pr = renderer.getPixelRatio();
@@ -782,6 +788,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
     renderOverlay(renderer, overlay);
     wholeTarget();
     sync?.('scene');
+    setOverlayBox(c);
     washOverlay(rect, sync);
     renderer.getDrawingBufferSize(full);
     const x0 = Math.max(0, c.x - REACH), y0 = Math.max(0, c.y - REACH);
@@ -943,10 +950,13 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
         saveUnder(overlay, rect);
         wholeTarget();
         sync?.('save');
+        if (capBox) { target.scissor.set(capBox.x, capBox.y, capBox.w, capBox.h); target.scissorTest = true; }
         renderer.setRenderTarget(target);
         renderOverlay(renderer, overlay);
+        wholeTarget();
         sync?.('overlay');
         u.overlayOn.value = overlay ? 1 : 0;
+        setOverlayBox(capBox);
         washOverlay(rect, sync);
         renderer.setRenderTarget(null);
         renderer.render(post, postCam);
