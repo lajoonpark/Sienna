@@ -17,15 +17,31 @@
 // again without `texture.needsUpdate = true`, or a geometry rewritten in place. Nothing in the app does
 // either (a redrawn canvas has to set needsUpdate to reach the GPU at all).
 
-const AFFINE = [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14];
-const MAPS = ['map', 'emissiveMap', 'alphaMap', 'gradientMap'];
-
 export function createWatcher() {
   let buf = new Float32Array(8192);
+  let cap = buf.length;
   let n = 0, dirty = false, lastN = -1, why = null, shadowLights = 0;
   const camBuf = new Float32Array(32);
   let hasCam = false;
+  const seenMat = new Set();
 
+  function growBuf(need = 1) {
+    while (n + need > cap) cap *= 2;
+    const b = new Float32Array(cap);
+    b.set(buf);
+    buf = b;
+  }
+  function put(v) {
+    if (n >= cap) growBuf(1);
+    const f = Math.fround(v);
+    if (buf[n] !== f && (f === f || buf[n] === buf[n])) { buf[n] = f; dirty = true; }
+    n++;
+  }
+  function putFast(v) {
+    const f = Math.fround(v);
+    if (buf[n] !== f && (f === f || buf[n] === buf[n])) { buf[n] = f; dirty = true; }
+    n++;
+  }
   function camChanged(camera) {
     if (!camera) return false;
     let diff = !hasCam;
@@ -41,19 +57,13 @@ export function createWatcher() {
     hasCam = true;
     return diff;
   }
-
-  function put(v) {
-    if (n === buf.length) { const b = new Float32Array(n * 2); b.set(buf); buf = b; }
-    const f = Math.fround(v);
-    // (NaN never equals itself: written once, then left alone)
-    if (buf[n] !== f && (f === f || buf[n] === buf[n])) { buf[n] = f; dirty = true; }
-    n++;
-  }
-  function putColor(c) { put(c.r); put(c.g); put(c.b); }
+  function putColor(c) { if (n + 3 > cap) growBuf(3); putFast(c.r); putFast(c.g); putFast(c.b); }
   function putTexture(t) {
-    put(t.id); put(t.version);
+    if (!t) { put(-1); return; }
+    if (n + 7 > cap) growBuf(7);
+    putFast(t.id); putFast(t.version);
     const o = t.offset, r = t.repeat;
-    if (o) { put(o.x); put(o.y); put(r.x); put(r.y); put(t.rotation); }
+    if (o) { putFast(o.x); putFast(o.y); putFast(r.x); putFast(r.y); putFast(t.rotation); }
   }
   function putValue(v) {
     if (v == null) put(0);
@@ -61,45 +71,65 @@ export function createWatcher() {
     else if (typeof v === 'boolean') put(v ? 1 : 0);
     else if (v.isTexture) putTexture(v);
     else if (v.isColor) putColor(v);
-    else if (v.elements) for (const e of v.elements) put(e);
-    else if (v.isVector2 || v.isVector3 || v.isVector4 || v.isQuaternion) { put(v.x); put(v.y); if (v.z !== undefined) put(v.z); if (v.w !== undefined) put(v.w); }
+    else if (v.elements) { if (n + v.elements.length > cap) growBuf(v.elements.length); for (const e of v.elements) putFast(e); }
+    else if (v.isVector2 || v.isVector3 || v.isVector4 || v.isQuaternion) {
+      if (n + 4 > cap) growBuf(4);
+      putFast(v.x); putFast(v.y); if (v.z !== undefined) putFast(v.z); if (v.w !== undefined) putFast(v.w);
+    }
     else if (Array.isArray(v) || ArrayBuffer.isView(v)) for (const e of v) putValue(e);
     else put(1);
   }
   function putMaterial(m) {
-    put(m.id); put(m.opacity); put(m.visible ? 1 : 0);
+    put(m.id);
+    if (seenMat.has(m)) return;
+    seenMat.add(m);
+    if (n + 16 > cap) growBuf(16);
+    putFast(m.opacity); putFast(m.visible ? 1 : 0);
     // version counts `needsUpdate = true`. three sets that itself, twice, every time it draws a see-through
     // double-sided material (back faces, then front), so there the count says nothing; what such an update
     // is usually for is written down instead.
-    if (m.transparent && m.side === 2 && !m.forceSinglePass) put(-1); else put(m.version);
-    put(m.side); put(m.transparent ? 1 : 0); put(m.blending); put(m.alphaTest); put((m.depthTest ? 1 : 0) + (m.depthWrite ? 2 : 0) + (m.fog ? 4 : 0));
+    if (m.transparent && m.side === 2 && !m.forceSinglePass) putFast(-1); else putFast(m.version);
+    putFast(m.side); putFast(m.transparent ? 1 : 0); putFast(m.blending); putFast(m.alphaTest);
+    putFast((m.depthTest ? 1 : 0) + (m.depthWrite ? 2 : 0) + (m.fog ? 4 : 0));
     if (m.color) putColor(m.color);
     if (m.emissive) { putColor(m.emissive); put(m.emissiveIntensity); }
-    for (const k of MAPS) { const t = m[k]; if (t) putTexture(t); else put(-1); }
+    putTexture(m.map); putTexture(m.emissiveMap); putTexture(m.alphaMap); putTexture(m.gradientMap);
     if (m.rotation !== undefined) put(m.rotation); // sprites
     if (m.uniforms) for (const k in m.uniforms) putValue(m.uniforms[k].value);
   }
   function visit(o) {
     if (!o.visible) return;
-    put(o.id);
+    if (n + 24 > cap) growBuf(24);
+    putFast(o.id);
     const e = o.matrixWorld.elements;
-    for (let i = 0; i < 12; i++) put(e[AFFINE[i]]);
+    putFast(e[0]); putFast(e[1]); putFast(e[2]);
+    putFast(e[4]); putFast(e[5]); putFast(e[6]);
+    putFast(e[8]); putFast(e[9]); putFast(e[10]);
+    putFast(e[12]); putFast(e[13]); putFast(e[14]);
     if (o.isMesh || o.isSprite || o.isLine || o.isPoints) {
       const m = o.material;
-      if (Array.isArray(m)) for (const x of m) putMaterial(x); else if (m) putMaterial(m);
+      if (Array.isArray(m)) { for (let i = 0; i < m.length; i++) putMaterial(m[i]); } else if (m) putMaterial(m);
       const g = o.geometry;
-      if (g) { put(g.id); put(g.drawRange.start); put(g.drawRange.count === Infinity ? -1 : g.drawRange.count); }
-      if (o.isInstancedMesh) { put(o.count); put(o.instanceMatrix.version); put(o.instanceColor ? o.instanceColor.version : -1); }
+      if (g) {
+        if (n + 3 > cap) growBuf(3);
+        putFast(g.id); putFast(g.drawRange.start); putFast(g.drawRange.count === Infinity ? -1 : g.drawRange.count);
+      }
+      if (o.isInstancedMesh) {
+        if (n + 3 > cap) growBuf(3);
+        putFast(o.count); putFast(o.instanceMatrix.version); putFast(o.instanceColor ? o.instanceColor.version : -1);
+      }
       put(o.renderOrder);
     } else if (o.isLight) {
-      putColor(o.color); put(o.intensity); put(o.castShadow ? 1 : 0);
+      putColor(o.color);
+      if (n + 7 > cap) growBuf(7);
+      putFast(o.intensity); putFast(o.castShadow ? 1 : 0);
       if (o.castShadow) shadowLights++;
       if (o.groundColor) putColor(o.groundColor);
-      if (o.distance !== undefined) { put(o.distance); put(o.decay ?? 0); }
+      if (o.distance !== undefined) { putFast(o.distance); putFast(o.decay ?? 0); }
     }
     if (dirty && !why) why = o; // the first thing found changed (for checks)
     const c = o.children;
-    for (let i = 0; i < c.length; i++) visit(c[i]);
+    for (let i = 0, len = c.length; i < len; i++) visit(c[i]);
   }
 
   // an object's geometry box, as it is on screen: grows out[] = [x0, y0, x1, y1] in NDC; false = cannot say
@@ -138,6 +168,7 @@ export function createWatcher() {
         return true;
       }
       n = 0; dirty = false; why = null; shadowLights = 0;
+      seenMat.clear();
       if (scene) {
         visit(scene);
         if (scene.fog) { putColor(scene.fog.color); put(scene.fog.near ?? 0); put(scene.fog.far ?? 0); put(scene.fog.density ?? 0); }
