@@ -110,7 +110,9 @@ function leanShadowMap() {
   const { x, y } = sun.shadow.mapSize;
   const map = new THREE.WebGLRenderTarget(x, y, { format: THREE.RedFormat, generateMipmaps: false });
   map.texture.name = 'sun.shadowMapColour';
-  map.depthTexture = new THREE.DepthTexture(x, y, THREE.UnsignedIntType);
+  map.depthTexture = new THREE.DepthTexture(
+    x, y, params.get('shadow32') === '1' ? THREE.UnsignedIntType : THREE.UnsignedShortType,
+  );
   map.depthTexture.name = 'sun.shadowMap';
   map.depthTexture.format = THREE.DepthFormat;
   map.depthTexture.compareFunction = THREE.LessEqualCompare;
