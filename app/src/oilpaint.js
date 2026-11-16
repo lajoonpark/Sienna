@@ -34,6 +34,8 @@ const DAB_WIDTH = Number(params.get('dabwidth')) || 0.62;
 // which of the placed layers (coat, medium, fine) are painted; ?oillayers=3 or 1,1,1 includes the fine one (not baked by default)
 const rawOilLayers = params.get('oillayers');
 const OIL_LAYERS = rawOilLayers == null ? [1, 1, 0] : rawOilLayers === '3' ? [1, 1, 1] : rawOilLayers.split(',').map(Number);
+// draw placed dabs before the under-coat so covered pixels skip under-coat shading; ?dabprepass=0 keeps old order
+const DAB_PREPASS = params.get('dabprepass') !== '0';
 // the biggest a dab may be on screen, across and along (shares of its height); ?oilmax=0.05,0.12
 const MAX_SIZE = params.get('oilmax')?.split(',').map(Number) ?? [0.045, 0.11];
 // the share of each layer's strokes painted (coat, medium, fine); ?oilkeep=0.5,0.7,1
@@ -209,7 +211,8 @@ varying vec3 vC1;
 varying vec3 vC2;
 varying vec4 vAxis;
 varying float vDepth;
-varying float vPlane;        // how far its plane is from the eye, along its normal
+varying float vPlane;
+varying vec3 vMine;        // how far its plane is from the eye, along its normal
 ${LIGHT}
 ${STROKE_FRAME}
 float sceneDepth(vec2 uv) {
@@ -303,6 +306,7 @@ void main() {
   // no two loads alike: a little lighter or darker, leaning warm or cool, as if the brush was not rinsed
   c *= (0.9 + 0.2 * r3) * mix(vec3(1.05, 1.0, 0.93), vec3(0.94, 1.0, 1.07), r4);
   vC1 = c;
+  vMine = sqrt(max(c, 0.0));
   // the second colour streaked into it: a lighter, warmer note or a deeper, cooler one
   vC2 = r2 > 0.5 ? c * vec3(1.16, 1.1, 1.0) + 0.012 : c * vec3(0.8, 0.84, 0.92);
 
@@ -324,6 +328,7 @@ const dabFragment = /* glsl */ `
 uniform sampler2D tAtlas;
 uniform sampler2D tDepth;
 uniform sampler2D tScene;     // the scene as drawn (linear)
+uniform sampler2D tPre;       // prepass (sqrt(tScene.rgb), 1 - tDepth.x or -1 on crisp) under DAB_PREPASS
 uniform vec2 clipRange;
 uniform vec2 screen;         // size of the target the dabs are drawn into
 uniform float impasto;
@@ -334,6 +339,7 @@ varying vec3 vC2;
 varying vec4 vAxis;
 varying float vDepth;
 varying float vPlane;
+varying vec3 vMine;
 float sceneDepth(vec2 uv) {
   float z = textureLod(tDepth, uv, 0.0).x * 2.0 - 1.0;
   return (2.0 * clipRange.x * clipRange.y) / (clipRange.y + clipRange.x - z * (clipRange.y - clipRange.x));
@@ -345,10 +351,21 @@ void main() {
 #endif
   vec4 t = texture2D(tAtlas, vAtlas);   // paint, streak, slope along, slope across
   if (t.r < 0.3) discard;
+  vec2 uv = gl_FragCoord.xy / screen;
+#ifdef DAB_PREPASS
+  vec4 pre = texture2D(tPre, uv);
+  if (pre.a < 0.0) discard;
+  float sd = (clipRange.x * clipRange.y) / (clipRange.x + pre.a * (clipRange.y - clipRange.x));
+  float off = vPlane * abs(sd / vDepth - 1.0);
+  float tol = ${f4(DAB_TOL[0])} + ${f4(DAB_TOL[1])} * vDepth;
+  float own = agree.x < 0.5 ? 1.0 : 1.0 - smoothstep(tol, tol * 1.8, off);
+  if (own <= 0.0) discard;
+  if (agree.y > 0.5) own *= 1.0 - smoothstep(${f4(DAB_COL[0])}, ${f4(DAB_COL[1])}, length(pre.rgb - vMine));
+  if (own <= 0.0) discard;
+#else
   // Its own face only, to about a centimetre: what is drawn at this pixel must lie on the dab's plane (the
   // scene's point along this pixel's ray, measured square to the plane, not along the ray, which at a glancing
   // look let paint wrap round a corner or float over a gap). Past the edge of the face it stops.
-  vec2 uv = gl_FragCoord.xy / screen;
   float off = vPlane * abs(sceneDepth(uv) / vDepth - 1.0);
   float tol = ${f4(DAB_TOL[0])} + ${f4(DAB_TOL[1])} * vDepth;
   float own = agree.x < 0.5 ? 1.0 : 1.0 - smoothstep(tol, tol * 1.8, off);
@@ -359,9 +376,10 @@ void main() {
   vec4 drawn = texture2D(tScene, uv);
   // never over the decor spines (materials.js ownColour): a dab wider than a spine would cover its neighbours
   if (abs(drawn.a - ${OWN_ALPHA.toFixed(4)}) < 0.0012) discard;
-  vec3 there = sqrt(max(drawn.rgb, 0.0)), mine = sqrt(max(vC1, 0.0));
-  if (agree.y > 0.5) own *= 1.0 - smoothstep(${f4(DAB_COL[0])}, ${f4(DAB_COL[1])}, length(there - mine));
+  vec3 there = sqrt(max(drawn.rgb, 0.0));
+  if (agree.y > 0.5) own *= 1.0 - smoothstep(${f4(DAB_COL[0])}, ${f4(DAB_COL[1])}, length(there - vMine));
   if (own <= 0.0) discard;
+#endif
   // the paint stands up off the canvas, and the room's light, from the upper left, rakes across it
   vec2 g = vAxis.xy * (t.b - 0.5) * 0.5 + vAxis.zw * (t.a - 0.5) * 0.5;
   float rake = 0.5 * g.x - 0.7 * g.y;
@@ -387,10 +405,51 @@ void main() {
 }
 `;
 
+const preFragment = /* glsl */ `
+uniform sampler2D tDepth;
+uniform sampler2D tScene;
+varying vec2 vUv;
+void main() {
+  vec4 drawn = texture2D(tScene, vUv);
+  bool own = abs(drawn.a - ${OWN_ALPHA.toFixed(4)}) < 0.0012;
+  float z0 = texture2D(tDepth, vUv).x;
+  gl_FragColor = vec4(sqrt(max(drawn.rgb, 0.0)), own ? -1.0 : 1.0 - z0);
+}
+`;
+const depthOnlyFragment = /* glsl */ `
+uniform sampler2D tDepth;
+uniform vec2 texel;
+varying vec2 vUv;
+void main() {
+  vec2 o = texel * 0.25;
+  gl_FragDepth = max(max(texture2D(tDepth, vUv + vec2(-o.x, -o.y)).x, texture2D(tDepth, vUv + vec2(o.x, -o.y)).x),
+                     max(texture2D(tDepth, vUv + vec2(-o.x, o.y)).x, texture2D(tDepth, vUv + vec2(o.x, o.y)).x));
+  gl_FragColor = vec4(0.0);
+}
+`;
+const copyMaskFragment = /* glsl */ `
+uniform sampler2D tDabs;
+uniform sampler2D tDepth;
+uniform sampler2D tScene;
+uniform vec2 under;
+uniform float countMode;
+varying vec2 vUv;
+void main() {
+  vec4 dab = texture2D(tDabs, vUv);
+  gl_FragColor = dab;
+  if (countMode > 0.5 || dab.a >= 0.996 || under.y < 0.5) { gl_FragDepth = 0.0; return; }
+  float z0 = texture2D(tDepth, vUv).x;
+  float sa = texture2D(tScene, vUv).a;
+  gl_FragDepth = (z0 >= 0.99999 || sa < 0.995) ? 0.0 : 1.0;
+}
+`;
+
 const underFragment = /* glsl */ `
 uniform sampler2D tDepth;
 uniform sampler2D tScene;
 uniform sampler2D tAtlas;
+uniform sampler2D tDabs;
+uniform float countMode;
 uniform vec2 texel;          // one paint-target pixel, in uv
 uniform vec2 full;           // one scene pixel, in uv
 uniform vec3 ray00;
@@ -420,6 +479,13 @@ float linZ(float d) { return 1.0 / (depthK.x * d + depthK.y); }
 float h21(vec2 p) { vec3 p3 = fract(p.xyx * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec2 h22(vec2 p) { vec3 p3 = fract(p.xyx * vec3(0.1031, 0.1030, 0.0973)); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.xx + p3.yz) * p3.zy); }
 void main() {
+#ifdef DAB_PREPASS
+  vec4 dab = texture2D(tDabs, vUv);
+  if (countMode > 0.5 || dab.a >= 0.996 || under.y < 0.5) { gl_FragColor = dab; return; }
+  vec4 here = texture2D(tScene, vUv);
+  float z0 = texture2D(tDepth, vUv).x;
+  if (z0 >= 0.99999 || here.a < 0.995) { gl_FragColor = dab; return; }
+#else
   // the depth, for the dabs' test
   vec2 o = texel * 0.25;
   gl_FragDepth = max(max(texture2D(tDepth, vUv + vec2(-o.x, -o.y)).x, texture2D(tDepth, vUv + vec2(o.x, -o.y)).x),
@@ -430,6 +496,7 @@ void main() {
   float z0 = texture2D(tDepth, vUv).x;
   // the sky, crisp things (alpha 0), things that move (alpha 0.99, materials.js unpinned) and glass (materials.js glass): as drawn
   if (z0 >= 0.99999 || here.a < 0.995) return;
+#endif
   // where this pixel is, and which way its surface faces (from the nearer neighbour each way, so an edge
   // does not bend it)
   vec3 rayP = vRay * linZ(z0);
@@ -564,7 +631,11 @@ void main() {
   col = mix(col, col2, smoothstep(0.52, 0.78, bestT.g));
   col *= 1.0 + rake * 2.5 * impasto;
   col += vec3(1.0, 0.97, 0.9) * pow(max(rake, 0.0), 2.0) * 1.6 * impasto * (0.3 + dot(col, vec3(0.3, 0.5, 0.2)));
+#ifdef DAB_PREPASS
+  gl_FragColor = vec4(dab.rgb + max(col, 0.0) * (1.0 - dab.a), 1.0);
+#else
   gl_FragColor = vec4(max(col, 0.0), 1.0);
+#endif
 }
 `;
 
@@ -714,12 +785,53 @@ function bakeAtlas(renderer) {
 export function createOilPaint(renderer, strokes, sceneTarget) {
   const atlas = bakeAtlas(renderer);
   const paintT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: true });
-  // The first pass into the paint target: the under-coat (UNDER, below), and the scene's depth into the
-  // target's own: for each of its pixels the farthest of the scene's under it (so where an edge splits a pixel
-  // a dab is not held back; its fragment shader keeps it to its face).
+  const dabT = DAB_PREPASS ? new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: true }) : null;
+  const fullQuadGeo = new THREE.PlaneGeometry(2, 2);
+  const flatCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  // Under DAB_PREPASS: prepass caches sqrt(tScene) and encoded depth in paintT, depthOnly fills dabT's depth
+  // buffer, dabs draw first into dabT, then underFragment runs only where dabs left bare or partial pixels.
+  const preScene = DAB_PREPASS ? new THREE.Scene() : null;
+  const preMat = DAB_PREPASS ? new THREE.ShaderMaterial({
+    uniforms: { tDepth: { value: sceneTarget.depthTexture }, tScene: { value: sceneTarget.texture } },
+    vertexShader: quadVertex, fragmentShader: preFragment,
+    depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+  }) : null;
+  if (preScene) {
+    const q = new THREE.Mesh(fullQuadGeo, preMat);
+    q.frustumCulled = false;
+    preScene.add(q);
+  }
+  const depthPreScene = DAB_PREPASS ? new THREE.Scene() : null;
+  const depthPreMat = DAB_PREPASS ? new THREE.ShaderMaterial({
+    uniforms: { tDepth: { value: sceneTarget.depthTexture }, texel: { value: new THREE.Vector2(1, 1) } },
+    vertexShader: quadVertex, fragmentShader: depthOnlyFragment,
+    depthTest: true, depthFunc: THREE.AlwaysDepth, depthWrite: true, blending: THREE.NoBlending,
+  }) : null;
+  if (depthPreScene) {
+    const q = new THREE.Mesh(fullQuadGeo, depthPreMat);
+    q.frustumCulled = false;
+    depthPreScene.add(q);
+  }
+  const copyMaskScene = DAB_PREPASS ? new THREE.Scene() : null;
+  const copyMaskMat = DAB_PREPASS ? new THREE.ShaderMaterial({
+    uniforms: {
+      tDabs: { value: dabT.texture }, tDepth: { value: sceneTarget.depthTexture }, tScene: { value: sceneTarget.texture },
+      under: { value: UNDER }, countMode: { value: 0 },
+    },
+    vertexShader: quadVertex, fragmentShader: copyMaskFragment,
+    depthTest: true, depthFunc: THREE.AlwaysDepth, depthWrite: true, blending: THREE.NoBlending,
+  }) : null;
+  if (copyMaskScene) {
+    const q = new THREE.Mesh(fullQuadGeo, copyMaskMat);
+    q.frustumCulled = false;
+    copyMaskScene.add(q);
+  }
+  // The under-coat (UNDER, below), plus scene depth downsample when DAB_PREPASS is off.
   const depthDown = new THREE.ShaderMaterial({
+    defines: DAB_PREPASS ? { DAB_PREPASS: '' } : undefined,
     uniforms: {
       tDepth: { value: sceneTarget.depthTexture }, tScene: { value: sceneTarget.texture }, tAtlas: { value: atlas.texture },
+      tDabs: { value: dabT ? dabT.texture : null }, countMode: { value: 0 },
       texel: { value: new THREE.Vector2(1, 1) }, full: { value: new THREE.Vector2(1, 1) },
       ray00: { value: new THREE.Vector3() }, rayDu: { value: new THREE.Vector3() }, rayDv: { value: new THREE.Vector3() },
       depthK: { value: new THREE.Vector2() },
@@ -731,13 +843,12 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
     },
     vertexShader: underVertex,
     fragmentShader: underFragment,
-    depthTest: true, depthFunc: THREE.AlwaysDepth, depthWrite: true, blending: THREE.NoBlending,
+    depthTest: true, depthFunc: DAB_PREPASS ? THREE.LessDepth : THREE.AlwaysDepth, depthWrite: !DAB_PREPASS, blending: THREE.NoBlending,
   });
-  const depthQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), depthDown);
+  const depthQuad = new THREE.Mesh(fullQuadGeo, depthDown);
   depthQuad.frustumCulled = false;
   const depthScene = new THREE.Scene();
   depthScene.add(depthQuad);
-  const flatCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const light = {
     hemiSky: { value: new THREE.Color() }, hemiGround: { value: new THREE.Color() }, hemiUp: { value: new THREE.Vector3(0, 1, 0) },
     sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunCol: { value: new THREE.Color() }, sunMatrix: { value: new THREE.Matrix4() },
@@ -750,6 +861,7 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
   const own = {
     tDepth: { value: sceneTarget.depthTexture },
     tScene: { value: sceneTarget.texture },
+    tPre: { value: paintT.texture },
     maxSize: { value: new THREE.Vector2(...MAX_SIZE) },
     hiddenOwn: { value: 0 },
     tAtlas: { value: atlas.texture },
@@ -788,6 +900,7 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
   const materials = strokes.parts.map(({ layer }, i) => {
     const geo = geos[i];
     const mat = new THREE.ShaderMaterial({
+      defines: DAB_PREPASS ? { DAB_PREPASS: '' } : undefined,
       vertexShader: dabVertex,
       fragmentShader: dabFragment,
       uniforms: {
@@ -900,16 +1013,33 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
       if (strokes.shared.turnOn.value > 0.5) {
         u.eyeTurn.value.copy(strokes.shared.eye.value).applyMatrix4(strokes.shared.turnInv.value);
       }
-      renderer.setRenderTarget(paintT);
-      const prev = renderer.getClearAlpha(), col = renderer.getClearColor(new THREE.Color());
-      renderer.setClearColor(0x000000, 0);
-      renderer.clear(true, false, false);
-      const auto = renderer.autoClear;
-      renderer.autoClear = false;
-      renderer.render(depthScene, flatCam);
-      renderer.render(scene, camera);
-      renderer.autoClear = auto;
-      renderer.setClearColor(col, prev);
+      if (DAB_PREPASS) {
+        const cm = materials[0]?.defines?.COUNT !== undefined ? 1 : 0;
+        depthDown.uniforms.countMode.value = cm;
+        copyMaskMat.uniforms.countMode.value = cm;
+        const auto = renderer.autoClear;
+        renderer.autoClear = false;
+        renderer.setRenderTarget(paintT);
+        renderer.render(preScene, flatCam);
+        renderer.setRenderTarget(dabT);
+        renderer.render(depthPreScene, flatCam);
+        renderer.render(scene, camera);
+        renderer.setRenderTarget(paintT);
+        renderer.render(copyMaskScene, flatCam);
+        renderer.render(depthScene, flatCam);
+        renderer.autoClear = auto;
+      } else {
+        renderer.setRenderTarget(paintT);
+        const prev = renderer.getClearAlpha(), col = renderer.getClearColor(new THREE.Color());
+        renderer.setClearColor(0x000000, 0);
+        renderer.clear(true, false, false);
+        const auto = renderer.autoClear;
+        renderer.autoClear = false;
+        renderer.render(depthScene, flatCam);
+        renderer.render(scene, camera);
+        renderer.autoClear = auto;
+        renderer.setClearColor(col, prev);
+      }
       sync?.('strokes');
     },
     setSize(full, pixelRatio) {
@@ -917,6 +1047,8 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
       const k = Math.min(1, OIL_SCALE / Math.max(1, pixelRatio));
       const x = Math.max(1, Math.round(full.x * k)), y = Math.max(1, Math.round(full.y * k));
       paintT.setSize(x, y);
+      if (dabT) dabT.setSize(x, y);
+      if (depthPreMat) depthPreMat.uniforms.texel.value.set(1 / x, 1 / y);
       own.screen.value.set(x, y);
       depthDown.uniforms.texel.value.set(1 / x, 1 / y);
       depthDown.uniforms.full.value.set(1 / full.x, 1 / full.y);
@@ -937,8 +1069,12 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
     dispose() {
       atlas.dispose();
       paintT.dispose();
+      if (dabT) dabT.dispose();
+      if (preMat) preMat.dispose();
+      if (depthPreMat) depthPreMat.dispose();
+      if (copyMaskMat) copyMaskMat.dispose();
       depthDown.dispose();
-      depthQuad.geometry.dispose();
+      fullQuadGeo.dispose();
       for (const m of materials) m.dispose();
       for (const g of geos) g.dispose();
     },
