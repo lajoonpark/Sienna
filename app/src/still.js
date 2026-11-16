@@ -23,6 +23,24 @@ const MAPS = ['map', 'emissiveMap', 'alphaMap', 'gradientMap'];
 export function createWatcher() {
   let buf = new Float32Array(8192);
   let n = 0, dirty = false, lastN = -1, why = null, shadowLights = 0;
+  const camBuf = new Float32Array(32);
+  let hasCam = false;
+
+  function camChanged(camera) {
+    if (!camera) return false;
+    let diff = !hasCam;
+    const mw = camera.matrixWorld.elements, pm = camera.projectionMatrix.elements;
+    for (let i = 0; i < 16; i++) {
+      const f = Math.fround(mw[i]);
+      if (camBuf[i] !== f && (f === f || camBuf[i] === camBuf[i])) { camBuf[i] = f; diff = true; }
+    }
+    for (let i = 0; i < 16; i++) {
+      const f = Math.fround(pm[i]);
+      if (camBuf[16 + i] !== f && (f === f || camBuf[16 + i] === camBuf[16 + i])) { camBuf[16 + i] = f; diff = true; }
+    }
+    hasCam = true;
+    return diff;
+  }
 
   function put(v) {
     if (n === buf.length) { const b = new Float32Array(n * 2); b.set(buf); buf = b; }
@@ -114,16 +132,17 @@ export function createWatcher() {
   return {
     // true when this frame is not what the last call saw. The scene's and camera's world matrices must be current.
     changed(scene, camera) {
+      const hadCam = hasCam;
+      if (camChanged(camera) && hadCam) {
+        dirty = true; why = null; lastN = -1;
+        return true;
+      }
       n = 0; dirty = false; why = null; shadowLights = 0;
       if (scene) {
         visit(scene);
         if (scene.fog) { putColor(scene.fog.color); put(scene.fog.near ?? 0); put(scene.fog.far ?? 0); put(scene.fog.density ?? 0); }
         const bg = scene.background;
         if (bg?.isColor) putColor(bg); else if (bg?.isTexture) putTexture(bg); else put(-1);
-      }
-      if (camera) {
-        for (const e of camera.matrixWorld.elements) put(e);
-        for (const e of camera.projectionMatrix.elements) put(e);
       }
       const was = lastN;
       lastN = n;
