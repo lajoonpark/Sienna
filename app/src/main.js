@@ -49,8 +49,9 @@ if (params.get('pcf') !== '5') {
     fiveTap,
     '\t\t\t\tshadow = texture( shadowMap, vec3( shadowCoord.xy, shadowCoord.z ) );',
   );
-  if (next === THREE.ShaderChunk.shadowmap_pars_fragment) throw new Error('shadowmap_pars_fragment 5-tap PCF pattern did not match');
-  THREE.ShaderChunk.shadowmap_pars_fragment = next;
+  // three's chunk changed (an upgrade): keep its own 5-tap shadows rather than not start
+  if (next === THREE.ShaderChunk.shadowmap_pars_fragment) console.warn('[sienna] shadowmap_pars_fragment: 5-tap PCF pattern not found, keeping 5-tap shadows');
+  else THREE.ShaderChunk.shadowmap_pars_fragment = next;
 }
 
 // painted: the scene is antialiased in its own target, the screen only gets a full-screen quad.
