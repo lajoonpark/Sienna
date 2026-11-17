@@ -211,8 +211,8 @@ varying vec3 vC1;
 varying vec3 vC2;
 varying vec4 vAxis;
 varying float vDepth;
-varying float vPlane;
-varying vec3 vMine;        // how far its plane is from the eye, along its normal
+varying float vPlane;      // how far its plane is from the eye, along its normal
+varying vec3 vMine;        // its own paint (square-rooted, like the under-coat's), to tell it from a neighbour's
 ${LIGHT}
 ${STROKE_FRAME}
 float sceneDepth(vec2 uv) {
