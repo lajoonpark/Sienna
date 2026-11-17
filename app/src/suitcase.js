@@ -511,14 +511,16 @@ export function createSuitcase({ music = null, lidStop = DEFAULT_STOP, ground = 
       playing = false; playingHold = now() + 1.5;
     },
     // start a cued song as soon as it has loaded, without waiting for the arm (the mini window closed before it got there:
-    // nothing is drawn while it is hidden, so the arm would never land)
-    startNow() {
+    // nothing is drawn while it is hidden, so the arm would never land).
+    // { wait: false }: start it this instant, loaded or not (the page is going away and could not wait; the player
+    // lets a half-loaded song play as soon as it arrives)
+    startNow({ wait = true } = {}) {
       if (!cue) return false;
       const c = cue;
       cue = null;
       startHold = now() + 4; startFrom = videoId;
       playing = true; playingHold = now() + 4;
-      if (c.ready) c.start();
+      if (c.ready || !wait) c.start();
       else c.loading.then(c.start, c.start);   // still loading: as soon as it is ready (the load never hangs)
       return true;
     },

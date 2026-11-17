@@ -859,6 +859,12 @@ document.addEventListener('pointerleave', () => pacer?.kick());
 for (const k of ['covers', 'fps', 'maxFps']) settings.on(k, () => pacer?.kick());
 // back on screen, or the GPU context was lost and restored: paint the whole frame, whatever the painter remembers
 document.addEventListener('visibilitychange', () => painter?.invalidate());
+// A picked song waits for its record to land and the arm to drop. If the window is hidden or closed before
+// then, no frame will ever get it there: start the song this instant instead (not "once it has loaded": a closing
+// page could not wait for that, and hiding comes first when a window closes).
+const startCuedNow = () => suitcase.suitcase.startNow({ wait: false });
+document.addEventListener('visibilitychange', () => { if (document.hidden) startCuedNow(); });
+addEventListener('pagehide', startCuedNow);
 renderer.domElement.addEventListener('webglcontextrestored', () => { painter?.invalidate(); renderer.shadowMap.needsUpdate = true; restoreCovers(); });
 
 // Deterministic time for screenshots: ?shot, then window.__seek(seconds).
