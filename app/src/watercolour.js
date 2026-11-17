@@ -838,7 +838,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       strokeViews.push(...views);
       if (brush) await brush.strokes.bakeAsync(world, views);
       invalidate();
-    }).catch(() => {});
+    }).catch((e) => console.warn('[sienna] stroke bake failed; these views stay unpainted', e));
     return bakeChain;
   }
   // The shop's own views, at start: read back from the stroke cache (strokecache.js) when the shop is the
