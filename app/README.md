@@ -283,7 +283,10 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   faint light from the far end goes. A lamp never switches at once: one dropping out of the 5 dims over `FADE_S`
   (0.9 s) before its slot goes to the next, which brightens over the same; a lamp holding a slot scores 1.25x so
   close pairs do not keep trading.
-  **Kit LOD**: rounded pieces (bricks, blocks, flagstones, sleeves, leaves, beads, links, balls, pots, discs) in an 8 m square beyond `lodNear` from the camera swap to lower-triangle twins sharing the same instance matrices and colours (`updateLod` in `src/kit.js`; `?lod=0` keeps full detail; `strokeFingerprint` and `startBake` temporarily force full detail so stroke bakes always see it).
+  **Bricks**: rounded pieces (bricks, blocks, flagstones: 108-300 triangles each) in an 8 m square more than 5 m from
+  the camera are drawn as plain boxes (12), sharing the same instances (`updateLod` in `src/kit.js`): about a quarter
+  fewer triangles at home. (Round 2's far twins for leaves, beads, pots and sleeves were reverted: 0.8 ms for a
+  visible change to the far foliage and decor spines.)
   **Start**: the brush strokes placed from the shop's 31 views (`68k / 76k` strokes in coat + medium, buffers sized dynamically to fit) are kept in IndexedDB under a
   fingerprint of the scene, views and stroke settings (`src/strokecache.js`, `strokeFingerprint` in
   `src/brushstrokes.js`); the next start reads them back. Late shelf/rack arrivals run an async PBO stroke refill (`bakeAsync` / `runFillJob`, 1 step per frame) queued after the intro (`hitch-check.mjs`).
