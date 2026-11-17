@@ -218,12 +218,13 @@ export function createBrushStrokes(renderer) {
   const p = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), e = new THREE.Vector3(), n = new THREE.Vector3(), toEye = new THREE.Vector3(), side = new THREE.Vector3(), centre = new THREE.Vector3(), long = new THREE.Vector3(), mid = new THREE.Vector3(), hit = new THREE.Vector3(), hand = new THREE.Vector3(), across = new THREE.Vector3();
   const ends = Array.from({ length: RAYS }, () => new THREE.Vector3());
   // in the turning thing's own frame (STROKE_FRAME)
-  const toLocal = new THREE.Matrix4(), pl = new THREE.Vector3(), nl = new THREE.Vector3(), handL = new THREE.Vector3(), acrossL = new THREE.Vector3(), cl = new THREE.Vector3(), tl = new THREE.Vector3();
+  const pl = new THREE.Vector3(), nl = new THREE.Vector3(), handL = new THREE.Vector3(), acrossL = new THREE.Vector3(), cl = new THREE.Vector3(), tl = new THREE.Vector3();
   // onlyTurning: just the places on the thing that turns (it has been turned for this look)
   // Returns whether any pixel in this view lay inside the turning box.
-  function* placeGen(cam, data, albedo, glow, ids, onlyTurning = false, out = { sawTurner: false }) {
-    const box = turner?.userData.strokeTurn;
-    if (box) toLocal.copy(turner.matrixWorld).invert();
+  // frame: the turning thing's box and world -> own-frame matrix as they were when the view was drawn
+  // (turnFrame()). bakeAsync turns it back before placing, so it must not be read again here.
+  function* placeGen(cam, data, albedo, glow, ids, onlyTurning = false, out = { sawTurner: false }, frame = turnFrame()) {
+    const { box, toLocal } = frame;
     const at = (x, y, out) => { if (x < 0 || y < 0 || x >= BAKE_W || y >= BAKE_H) return null; const i = (y * BAKE_W + x) * 4; if (!data[i + 3]) return null; return out.set(data[i], data[i + 1], data[i + 2]); };
     // which object (and, for things painted piece by piece, which piece) is drawn at a pixel
     const idAt = (x, y) => { const i = (y * BAKE_W + x) * 4; return ids[i] * 65536 + ids[i + 1]; };
@@ -364,15 +365,22 @@ export function createBrushStrokes(renderer) {
       yield;
     }
   }
+  // the turning thing's box and its world -> own-frame matrix, now
+  function turnFrame() {
+    const box = turner?.userData.strokeTurn ?? null;
+    if (!box) return { box: null, toLocal: null };
+    turner.updateWorldMatrix(true, false);
+    return { box, toLocal: turner.matrixWorld.clone().invert() };
+  }
   const place = (cam, data, albedo, glow, ids, onlyTurning = false) => {
     const out = { sawTurner: false };
     for (const _ of placeGen(cam, data, albedo, glow, ids, onlyTurning, out)) {}
     return out.sawTurner;
   };
-  const placeAsync = async (cam, data, albedo, glow, ids, onlyTurning = false, tick) => {
+  const placeAsync = async (cam, data, albedo, glow, ids, onlyTurning = false, tick, frame) => {
     const out = { sawTurner: false };
     let t0 = performance.now();
-    for (const _ of placeGen(cam, data, albedo, glow, ids, onlyTurning, out)) {
+    for (const _ of placeGen(cam, data, albedo, glow, ids, onlyTurning, out, frame)) {
       if (performance.now() - t0 > 20) { await tick(); t0 = performance.now(); }
     }
     return out.sawTurner;
@@ -538,6 +546,9 @@ export function createBrushStrokes(renderer) {
       }
       const reads = [];
       s.renderPasses(v, st, (rt, buf) => reads.push(renderer.readRenderTargetPixelsAsync(rt, 0, 0, BAKE_W, BAKE_H, buf)));
+      // the turning thing's frame as drawn: it is turned back below, and can be turned by hand while the
+      // read-back is pending
+      const frame = turnFrame();
       if (turnAngle) {
         turner.rotation.y = base;
         world.updateMatrixWorld();
@@ -546,7 +557,7 @@ export function createBrushStrokes(renderer) {
       st.restore();
       await Promise.all(reads);
       await tick();
-      const hit = await placeAsync(s.cam, s.data, s.albedo, s.glow, s.ids, onlyTurning, tick);
+      const hit = await placeAsync(s.cam, s.data, s.albedo, s.glow, s.ids, onlyTurning, tick, frame);
       await tick();
       return hit;
     };
