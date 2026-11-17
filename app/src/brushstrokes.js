@@ -14,7 +14,6 @@
 import * as THREE from 'three';
 import { rng } from './rand.js';
 import { BLOTCH_MATH } from './materials.js';
-import { forceDetailLod } from './kit.js';
 
 // Things that turn in place (the plant room's spinner: userData.strokeTurn = { half, y0, y1 }, the box it
 // fills in its own frame, half its width and its height). Strokes placed on one are kept in its own frame,
@@ -170,10 +169,8 @@ export function strokeFingerprint(world, views) {
     h2 = Math.imul(h2 ^ (x >>> 7) ^ (x << 3), 2246822519) >>> 0;
   };
   add(BLOTCH_MATH ? 1 : 0);
-  const restoreLod = forceDetailLod();
-  try {
-    world.updateMatrixWorld();
-    world.traverseVisible((o) => {
+  world.updateMatrixWorld();
+  world.traverseVisible((o) => {
     if (!o.isMesh || [].concat(o.material).every((m) => m.transparent || m.opacity < 1)) return;
     const g = o.geometry;
     add(g.attributes.position?.count ?? 0); add(g.index?.count ?? -1);
@@ -186,13 +183,10 @@ export function strokeFingerprint(world, views) {
       add(sum);
     }
   });
-    for (const v of views) { add(v.pos.x); add(v.pos.y); add(v.pos.z); add(v.target.x); add(v.target.y); add(v.target.z); add(v.fov ?? 70); }
-    add(BAKE_W); add(BAKE_H); add(BAKE_STRIDE); add(FARTHEST); add(PAINT_STEP);
-    for (const l of LAYERS) for (const v of Object.values(l)) if (typeof v === 'number') add(v); else if (Array.isArray(v)) v.forEach(add);
-    return `${h1.toString(16)}${h2.toString(16)}`;
-  } finally {
-    restoreLod();
-  }
+  for (const v of views) { add(v.pos.x); add(v.pos.y); add(v.pos.z); add(v.target.x); add(v.target.y); add(v.target.z); add(v.fov ?? 70); }
+  add(BAKE_W); add(BAKE_H); add(BAKE_STRIDE); add(FARTHEST); add(PAINT_STEP);
+  for (const l of LAYERS) for (const v of Object.values(l)) if (typeof v === 'number') add(v); else if (Array.isArray(v)) v.forEach(add);
+  return `${h1.toString(16)}${h2.toString(16)}`;
 }
 
 export function createBrushStrokes(renderer) {
@@ -399,7 +393,6 @@ export function createBrushStrokes(renderer) {
     const owners = [];
     const ownerMats = new Map();
     const prepare = () => {
-      const restoreLod = forceDetailLod();
       world.updateMatrixWorld();
       watch(world);
       owners.length = 0;
@@ -455,7 +448,6 @@ export function createBrushStrokes(renderer) {
         world.overrideMaterial = prev.over;
         for (const o of hidden) o.visible = true;
         for (const [o, before] of tagged) o.onBeforeRender = before;
-        restoreLod();
       };
       return { evenLight, fog, restoreLightsAndFog, restore };
     };

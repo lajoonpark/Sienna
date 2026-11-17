@@ -22,7 +22,6 @@ const CELL_MIN = 150; // pieces a square needs to be a mesh of its own
 // were most of the frame's triangles. A square is drawn rounded while the camera is within LOD_NEAR metres
 // of it (its bounding sphere), else boxed. Both meshes share one set of instance matrices and colours.
 const LOD_NEAR = 5;
-const FAR_LOD = new URLSearchParams(globalThis.location?.search ?? '').get('lod') !== '0';
 const lodPairs = []; // [hi, lo] InstancedMeshes, switched by updateLod
 
 const _m = new THREE.Matrix4();
@@ -52,14 +51,12 @@ function card(w, h, depth, face) {
 }
 
 class Part {
-  constructor(geometry, material, { castShadow = true, receiveShadow = true, card = null, low = null, lodNear = LOD_NEAR, userData = null } = {}) {
+  constructor(geometry, material, { castShadow = true, receiveShadow = true, card = null, userData = null } = {}) {
     // a card casts no shadow of its own: the wall's mortar backing behind it does, and a lone face has
     // nothing to add to the shadow map but draw calls
     if (card && CARD_WALLS) { geometry = card; this.isCard = true; castShadow = false; }
     this.userData = userData; // copied onto every mesh it builds (e.g. noStrokes)
     this.geometry = geometry;
-    this.low = low;
-    this.lodNear = lodNear;
     this.material = material;
     this.castShadow = castShadow;
     this.receiveShadow = receiveShadow;
@@ -133,7 +130,7 @@ class Part {
         twin.boundingSphere = mesh.boundingSphere.clone();
         twin.visible = false; // until updateLod says the square is far
         if (this.userData) Object.assign(twin.userData, this.userData);
-        lodPairs.push([mesh, twin, FAR_LOD ? this.lodNear : LOD_NEAR]);
+        lodPairs.push([mesh, twin]);
         out.push(twin);
       }
     });
@@ -143,10 +140,9 @@ class Part {
     this.count = this.cap = 0;
     return out;
   }
-  // lower-triangle twin geometry for far squares (?lod=0 keeps only RoundedBoxGeometry -> BoxGeometry)
+  // a plain box the size of a rounded one (null: this part is not rounded)
   lowGeometry() {
     if (this.lo !== undefined) return this.lo;
-    if (FAR_LOD && this.low) return (this.lo = this.low());
     const p = this.geometry.type === 'RoundedBoxGeometry' ? this.geometry.parameters : null;
     this.lo = p ? new THREE.BoxGeometry(p.width, p.height, p.depth) : null;
     return this.lo;
@@ -158,19 +154,12 @@ class Part {
 const _cam = new THREE.Vector3(), _ctr = new THREE.Vector3();
 export function updateLod(camera) {
   camera.getWorldPosition(_cam);
-  for (const [hi, lo, nearDist] of lodPairs) {
+  for (const [hi, lo] of lodPairs) {
     if (!hi.parent) continue;
     _ctr.copy(hi.boundingSphere.center).applyMatrix4(hi.matrixWorld);
-    const near = _cam.distanceTo(_ctr) - hi.boundingSphere.radius < nearDist;
+    const near = _cam.distanceTo(_ctr) - hi.boundingSphere.radius < LOD_NEAR;
     if (hi.visible !== near) { hi.visible = near; lo.visible = !near; }
   }
-}
-
-// Force all detailed meshes visible for stroke baking / fingerprinting, returning a restore callback.
-export function forceDetailLod() {
-  const prev = lodPairs.map(([hi, lo]) => [hi, lo, hi.visible, lo.visible]);
-  for (const [hi, lo] of lodPairs) { hi.visible = true; lo.visible = false; }
-  return () => { for (const [hi, lo, hv, lv] of prev) { hi.visible = hv; lo.visible = lv; } };
 }
 
 function halfPipe() {
@@ -187,7 +176,7 @@ export function createKit() {
     block: new Part(new RoundedBoxGeometry(1, 1, 1, 1, 0.06), white()), // generic stone/wood block, scaled freely
     // the decor record sleeves (interior.js): no strokes pinned to them, and Oil paint's under-coat keeps their
     // own colours (materials.js ownColour), since a dab is wider than a spine
-    sleeve: new Part(new RoundedBoxGeometry(1, 1, 1, 1, 0.06), ownColour(white()), { lodNear: 0.8, userData: { noStrokes: true } }),
+    sleeve: new Part(new RoundedBoxGeometry(1, 1, 1, 1, 0.06), ownColour(white()), { userData: { noStrokes: true } }),
     flag: new Part(new RoundedBoxGeometry(1, 0.12, 1, 2, 0.05), white(), { castShadow: false, card: WALLS === 'bricks' ? null : card(1, 1, 0.12, 'top') }),
     tile: new Part(halfPipe(), toon('#ffffff', { side: THREE.DoubleSide })),
     slat: new Part(new THREE.BoxGeometry(1, 1, 1), white()),
@@ -199,14 +188,14 @@ export function createKit() {
     wire: new Part(new THREE.CylinderGeometry(0.5, 0.5, 1, 6), ownColour(white())),
     // chain links (details.js chain: the hanging plants' brass chains), an oval ring in the xy plane scaled to
     // size; thin like the wires, so flagged ownColour the same way
-    link: new Part(new THREE.TorusGeometry(LINK.r, LINK.tube, 3, 8), ownColour(white()), { castShadow: false, low: () => new THREE.TorusGeometry(LINK.r, LINK.tube, 3, 4) }),
-    ball: new Part(new THREE.IcosahedronGeometry(0.5, 1), white(), { low: () => new THREE.IcosahedronGeometry(0.5, 0) }), // fruit, flowers, leaves (scaled)
-    leaf: new Part(new THREE.SphereGeometry(0.5, 7, 5), white(), { low: () => new THREE.OctahedronGeometry(0.5, 0) }),
+    link: new Part(new THREE.TorusGeometry(LINK.r, LINK.tube, 3, 8), ownColour(white()), { castShadow: false }),
+    ball: new Part(new THREE.IcosahedronGeometry(0.5, 1), white()), // fruit, flowers, leaves (scaled)
+    leaf: new Part(new THREE.SphereGeometry(0.5, 7, 5), white()),
     // small many-of pieces (string-of-pearls beads, fern leaflets, bougainvillea): 20 triangles, not a leaf's 60
-    bead: new Part(new THREE.IcosahedronGeometry(0.5, 0), white(), { low: () => new THREE.TetrahedronGeometry(0.5) }),
+    bead: new Part(new THREE.IcosahedronGeometry(0.5, 0), white()),
     cone: new Part(new THREE.ConeGeometry(0.5, 1, 4), white()),
-    pot: new Part(new THREE.CylinderGeometry(0.5, 0.36, 1, 12), white(), { low: () => new THREE.CylinderGeometry(0.5, 0.36, 1, 6) }),
-    disc: new Part(new THREE.CylinderGeometry(0.5, 0.5, 1, 16), white(), { low: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 8) }),
+    pot: new Part(new THREE.CylinderGeometry(0.5, 0.36, 1, 12), white()),
+    disc: new Part(new THREE.CylinderGeometry(0.5, 0.5, 1, 16), white()),
   };
   return {
     ...parts,
