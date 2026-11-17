@@ -22,10 +22,12 @@ const BORDER_NOISE = 0.05, BORDER_FADE = 0.045, BORDER_REACH = BORDER_NOISE / 2 
 // washed (only with ?overwash: by default it gets no wash, see OVER_WASH). The watercolour and brush-stroke looks
 // were removed (Lajoon, 2026-11-13); the wash passes below remain for the overlay and the card window.
 const OIL = { strokes: true, oil: true, radius: 6, bleed: 10, bleedMix: 0.4, bloom: 0, edge: 0, lift: 0, grain: 0 };
-// The small card window. It holds only the suitcase, whose strokes are in its textures (suitcase/paint.js) and
-// swing with the lid, so there is no world to pin strokes to. A light wash keeps those marks readable, and the
-// paint stays still.
-const CARD_BRUSH = { still: true, radius: 2, bleed: 5, bleedMix: 0.3, bloom: 0.35, edge: 0.5, lift: 0.04, grain: 0.35 };
+// The small card window. It holds only the suitcase, whose oil dabs are in its textures (suitcase/paint.js)
+// and swing with the lid, over an impasto oil-dabbed canvas backdrop (brushBackdrop). No wash or paper margin:
+// full-bleed oil up to a ragged canvas-card edge, with subtle linen weave.
+// The small card window: runs the shop's full oil-paint dabs over its real 3D lounge slice,
+// preserving the deckle canvas-card edge and crisp case textures.
+const CARD_OIL = { ...OIL, still: true };
 // ?wc=0: no painting at all, the plain render (for checks that test geometry and clicks, scripts/*-check.mjs)
 const UNPAINTED = new URLSearchParams(globalThis.location?.search ?? '').get('wc') === '0';
 
@@ -208,6 +210,23 @@ void main() {
   float aspect = resolution.x / resolution.y;
   vec2 q = vUv * vec2(aspect, 1.0);
 
+#ifdef OIL_CARD
+  // Full-bleed oil-painted canvas card for the mini suitcase window: crisp textures (with oil dabs
+  // already baked onto the backdrop and case) + subtle canvas weave, up to the ragged card edge.
+  vec3 col = sceneAt(vUv);
+  vec2 cq = gl_FragCoord.xy + paperOffset * 512.0;
+  float weave = (sin(cq.x * 1.9) * sin(cq.y * 1.9 + 1.3)) * 0.5 + 0.5;
+  float tooth = texture2D(tPaper, gl_FragCoord.xy / 512.0 + paperOffset).r;
+  float crisp = clamp(1.0 - texture2D(tScene, vUv).a, 0.0, 1.0);
+  col *= mix(0.968, 1.02, mix(tooth, weave, 0.35)) * mix(1.0, 0.985 + 0.03 * tooth, crisp);
+  vec2 e = min(vUv, 1.0 - vUv) * vec2(aspect, 1.0);
+  float sheet = min(e.x, e.y) + (fbm(q * 13.0 + 5.0) - 0.5) * 0.038 + (noise(q * 75.0) - 0.5) * 0.008 - 0.018;
+  float a = smoothstep(0.0, 0.006, sheet);
+  float rim = (1.0 - smoothstep(0.004, 0.014, sheet)) * a;
+  col = mix(col, vec3(0.92, 0.86, 0.75) * (0.94 + 0.06 * tooth), rim * 0.65);
+  gl_FragColor = vec4(col * a, a);
+#else
+
   // 1. hand wobble: displace where we read the scene with slow noise that boils at BOIL_FPS
   vec2 wob = vec2(fbm(q * 7.0 + seed), fbm(q * 7.0 + seed + 31.7)) - 0.5;
   vec2 uv = vUv + wob * px * 5.0;
@@ -379,6 +398,7 @@ void main() {
 #else
   gl_FragColor = vec4(col, 1.0);
 #endif
+#endif
 }
 `;
 
@@ -414,7 +434,7 @@ const msaaFor = (renderer, isLight) => (PIN_MSAA ?? (isLight?.() || renderer.get
 // transparent (for the small frameless window; the renderer needs alpha: true).
 // unpainted: the plain render (?wc=0).
 export function createWatercolour(renderer, { card = false, unpainted = UNPAINTED, isLight = null } = {}) {
-  const L = unpainted ? null : card ? CARD_BRUSH : OIL;
+  const L = unpainted ? null : card ? CARD_OIL : OIL;
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
     type: THREE.HalfFloatType,
@@ -424,7 +444,12 @@ export function createWatercolour(renderer, { card = false, unpainted = UNPAINTE
   });
 
   function finalDefines() {
-    return { ...(card ? { CARD: '' } : {}), ...(L ? { WASH: '' } : {}), ...(L?.strokes ? { STROKES: '' } : {}) };
+    return {
+      ...(card ? { CARD: '' } : {}),
+      ...(L?.oilCard ? { OIL_CARD: '' } : {}),
+      ...(L && !L.oilCard ? { WASH: '' } : {}),
+      ...(L?.strokes ? { STROKES: '' } : {}),
+    };
   }
   const material = new THREE.ShaderMaterial({
     vertexShader,
@@ -588,12 +613,12 @@ void main() {
     oilFinal?.dispose();
     oilFinal = null;
     invalidate();
-    if (!L) return;
+    if (!L || L.oilCard) return;
     if (L.strokes) {
       brush = makeBrush();
       if (saved) brush.strokes.load(saved);
       else if (strokeViews.length) brush.strokes.bake(strokeWorld, strokeViews);
-      quad.material = oilFinal = brush.oil.finalMaterial(material.uniforms);
+      quad.material = oilFinal = brush.oil.finalMaterial(material.uniforms, { card });
       material.uniforms.tWash.value = brush.texture;
       material.uniforms.tOver.value = null;
       return;
@@ -903,7 +928,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       };
 
       // deep idle (pacer.js): the border holds its last shape, so a still shop draws nothing
-      const boil = (boilHeld || (L?.oil && !u.bars.value)) && lastBoil >= 0 ? lastBoil : Math.floor(t * BOIL_FPS) % 64;
+      const boil = (boilHeld || L?.oilCard || (L?.oil && !u.bars.value)) && lastBoil >= 0 ? lastBoil : Math.floor(t * BOIL_FPS) % 64;
       u.borderSeed.value = boil * 1.37;
       u.seed.value = brush || L?.still ? 0 : u.borderSeed.value; // dry paint does not boil, but the sheet's ragged border does
       u.near.value = camera.near;
@@ -933,7 +958,14 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       last.world = !worldSame; last.overlay = !overSame; last.rest = !restSame; last.shadows = shadows; last.valid = valid;
       const boiled = boil !== lastBoil;
       lastBoil = boil;
-      if (same && overSame && !boiled) { stats.skipped++; return; }
+      if (same && overSame && !boiled) {
+        if (!renderer.getContextAttributes?.()?.preserveDrawingBuffer) {
+          renderer.setRenderTarget(null);
+          renderer.render(post, postCam);
+        }
+        stats.skipped++;
+        return;
+      }
 
       if (brush) {
         if (same) {

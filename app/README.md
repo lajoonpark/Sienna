@@ -4,7 +4,7 @@ A 3D vinyl shop for YouTube Music (free, open source). Electron + Three.js.
 
 The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over the street, a little piazza, and the Sienna shop. The door swings open on its own, the camera walks into the shop, and the view tilts with the cursor. All scenery is procedural.
 
-**Look:** painted in oil, through a screen pass (`src/watercolour.js`, `src/oilpaint.js`): opaque dabs on the brush strokes' places (`src/brushstrokes.js` places them, pinned to the world's surfaces), each with its object's own paint, lit live, with impasto ridges, over an under-coat of smaller dabs so no canvas is left bare; full bleed, no border. Oil paint is the only look: the watercolour (Faint / Light / Medium / Heavy) and Brush strokes looks and the Settings > Look > Painting choice were removed when oil-paint was merged into dev (Lajoon, 2026-11-13). The mini window's suitcase card keeps a light wash with a ragged paper border. `?wc=0` shows the plain unpainted render (for the check scripts); `?style=flat` shows the old flat toon look.
+**Look:** painted in oil, through a screen pass (`src/watercolour.js`, `src/oilpaint.js`): opaque dabs on the brush strokes' places (`src/brushstrokes.js` places them, pinned to the world's surfaces), each with its object's own paint, lit live, with impasto ridges, over an under-coat of smaller dabs so no canvas is left bare; full bleed, no border. Oil paint is the only look: the watercolour (Faint / Light / Medium / Heavy) and Brush strokes looks and the Settings > Look > Painting choice were removed when oil-paint was merged into dev (Lajoon, 2026-11-13). The mini window's suitcase card matches (`CARD_OIL` in `src/watercolour.js`): full-bleed oil-dabbed suitcase and canvas backdrop with linen weave and no wash. `?wc=0` shows the plain unpainted render (for the check scripts); `?style=flat` shows the old flat toon look.
 
 **Lettering:** buttons, record tags and the shop sign use one hand-lettered font, chosen in Settings > Look > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). `?font=kaushan` pins one for screenshots. A change applies live in both windows, with no reload: `FONT`/`fontReady` are live exports, CSS uses `var(--sienna-font)`, and everything painted into a canvas or texture (tags, rack signs, the shop sign, button plates, menu words, search bar, album-spread stickers) registers a repaint with `onLettering(owner, draw)` in `src/style.js`, which runs once the new face has loaded. New lettered paint must register too. Check: `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out` (mini window, no reload) and `node scripts/tour-check.mjs out`.
 
@@ -117,27 +117,27 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   `?at=3&hover=0&albums=1&open=2&spreadhover=4` (`spreadpage=1`, `spreadt=0.4` freezes the flight
   out). Checks: `node scripts/spread-check.mjs [out]` (real mouse, fake store),
   `xvfb-run -a node scripts/album-live-check.mjs [out]` (song lists from YouTube Music, as guest).
-- **The suitcase** (`src/suitcase/`): the player, bottom left. A watercolour leather case with a
+- **The suitcase** (`src/suitcase/`): the player, bottom left. An oil-painted leather case on woven canvas with a
   record player: the record spins with the cover on its label, the tonearm creeps in as the song
   plays, the knob is volume (drag it or scroll; scrolling down is quieter), the buttons are back / play / skip / like, and
-  dragging the record scrubs. A paper tag beside it shows the song with a seekable progress line
+  dragging the record scrubs. A canvas-dabbed tag beside it shows the song with a seekable progress line
   (`createCaption` in `src/controls.js`, also used in the mini window). Long names never run off it: the
   title steps down from 27 to 21 px, then wraps onto a second line (cut with … only past that), and the
   artist · album line steps from 19 to 15 px before it is cut; the full text is in the hover tooltip.
-  It gets only a light touch of the paint (paper grain, glazed darks, a wobbly edge) and
-  no wobble or wash inside, since its own textures are already brushed: washed, it went blurry and its
+  It gets only a light touch of the paint (canvas weave, glazed darks) and
+  no wobble or wash inside, since its own textures are already painted with oil dabs: washed, it went blurry and its
   sharp button icons slid off their caps. `?overwash=0..1` gives it that share of the shop's wash back
   (its own wash pass then runs in its box again, ~1 ms).
-- **Mini player**: **⌃⌥K** anywhere opens the same suitcase at the cursor on a torn-paper card
+- **Mini player**: **⌃⌥K** anywhere opens the same suitcase at the cursor on a full-bleed oil-dabbed canvas card
   (`mini.html`, `electron/mini.cjs`); the lid flicks open on a physical hinge (`src/lid.js`). Esc,
   clicking away or ⌃⌥K again shuts it. The search shortcut works there too.
 - **Volume**: on macOS the knob, scroll and ↑ ↓ set the Mac's own output volume (`electron/sysvolume.cjs`,
   osascript) and the player stays at 100%, so you can turn it up past where the Mac was. Elsewhere it
   is the player's volume.
 - **Search**: **⌃⌥J** (Ctrl+Alt+J on Windows/Linux) opens a search bar (`src/search.js`). The bar is
-  slapped on bristle by bristle, throwing droplets, and flicked off the right-hand end when it closes
+  stamped onto `.cs-fx` as chunky individual oil dabs one at a time, throwing flecks, and flicked off the right-hand end when it closes
   (`src/searchpaint.js`; the same in the shop and the mini window, no animation under the system's reduce-motion setting). Songs are
-  brushed in row by row, zigzagging, with the shop's brush (`src/brushpaint.js`), arrows + Enter or a click plays one. A song from search has no sleeve, so
+  laid in as individual dab slips row by row with a press bounce (`src/brushpaint.js`), arrows + Enter or a click plays one. A song from search has no sleeve, so
   the bottom of the case slides out like a drawer, the record lifts out of it, tips towards you and
   flies onto the platter, and the drawer slides home (`src/suitcase/tray.js`, in the shop and the mini
   window; the shop's case rises a little meanwhile so the drawer stays in the picture). `?tray=0.6`
@@ -332,8 +332,8 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   back), and the whole frame only when the world itself changed. So the shop's 3.8 million triangles,
   its shadows and the stroke passes are drawn while something in the shop moves and not otherwise. The
   screen keeps its picture between frames for this (`preserveDrawingBuffer` in `main.js`). Oil paint has no
-  border, so a still shop draws only the record's corner. The mini window's card boils all over, so it repaints
-  the bleed and the final pass per boil step, but not the scene. A frame put together in parts is the same picture to the last bit as a whole repaint:
+  border (and `CARD_OIL` freezes the mini card's boil), so a still shop draws only the record's corner, and a
+  still mini card skips re-rendering the 3D scene. A frame put together in parts is the same picture to the last bit as a whole repaint:
   `node scripts/cache-check.mjs` compares them and counts what was painted (`__siennaDebug.painter.stats`).
   Things that help the shop come to rest: the time of day is worked out every 5 s of the clock, not every
   frame (`src/timeofday.js`); the cursor tilt snaps the last 1/30 px; under a shut lid (case tucked away)
@@ -359,11 +359,12 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   without art, for debugging. They still describe your library and listening: do not share them.
 - **Keys**: Space play/pause, ← → back/skip, ↑ ↓ or scroll for volume (a sideways scroll is never volume), L like.
 - Covers and tags are drawn sharp: they write alpha 0 into the scene buffer (`crisp()` / `keepSharp()` in
-  `materials.js`, also the SIENNA sign) and the watercolour pass leaves those pixels alone. The covers
-  themselves are repainted once when they load (`src/coverpaint.js`: a first wash, then real brush strokes on the
-  shop's diagonal with colours read from the cover, finer marks where it has detail, paper grain and an unpainted
-  margin), so real album art sits in the painting. The racks and the suitcase paint them in a worker
-  (`src/coverworker.js`, `src/coverpaint.worker.js`), since strokes take 40-100 ms a cover. Settings > Look > Cover art sets the strength.
+  `materials.js`, also the SIENNA sign) and the post pass leaves those pixels alone. The covers
+  themselves are repainted once when they load (`src/coverpaint.js`: an opaque impasto under-coat, then
+  three contrast-gated layers of thick oil dabs on the shop's diagonal with colours read from the cover,
+  upper-left raking light on impasto ridges, second-colour bristle streaks, and linen canvas weave, full bleed
+  with no paper margin), so real album art sits in the painting. The racks and the suitcase paint them in a worker
+  (`src/coverworker.js`, `src/coverpaint.worker.js`), since dabs take a few tens of ms a cover. Settings > Look > Cover art sets the strength.
 - In a plain browser (`npm run web`, screenshots) `src/music.js` fakes a record store with painted
   covers, so the shop can be worked on without Electron or an account.
 - Dev pages for screenshots: `lab.html?station=N` (one rack), `player-lab.html` (the suitcase in the shop),

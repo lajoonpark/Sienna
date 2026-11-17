@@ -127,10 +127,12 @@ export function glow(color) {
 // Any material: flag it like crisp() so the watercolour pass leaves it sharp (signs you need to read).
 function applyKeepSharp(m) {
   if (!WATERCOLOUR) return m;
-  m.onBeforeCompile = (shader) => {
+  const before = m.onBeforeCompile, key = m.customProgramCacheKey?.bind(m);
+  m.onBeforeCompile = (shader, r) => {
+    before?.call(m, shader, r);
     shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n  gl_FragColor.a = 0.0;');
   };
-  m.customProgramCacheKey = () => `sharp-${m.type}`;
+  m.customProgramCacheKey = () => `sharp-${key ? key() : m.type}`;
   return m;
 }
 export function keepSharp(m) {

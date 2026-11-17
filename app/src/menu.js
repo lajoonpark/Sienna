@@ -22,8 +22,7 @@ const CSS = `
   font-family: var(--sienna-font); color: ${PAPER}; line-height: 1; letter-spacing: .02em;
   transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
 .mn.h:not(.show) button { pointer-events: none; }
-.mn button .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; }
-.mn.r button .plate { transform: scaleX(-1); }
+.mn button .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; filter: drop-shadow(0 2px 3px rgba(28,20,16,.24)); }
 .mn button .plate.hot { opacity: 0; }
 .mn button:hover .plate.hot, .mn button.on .plate.hot { opacity: 1; }
 .mn.l button:hover, .mn.h button:hover { transform: translateX(6px) translateZ(18px) rotate(-1deg); }
@@ -134,18 +133,19 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
   home.indent = 0;
 
   // ---- plates: painted once per size ----
-  function plate(w, h, color, seed) {
-    const key = `${w}x${h}-${color}-${seed}`;
+  function plate(w, h, color, seed, flipX) {
+    const key = `${w}x${h}-${color}-${seed}-${flipX ? 1 : 0}`;
     let url = plateCache.get(key);
-    if (!url) { url = brushStroke(w, h, color, seed); plateCache.set(key, url); }
+    if (!url) { url = brushStroke(w, h, color, seed, { flipX }); plateCache.set(key, url); }
     return `url(${url})`;
   }
   function paint(b) {
     const w = b.el.offsetWidth, h = b.el.offsetHeight;
     if (!w) return;
+    const flipX = b.side === R;
     const [cold, hot] = b.el.querySelectorAll('.plate');
-    cold.style.backgroundImage = plate(w, h, INK, b.seed);
-    hot.style.backgroundImage = plate(w, h, HOT, b.seed);
+    cold.style.backgroundImage = plate(w, h, INK, b.seed, flipX);
+    hot.style.backgroundImage = plate(w, h, HOT, b.seed, flipX);
   }
 
   // ---- layout: fit the words, then place the stacks clear of the player on the left ----

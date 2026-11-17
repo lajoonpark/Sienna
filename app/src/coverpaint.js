@@ -1,24 +1,21 @@
-// Covers painted to match the shop: every album / playlist cover is repainted once, when it loads,
-// as if copied by hand with the shop's brush. Under a first wash (fine detail softens, colour runs past
-// its edges, it dries unevenly with darker rims) go real brush strokes (paintStrokes), then paper grain,
-// and the margin stays unpainted. How strongly is Settings > Cover art (settings key 'covers',
-// COVER_LEVELS): Off, Light, Medium, Heavy (the default: you still know the cover at a glance, faces,
-// titles, big shapes, but it reads as painted).
+// Covers painted in oil to match the 3D shop: every album / playlist cover is repainted once, when
+// it loads, in thick opaque dabs of oil paint with impasto ridges lit from the upper left, a second
+// colour streaked along the bristles, an oil under-coat, and subtle linen canvas weave — full bleed,
+// no paper margin. How strongly is Settings > Look > Cover art (settings key 'covers', COVER_LEVELS):
+// Off, Light, Medium, Heavy (the default: you still know the cover at a glance, faces, titles, big
+// shapes, while it reads unmistakably as impasto oil paint).
 //
 //   paintCover(ctx, size, seed, level)  repaints the square canvas in place (call after drawing the cover)
-//   paintedCoverURL(url, size)    -> Promise<data: URL> of the painted cover (for <img> in the search slips)
+//   paintedCoverURL(url, size)          -> Promise<data: URL> of the painted cover (for <img> in the search slips)
 // The racks' and the suitcase's covers are painted off the main thread in coverpaint.worker.js (coverworker.js).
 import { rng } from './rand.js';
 import { settings } from './settings.js';
 import { safeArtUrl, artSizeOk, ART_TIMEOUT_MS } from './arturl.js';
-import { brushShapes, COVERED, LEAN, STAMP_W, STAMP_H, VARIANTS } from './brushpaint.js';
+import { oilDabShapes, COVERED, LEAN, STAMP_W, STAMP_H, VARIANTS } from './brushpaint.js';
 
-// strength multipliers per level (2 = the old "medium" look, tuned first)
-export const COVER_LEVELS = [0, 0.55, 1, 1.75];
+// strength multipliers per level (2 = Medium, 3 = Heavy default)
+export const COVER_LEVELS = [0, 0.55, 1, 1.65];
 export const coverLevel = () => { const v = settings.get('covers'); return v >= 0 && v < COVER_LEVELS.length ? v : 3; };
-
-const PAPER = '#f4ead6';
-let grain = null;
 
 // also runs in coverpaint.worker.js, where there is no document: OffscreenCanvas there
 function canvas(w, h, options) {
@@ -28,29 +25,10 @@ function canvas(w, h, options) {
   return [c, c.getContext('2d', options)];
 }
 
-// paper tooth, light grey speckle around mid-white (multiplied over the paint)
-function grainCanvas() {
-  if (grain) return grain;
-  const S = 256;
-  const [c, g] = canvas(S, S);
-  const r = rng(77);
-  g.fillStyle = '#f0f0f0'; g.fillRect(0, 0, S, S);
-  for (let i = 0; i < 5200; i++) {
-    const v = Math.round(185 + r() * 70);
-    g.fillStyle = `rgba(${v},${v - 4},${v - 10},.55)`;
-    const s = 0.8 + r() * 2.4;
-    g.fillRect(r() * S, r() * S, s, s);
-  }
-  g.filter = 'blur(0.5px)';
-  g.drawImage(c, 0, 0);
-  grain = c;
-  return c;
-}
-
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // The picture at 256, 128, 64, 32 and 16 px, whatever size is being painted, so a cover's small version and
-// its big one (swapped in on hover) get the very same strokes.
+// its big one (swapped in on hover) get the very same dabs.
 function colourLevels(source) {
   const levels = [];
   let from = source;
@@ -63,6 +41,7 @@ function colourLevels(source) {
   }
   return levels;
 }
+
 // the colour at u, v (0..1) of one level, 0..1 per channel
 const colour = [0, 0, 0];
 function colourAt({ S, d }, u, v, out = colour) {
@@ -76,36 +55,103 @@ function colourAt({ S, d }, u, v, out = colour) {
   return out;
 }
 
-// As brushstrokes.js LAYERS, in shares of the cover's side. The coat goes on first; smaller marks then add
-// only what it could not hold. pick / against: colour levels a mark's colour is read from and compared with,
-// gate: that difference where the mark starts / is fully there. clip: colour distance from what the mark is
-// painting where it starts to break / stops, so it ends raggedly at the edge of a shape, keeping titles.
-const COVER_MARKS = [
-  { len: 0.19, wid: 0.05, rowGap: 0.3, colGap: 0.62, pick: 2, against: 2, gate: null, clip: [0.1, 0.24], opacity: 0.94 },
-  { len: 0.085, wid: 0.024, rowGap: 0.5, colGap: 0.5, pick: 1, against: 3, gate: [0.012, 0.05], clip: [0.1, 0.24], opacity: 0.95 },
-  { len: 0.036, wid: 0.011, rowGap: 0.42, colGap: 0.42, pick: 0, against: 2, gate: [0.025, 0.09], clip: [0.16, 0.36], opacity: 0.95 },
+// Oil under-coat: small canvas-aligned dabs filling every pixel so no raw photo remains,
+// while borrowing cell colour only when the pixel agrees (keeping eyes & album titles legible).
+function paintUnderCoat(d, size, sourceData, shapes, S, seed) {
+  const r = rng(seed);
+  const impasto = 0.65 + 0.35 * Math.min(1.6, S);
+  const cellPx = Math.max(3, Math.round(size * (0.016 + 0.012 * Math.min(1.5, S))));
+  const invCell = 1 / cellPx;
+  const cols = Math.ceil(size / cellPx) + 1;
+  const cellR = new Float32Array(cols * cols);
+  const cellG = new Float32Array(cols * cols);
+  const cellB = new Float32Array(cols * cols);
+  const cellV = new Uint8Array(cols * cols);
+  const cellTone = new Float32Array(cols * cols);
+  for (let cy = 0; cy < cols; cy++) {
+    const py = Math.min(size - 1, Math.floor((cy + 0.5) * cellPx));
+    for (let cx = 0; cx < cols; cx++) {
+      const px = Math.min(size - 1, Math.floor((cx + 0.5) * cellPx));
+      const si = (py * size + px) * 4;
+      const idx = cy * cols + cx;
+      cellR[idx] = sourceData[si] / 255;
+      cellG[idx] = sourceData[si + 1] / 255;
+      cellB[idx] = sourceData[si + 2] / 255;
+      cellV[idx] = Math.floor(r() * VARIANTS);
+      cellTone[idx] = 0.95 + 0.1 * r();
+    }
+  }
+  const ca = Math.cos(LEAN), sa = Math.sin(LEAN);
+  const agreeFrom = 0.1, agreeTo = 0.24;
+  for (let py = 0; py < size; py++) {
+    const cy = Math.floor(py * invCell);
+    const fy = py * invCell - cy;
+    for (let px = 0; px < size; px++) {
+      const cx = Math.floor(px * invCell);
+      const fx = px * invCell - cx;
+      const idx = cy * cols + cx;
+      const di = (py * size + px) * 4;
+      const pr = sourceData[di] / 255, pg = sourceData[di + 1] / 255, pb = sourceData[di + 2] / 255;
+      const dr = cellR[idx] - pr, dg = cellG[idx] - pg, db = cellB[idx] - pb;
+      const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+      const blend = 1 - smooth(agreeFrom, agreeTo, dist);
+      const cr = pr + (cellR[idx] - pr) * blend;
+      const cg = pg + (cellG[idx] - pg) * blend;
+      const cb = pb + (cellB[idx] - pb) * blend;
+      const sh = shapes[cellV[idx]];
+      // Rotate local cell coordinates along LEAN so under-coat texture aligns with the dabs
+      const lx = fx - 0.5, ly = fy - 0.5;
+      const su = Math.max(0, Math.min(0.999, lx * ca + ly * sa + 0.5));
+      const sv = Math.max(0, Math.min(0.999, -lx * sa + ly * ca + 0.5));
+      const si = Math.floor(sv * STAMP_H) * STAMP_W + Math.floor(su * STAMP_W);
+      const gx = ca * sh.slopeU[si] - sa * sh.slopeV[si];
+      const gy = sa * sh.slopeU[si] + ca * sh.slopeV[si];
+      const rake = 0.5 * gx - 0.7 * gy;
+      const shade = cellTone[idx] * (1 + rake * 1.4 * impasto);
+      const spec = rake > 0 ? rake * rake * 0.7 * impasto : 0;
+      d[di] = Math.max(0, Math.min(255, cr * 255 * shade + spec * 255));
+      d[di + 1] = Math.max(0, Math.min(255, cg * 255 * shade + spec * 247));
+      d[di + 2] = Math.max(0, Math.min(255, cb * 255 * shade + spec * 230));
+    }
+  }
+}
+
+// Three layers of opaque impasto oil dabs (coat, medium, fine), analogous to oilpaint.js + brushstrokes.js.
+// Fat & short proportions (wider relative to length), contrast-gated detail, tight surface agreement.
+const COVER_DABS = [
+  { len: 0.165, wid: 0.068, rowGap: 0.34, colGap: 0.58, pick: 2, against: 2, gate: null, clip: [0.11, 0.23], opacity: 0.96, impasto: 1.15 },
+  { len: 0.082, wid: 0.034, rowGap: 0.44, colGap: 0.52, pick: 1, against: 3, gate: [0.016, 0.06], clip: [0.11, 0.23], opacity: 0.97, impasto: 1.25 },
+  { len: 0.038, wid: 0.016, rowGap: 0.42, colGap: 0.44, pick: 0, against: 2, gate: [0.028, 0.095], clip: [0.15, 0.32], opacity: 0.98, impasto: 1.3 },
 ];
 
-// Presses brush marks straight into the pixels: every mark has its own colour, which stamps on a canvas
-// could not do at this rate, and it works in the worker too. S is the level's strength (COVER_LEVELS).
-function paintStrokes(g, size, source, seed, S) {
-  const levels = colourLevels(source), shapes = brushShapes();
-  const image = g.getImageData(0, 0, size, size), d = image.data;
-  const r = rng(seed + 1);   // its own stream, and every number drawn before a mark can be skipped: same marks at any size
-  const scale = Math.min(1, 0.5 + S * 0.29), strength = Math.min(1, 0.45 + S * 0.32);
+// Presses opaque impasto oil dabs straight into the cover's pixels (works in worker OffscreenCanvas too).
+function paintDabs(g, size, source, seed, S) {
+  const levels = colourLevels(source), shapes = oilDabShapes();
+  const srcImg = g.getImageData(0, 0, size, size);
+  const outImg = g.createImageData(size, size);
+  const srcD = srcImg.data, d = outImg.data;
+  outImg.data.set(srcD);
+
+  paintUnderCoat(d, size, srcD, shapes, S, seed + 17);
+
+  const r = rng(seed + 1);   // deterministic stream: same marks at any cover resolution
+  const scale = Math.min(1.08, 0.48 + S * 0.34);
+  const strength = Math.min(1, 0.58 + S * 0.28);
+  const impastoScale = 0.7 + 0.45 * Math.min(1.6, S);
   const here = levels[1], hereS = here.S, hd = here.d;
   const pig = [0, 0, 0], other = [0, 0, 0];
   const cosL = Math.cos(LEAN), sinL = Math.sin(LEAN);
-  for (const m of COVER_MARKS) {
+
+  for (const m of COVER_DABS) {
     const [clipFrom, clipTo] = m.clip;
     const len = m.len * scale, wid = m.wid * scale, rowH = len * m.rowGap, colW = len * m.colGap, reach = Math.SQRT1_2 + len;
+    const imp = m.impasto * impastoScale;
     let row = 0;
     for (let b = -reach; b < reach; b += rowH, row++) {
-      // rows laid along the lean, each starting somewhere of its own (as coat() in brushpaint.js)
       for (let a = -reach + ((row * 0.618) % 1) * colW; a < reach; a += colW) {
         const aw = a + (r() - 0.5) * colW * 0.8, bw = b + (r() - 0.5) * rowH * 0.5;
-        const angle = LEAN + (r() - 0.5) * 0.14, f = 0.85 + r() * 0.3, shape = shapes[Math.floor(r() * VARIANTS)];
-        const flip = r() < 0.5, tone = 0.96 + 0.08 * r(), hue = r();
+        const angle = LEAN + (r() - 0.5) * 0.22, f = 0.86 + r() * 0.28, shape = shapes[Math.floor(r() * VARIANTS)];
+        const flip = r() < 0.5, tone = 0.92 + 0.16 * r(), hue = r(), streakHi = r() > 0.5;
         const u0 = 0.5 + aw * cosL - bw * sinL, v0 = 0.5 + aw * sinL + bw * cosL;
         if (u0 < -len || u0 > 1 + len || v0 < -len || v0 > 1 + len) continue;
         colourAt(levels[m.pick], u0, v0, pig);
@@ -115,12 +161,15 @@ function paintStrokes(g, size, source, seed, S) {
           fade *= smooth(m.gate[0], m.gate[1], Math.hypot(pig[0] - other[0], pig[1] - other[1], pig[2] - other[2]));
           if (fade < 0.02) continue;
         }
-        // a little richer and lighter than the picture, as the shop's coat, and each load of the brush
-        // leans warm or cool
+        // Loaded oil pigment: slightly richer saturation & warm/cool brush load variation
         const grey = pig[0] * 0.299 + pig[1] * 0.587 + pig[2] * 0.114;
-        const R = 255 * tone * (1.04 - 0.08 * hue) * Math.max(0, grey + (pig[0] - grey) * 1.2) ** 0.92;
-        const G = 255 * tone * Math.max(0, grey + (pig[1] - grey) * 1.2) ** 0.92;
-        const B = 255 * tone * (0.95 + 0.1 * hue) * Math.max(0, grey + (pig[2] - grey) * 1.2) ** 0.92;
+        const R1 = 255 * tone * (1.05 - 0.11 * hue) * Math.max(0, grey + (pig[0] - grey) * 1.18) ** 0.94;
+        const G1 = 255 * tone * Math.max(0, grey + (pig[1] - grey) * 1.18) ** 0.94;
+        const B1 = 255 * tone * (0.93 + 0.14 * hue) * Math.max(0, grey + (pig[2] - grey) * 1.18) ** 0.94;
+        // Second colour streaked into the bristles
+        const R2 = streakHi ? R1 * 1.16 + 3 : R1 * 0.8;
+        const G2 = streakHi ? G1 * 1.1 + 3 : G1 * 0.84;
+        const B2 = streakHi ? B1 * 1.0 + 2 : B1 * 0.92;
         const wr = pig[0], wg = pig[1], wb = pig[2];
 
         const L = len * f * size, H = (wid * f * size) / COVERED, x = u0 * size, y = v0 * size;
@@ -128,7 +177,7 @@ function paintStrokes(g, size, source, seed, S) {
         const hx = (Math.abs(ca) * L + Math.abs(sa) * H) / 2, hy = (Math.abs(sa) * L + Math.abs(ca) * H) / 2;
         const x0 = Math.max(0, Math.floor(x - hx)), x1 = Math.min(size - 1, Math.ceil(x + hx));
         const y0 = Math.max(0, Math.floor(y - hy)), y1 = Math.min(size - 1, Math.ceil(y + hy));
-        const { cover, density, rim } = shape;
+        const { alpha, slopeU, slopeV, streak } = shape;
         for (let py = y0; py <= y1; py++) {
           for (let px = x0; px <= x1; px++) {
             const dx = px + 0.5 - x, dy = py + 0.5 - y;
@@ -137,127 +186,64 @@ function paintStrokes(g, size, source, seed, S) {
             if (su < 0 || su >= 1 || sv < 0 || sv >= 1) continue;
             if (flip) sv = 0.9999 - sv;
             const si = Math.floor(sv * STAMP_H) * STAMP_W + Math.floor(su * STAMP_W);
-            const c = cover[si];
-            if (c <= 0) continue;
-            // where the picture stops being this colour the mark stops too; the bristles shift where it looks
-            const shift = (density[si] - 0.9) * 0.05;
-            const hx2 = Math.max(0, Math.min(hereS - 1, Math.floor((px / size + shift) * hereS)));
-            const hy2 = Math.max(0, Math.min(hereS - 1, Math.floor((py / size - shift) * hereS)));
+            const c = alpha[si];
+            if (c <= 0.004) continue;
+            // Surface colour agreement: dab stops cleanly where the underlying cover changes colour
+            const hx2 = Math.max(0, Math.min(hereS - 1, Math.floor((px / size) * hereS)));
+            const hy2 = Math.max(0, Math.min(hereS - 1, Math.floor((py / size) * hereS)));
             const hi = (hy2 * hereS + hx2) * 4;
             const fr = hd[hi] / 255 - wr, fg = hd[hi + 1] / 255 - wg, fb = hd[hi + 2] / 255 - wb;
-            const far = Math.sqrt(fr * fr + fg * fg + fb * fb);   // (per pixel: Math.hypot costs too much here)
+            const far = Math.sqrt(fr * fr + fg * fg + fb * fb);
             if (far >= clipTo) continue;
             const a2 = c * fade * (1 - smooth(clipFrom, clipTo, far));
-            const shade = (0.9 + 0.5 * (density[si] - 0.8)) * (1 - rim[si] * 0.16);   // bristle streaks, pigment pooled at the rim
+            const sm = smooth(0.52, 0.78, streak[si]);
+            let R = R1 + (R2 - R1) * sm;
+            let G = G1 + (G2 - G1) * sm;
+            let B = B1 + (B2 - B1) * sm;
+            // Impasto ridges lit from the upper left of the cover
+            const sU = slopeU[si], sV = flip ? -slopeV[si] : slopeV[si];
+            const gx = ca * sU - sa * sV;
+            const gy = sa * sU + ca * sV;
+            const rake = 0.5 * gx - 0.7 * gy;
+            const shade = 1 + rake * 2.3 * imp;
+            const lum = (0.3 * R + 0.5 * G + 0.2 * B) / 255;
+            const spec = rake > 0 ? rake * rake * 1.45 * imp * (0.3 + lum) * 255 : 0;
+            const rOut = Math.max(0, Math.min(255, R * shade + spec));
+            const gOut = Math.max(0, Math.min(255, G * shade + spec * 0.97));
+            const bOut = Math.max(0, Math.min(255, B * shade + spec * 0.9));
             const di = (py * size + px) * 4;
-            d[di] += (R * shade - d[di]) * a2;
-            d[di + 1] += (G * shade - d[di + 1]) * a2;
-            d[di + 2] += (B * shade - d[di + 2]) * a2;
+            d[di] += (rOut - d[di]) * a2;
+            d[di + 1] += (gOut - d[di + 1]) * a2;
+            d[di + 2] += (bOut - d[di + 2]) * a2;
           }
         }
       }
     }
   }
-  g.putImageData(image, 0, 0);
+
+  // Subtle woven linen canvas tooth across the full-bleed oil painting (matching oilpaint.js)
+  const weaveStep = Math.max(1.1, 1.9 * (256 / size));
+  const weaveAmt = 0.025 + 0.015 * Math.min(1.5, S);
+  for (let py = 0; py < size; py++) {
+    const sy = Math.sin(py * weaveStep + 1.3);
+    for (let px = 0; px < size; px++) {
+      const weave = Math.sin(px * weaveStep) * sy * 0.5 + 0.5;
+      const m = 1 - weaveAmt * (1 - weave);
+      const di = (py * size + px) * 4;
+      d[di] *= m;
+      d[di + 1] *= m;
+      d[di + 2] *= m;
+    }
+  }
+  g.putImageData(outImg, 0, 0);
 }
 
 export function paintCover(g, size, seed = 1, level = coverLevel()) {
   const S = COVER_LEVELS[level] ?? 1;
   if (!S) return; // Off: the cover as it is
-  const r = rng(seed);
-  const cap = (v) => Math.min(0.92, v);
   const [src, sg] = canvas(size, size);
   sg.drawImage(g.canvas, 0, 0);
-  const k = size / 256; // effects are tuned at 256 px
-
-  g.save();
-  // 1. soften: fine detail melts into the wash (half blurred, so edges still read)
-  const more = Math.max(0, S - 1); // how far past Medium
-  g.filter = `blur(${1.1 * (1 + 0.35 * more) * k}px)`;
-  g.globalAlpha = cap(0.55 * Math.min(1, S) + 0.1 * more);
-  g.drawImage(src, 0, 0);
-
-  // 2. bleed: two blurred copies nudged in different directions, so colour runs past its edges
-  for (let i = 0; i < (S > 1 ? 3 : 2); i++) {
-    const a = r() * Math.PI * 2;
-    const d = (3 + r() * 3) * (1 + 0.6 * more) * Math.min(1, S) * k;
-    g.filter = `blur(${4 * Math.min(1, S) * (1 + 0.25 * more) * k}px)`;
-    g.globalAlpha = cap(0.2 * Math.min(1, S) * (1 - 0.15 * more));
-    g.drawImage(src, Math.cos(a) * d, Math.sin(a) * d);
-  }
-  g.filter = 'none';
-
-  // 3. uneven drying: a few soft pale blooms with a slightly darker rim where the pigment pooled
-  for (let i = 0; i < 4 + Math.round(2 * more); i++) {
-    const x = r() * size, y = r() * size, rad = (30 + r() * 50) * k;
-    const lift = g.createRadialGradient(x, y, 0, x, y, rad);
-    lift.addColorStop(0, `rgba(255,250,240,${(0.045 * (S + 0.5 * more)).toFixed(3)})`);
-    lift.addColorStop(0.8, `rgba(255,250,240,${(0.02 * (S + 0.5 * more)).toFixed(3)})`);
-    lift.addColorStop(1, 'rgba(255,250,240,0)');
-    g.globalAlpha = 1;
-    g.globalCompositeOperation = 'screen';
-    g.fillStyle = lift;
-    g.fillRect(0, 0, size, size);
-    g.globalCompositeOperation = 'multiply';
-    g.strokeStyle = `rgba(120,90,70,${cap(0.09 * Math.min(1, S) * (1 + 0.3 * more)).toFixed(3)})`;
-    g.lineWidth = (2 + r() * 2) * k;
-    g.filter = `blur(${1.2 * k}px)`;
-    g.beginPath();
-    // a lumpy, open rim (cauliflower), never a clean circle: random harmonics, and only part of the way round
-    const p1 = r() * 6, p2 = r() * 6, from = r() * Math.PI * 2, span = Math.PI * (0.9 + r() * 0.8);
-    for (let t = 0; t <= 24; t++) {
-      const ang = from + (t / 24) * span;
-      const rr = rad * (0.85 + Math.sin(ang * 3 + p1) * 0.08 + Math.sin(ang * 7 + p2) * 0.04 + r() * 0.04);
-      t ? g.lineTo(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr) : g.moveTo(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr);
-    }
-    g.stroke();
-    g.filter = 'none';
-  }
-
-  // 4. the colours are a transparent wash over paper: lift a touch toward the paper
-  g.globalCompositeOperation = 'source-over';
-  g.globalAlpha = cap(0.04 * S);
-  g.fillStyle = PAPER;
-  g.fillRect(0, 0, size, size);
-
-  // 5. brush strokes over the wash
-  paintStrokes(g, size, src, seed, S);
-
-  // 6. paper grain, pigment settling in the tooth
-  g.globalCompositeOperation = 'multiply';
-  g.globalAlpha = cap(0.6 * Math.min(1, S) + 0.15 * more);
-  const pat = g.createPattern(grainCanvas(), 'repeat');
-  g.translate(r() * 256, r() * 256);
-  g.fillStyle = pat;
-  g.fillRect(-256, -256, size + 512, size + 512);
-  g.setTransform(1, 0, 0, 1, 0, 0);
-
-  // 7. a thin unpainted margin with a ragged, slightly darker wet edge
-  g.globalCompositeOperation = 'source-over';
-  g.globalAlpha = 1;
-  const m = 5 * k;
-  const edge = new Path2D();
-  const n = 40;
-  const pts = [];
-  for (let i = 0; i < n; i++) pts.push([(i / n) * size, m + r() * 2.5 * k]);
-  for (let i = 0; i < n; i++) pts.push([size - m - r() * 2.5 * k, (i / n) * size]);
-  for (let i = n; i > 0; i--) pts.push([(i / n) * size, size - m - r() * 2.5 * k]);
-  for (let i = n; i > 0; i--) pts.push([m + r() * 2.5 * k, (i / n) * size]);
-  pts.forEach(([x, y], i) => (i ? edge.lineTo(x, y) : edge.moveTo(x, y)));
-  edge.closePath();
-  g.globalCompositeOperation = 'multiply';
-  g.strokeStyle = 'rgba(110,80,60,.25)';
-  g.lineWidth = 2 * k;
-  g.filter = `blur(${0.8 * k}px)`;
-  g.stroke(edge);
-  g.filter = 'none';
-  g.globalCompositeOperation = 'source-over';
-  const outside = new Path2D();
-  outside.rect(0, 0, size, size);
-  outside.addPath(edge);
-  g.fillStyle = PAPER;
-  g.fill(outside, 'evenodd');
-  g.restore();
+  paintDabs(g, size, src, seed, S);
 }
 
 // same seed for the same picture, so a cover always dries the same way

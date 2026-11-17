@@ -1,65 +1,42 @@
-// Brush-stroke words and the now-playing paper tag. The player itself is the 3D suitcase
+// Oil-paint dab words and the now-playing paper tag. The player itself is the 3D suitcase
 // (suitcase.js); what lives here is its caption: title, artist and a progress line you can click to
-// seek, plus the SIGN IN word. (createControls, the old stack of PLAY / SKIP / BACK / LIKE words,
-// is kept until main.js stops using it.) Words are left as bare paper inside a dark watercolour
-// brush stroke, the way a painter masks out whites.
-import { rng } from './rand.js';
+// seek, plus the SIGN IN word. Words are left as bare cream inside thick opaque oil-paint dabs.
 import { FONT, onLettering } from './style.js';
-import { brushBand, TONES } from './brushpaint.js';
+import { dabCluster, TONES } from './brushpaint.js';
 
-export const INK = '#2d3158';   // indigo wash
+export const INK = '#2d3158';   // indigo oil paint
 export const HOT = '#b4503a';   // terracotta on hover / liked
 export const PAPER = '#fbf5e8';
 
-// One broad brush stroke as an image: layered thin washes with ragged edges, a darker wet edge,
-// dry-brush streaks trailing off the end and granulation speckle.
-export function brushStroke(w, h, color, seed) {
-  const c = document.createElement('canvas');
-  const S = 2;
-  c.width = w * S; c.height = h * S;
-  const g = c.getContext('2d');
-  g.scale(S, S);
-  const r = rng(seed);
-  const walk = (n, amp) => { let v = 0; return Array.from({ length: n }, () => (v = Math.max(-amp, Math.min(amp, v + (r() - 0.5) * amp * 0.9)))); };
-  const step = 6;
-  const n = Math.ceil(w / step) + 1;
-  const x0 = h * 0.18, x1 = w - h * 0.3;
-  let last = null;
-  g.fillStyle = color;
-  for (let pass = 0; pass < 12; pass++) {
-    const top = walk(n, 3.5), bot = walk(n, 3.5);
-    const p = new Path2D();
-    const sk = h * 0.16; // the stroke leans like a fast italic swipe
-    p.moveTo(x0 + sk + r() * 6, 5 + top[0]);
-    for (let i = 0; i < n; i++) { const x = x0 + (x1 - x0) * (i / (n - 1)); p.lineTo(x + sk, 5 + top[i] + pass * 0.15); }
-    p.quadraticCurveTo(x1 + sk + h * 0.25, h * 0.45, x1 - sk * 0.2, h - 5 + bot[n - 1]);
-    for (let i = n - 1; i >= 0; i--) { const x = x0 + (x1 - x0) * (i / (n - 1)); p.lineTo(x - sk, h - 5 + bot[i] - pass * 0.15); }
-    p.quadraticCurveTo(x0 - sk - h * 0.2, h * 0.55, x0 + sk + r() * 6, 5 + top[0]);
-    g.globalAlpha = 0.11;
-    g.fill(p);
-    last = p;
-  }
-  // wet edge: pigment pooled where the wash dried
-  g.globalAlpha = 0.35;
-  g.strokeStyle = color;
-  g.lineWidth = 1.6;
-  g.stroke(last);
-  // dry brush streaks off the end of the stroke
-  for (let i = 0; i < 9; i++) {
-    const y = 8 + r() * (h - 16);
-    g.globalAlpha = 0.25 + r() * 0.35;
-    g.lineWidth = 0.8 + r() * 2.2;
-    g.beginPath();
-    g.moveTo(x1 - 20, y);
-    g.lineTo(x1 + r() * h * 0.5, y + (r() - 0.5) * 3);
-    g.stroke();
-  }
-  // granulation
-  g.globalAlpha = 0.18;
-  for (let i = 0; i < w * h * 0.03; i++) {
-    g.fillRect(x0 + r() * (x1 - x0), 4 + r() * (h - 8), 0.6 + r() * 1.2, 0.6 + r() * 1.2);
-  }
-  return c.toDataURL();
+function tonesFor(color) {
+  if (color === INK) return TONES.ink;
+  if (color === HOT) return TONES.hot;
+  const n = parseInt(String(color).replace('#', ''), 16);
+  const rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+  return [
+    rgb,
+    [clamp(rgb[0] * 1.07 + 3), clamp(rgb[1] * 1.03 + 2), clamp(rgb[2] * 0.97)],
+    [clamp(rgb[0] * 0.91), clamp(rgb[1] * 0.94), clamp(rgb[2] * 1.05 + 3)],
+  ];
+}
+
+// Thick, opaque loaded oil-paint dab plate (used for menu buttons, Settings words, Sign In, and rack signs).
+export function brushStroke(w, h, color, seed, { flipX = false } = {}) {
+  return dabCluster(w, h, {
+    tones: tonesFor(color),
+    seed,
+    rows: h > 64 ? 2 : 1,
+    flipX,
+    tilt: 0.05,
+    overlap: 0.56,
+    minCols: 2,
+    // One even, opaque coat: varied tones, strong ridges and see-through tails made the overlaps show
+    // as brighter and darker patches across a word.
+    impasto: 0.55,
+    even: true,
+    solid: true,
+  });
 }
 
 const CSS = `
@@ -203,7 +180,7 @@ const TAG_CSS = `
   background: ${PAPER}; color: #2b2436;
   clip-path: polygon(0 6%, 18% 0, 47% 4%, 72% 0, 100% 5%, 98% 52%, 100% 96%, 66% 100%, 38% 95%, 9% 100%, 2% 60%);
   filter: drop-shadow(0 2px 0 rgba(60,40,30,.15)); transform: rotate(-2deg); transition: opacity .4s; }
-.cad-tag.mini .cap { width: 100%; padding: 12px 26px 12px 24px; clip-path: none; filter: none; background: var(--cap) 0 0 / 100% 100% no-repeat; }
+.cad-tag.mini .cap { width: 100%; padding: 12px 26px 12px 24px; clip-path: none; filter: drop-shadow(0 2px 3px rgba(45,30,20,.22)); background: var(--cap) 0 0 / 100% 100% no-repeat; }
 .cad-tag .cap .t { font-size: 27px; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cad-tag .cap .a { font-size: 19px; color: #7a5a40; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* a title still too long once shrunk (fitLine) takes a second line, and only the end of that one is cut */
@@ -277,19 +254,19 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
     cold.style.backgroundImage = `url(${brushStroke(Math.ceil(width), Math.ceil(height), INK, 41)})`;
     hot.style.backgroundImage = `url(${brushStroke(Math.ceil(width), Math.ceil(height), HOT, 41)})`;
   };
-  // The small window's tag is brushed like its card; the shop's stays torn paper for now.
+  // The small window's tag is painted in an even oil coat with subtle overlap lines like the app buttons.
   let paintedW = 0, paintedH = 0;
   const paintCap = () => {
     const { width, height } = cap.getBoundingClientRect();
     const barW = bar.offsetWidth;
     if (variant !== 'mini' || !width || !barW || (paintedW === width && paintedH === height)) return;
     paintedW = width; paintedH = height;   // a title taking a second line makes the band taller
-    root.style.setProperty('--cap', `url(${brushBand(Math.ceil(width), Math.ceil(height), { tones: TONES.paper, seed: 61, rows: 3 })})`);
+    root.style.setProperty('--cap', `url(${dabCluster(Math.ceil(width), Math.ceil(height), { tones: [PAPER], seed: 61, rows: 3, tilt: 0.05, overlap: 0.56, minCols: 3, impasto: 0.28, soft: true, solid: true })})`);
     root.style.setProperty('--barw', `${barW}px`);
-    const line = (tones, seed) => `url(${brushBand(barW, 16, { tones, seed, rows: 1 })})`;
-    root.style.setProperty('--track', line(['#dcd2c0', '#e2d9c8', '#d5cab6'], 62));
-    root.style.setProperty('--fill', line(TONES.ink, 63));
-    root.style.setProperty('--fillhot', line(TONES.hot, 64));
+    const line = (tones, seed, opts) => `url(${dabCluster(barW, 16, { tones, seed, rows: 1, tilt: 0.05, overlap: 0.56, minCols: 4, solid: true, ...opts })})`;
+    root.style.setProperty('--track', line([TONES.track[0]], 62, { impasto: 0.28, soft: true }));
+    root.style.setProperty('--fill', line([INK], 63, { impasto: 0.55, even: true }));
+    root.style.setProperty('--fillhot', line([HOT], 64, { impasto: 0.55, even: true }));
   };
   const fit = () => { fitLine(capT, 27, 21, 2); fitLine(capA, 19, 15, 1); };
   const fontReady = (document.fonts?.load(`38px ${FONT}`) ?? Promise.resolve()).then(() => { fit(); paint(); paintCap(); }, () => { fit(); paint(); paintCap(); });

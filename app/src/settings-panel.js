@@ -26,13 +26,12 @@ const CSS = `
 .st-btn:hover { opacity: 1; transform: translateX(-4px) rotate(1deg); }
 .st-w { position: relative; display: inline-block; border: 0; padding: 0; background: none; cursor: pointer; font-family: var(--sienna-font);
   font-size: inherit; color: ${PAPER}; line-height: 1; transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
-.st-w .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; }
+.st-w .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; filter: drop-shadow(0 1px 2px rgba(28,20,16,.2)); }
 .st-w .plate.hot { opacity: 0; }
 .st-w:hover .plate.hot, .st-w.on .plate.hot { opacity: 1; }
 .st-w:hover { transform: translateY(-2px) rotate(-1deg); }
 .st-w span { position: relative; display: block; padding: .16em 1em .1em .7em; white-space: nowrap; text-shadow: 0 0 1px rgba(251,245,232,.7); }
 .st-btn .st-w span { padding: .16em .7em .1em 1em; }
-.st-btn .plate { transform: scaleX(-1); }
 .st-veil { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
   background: rgba(60,45,35,.18); perspective: 1600px; opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s .3s; }
 .st-veil.show { opacity: 1; visibility: visible; transition: opacity .3s ease; }
@@ -133,8 +132,8 @@ export function torn(seed, amp = 5, cap = amp * 2) {
   return `polygon(${pts.join(',')})`;
 }
 
-// A word in a brush stroke. Plates are painted once the word has its real size (after fonts load).
-export function word(text, seed, onClick) {
+// A word in an oil-dab plate. Plates are painted once the word has its real size (after fonts load).
+export function word(text, seed, onClick, { flipX = false } = {}) {
   const el = document.createElement('button');
   el.className = 'st-w';
   el.tabIndex = -1;
@@ -147,8 +146,8 @@ export function word(text, seed, onClick) {
     if (!w || !h || painted === `${w}x${h}`) return;
     painted = `${w}x${h}`;
     const [cold, hot] = el.querySelectorAll('.plate');
-    cold.style.backgroundImage = `url(${brushStroke(w, h, INK, seed)})`;
-    hot.style.backgroundImage = `url(${brushStroke(w, h, HOT, seed)})`;
+    cold.style.backgroundImage = `url(${brushStroke(w, h, INK, seed, { flipX })})`;
+    hot.style.backgroundImage = `url(${brushStroke(w, h, HOT, seed, { flipX })})`;
   };
   return el;
 }
@@ -184,7 +183,7 @@ export function createSettingsPanel({ music = null, onTour = null } = {}) {
   // the SETTINGS word, top right
   const btnWrap = document.createElement('div');
   btnWrap.className = 'st-btn';
-  const btn = word('Settings', 17, () => toggle());
+  const btn = word('Settings', 17, () => toggle(), { flipX: true });
   btnWrap.appendChild(btn);
   document.body.appendChild(btnWrap);
 

@@ -752,7 +752,16 @@ void main() {
     float streak = fbm(vec2(q.x * 1.4, vUv.y * 22.0));
     col = mix(col, vec3(0.13, 0.105, 0.1) * (0.8 + 0.45 * streak), ink);
   }
+  #ifdef OIL_CARD
+  vec2 e = min(vUv, 1.0 - vUv) * vec2(aspect, 1.0);
+  float sheet = min(e.x, e.y) + (fbm(q * 13.0 + 5.0) - 0.5) * 0.038 + (noise(q * 75.0) - 0.5) * 0.008 - 0.018;
+  float ca = smoothstep(0.0, 0.006, sheet);
+  float rim = (1.0 - smoothstep(0.004, 0.014, sheet)) * ca;
+  col = mix(col, vec3(0.92, 0.86, 0.75) * (0.94 + 0.06 * tooth), rim * 0.65);
+  gl_FragColor = vec4(col * ca, ca);
+  #else
   gl_FragColor = vec4(col, 1.0);
+  #endif
 }
 `;
 
@@ -1054,10 +1063,11 @@ export function createOilPaint(renderer, strokes, sceneTarget) {
       depthDown.uniforms.full.value.set(1 / full.x, 1 / full.y);
       strokes.setSize(x, y);
     },
-    finalMaterial(u) {
+    finalMaterial(u, { card = false } = {}) {
       return new THREE.ShaderMaterial({
         vertexShader: quadVertex,
         fragmentShader: finalFragment,
+        defines: card ? { OIL_CARD: '' } : {},
         uniforms: {
           tScene: u.tScene, tDepth: u.tDepth, tPaper: u.tPaper, resolution: u.resolution, paperOffset: u.paperOffset,
           overlayOn: u.overlayOn, overlayBox: u.overlayBox, bars: u.bars, wipe: u.wipe, wipeSeed: u.wipeSeed, grade: u.grade, vignette: u.vignette, borderSeed: u.borderSeed,

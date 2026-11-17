@@ -4,7 +4,7 @@
 // the viewer (the front of the case), the case centred over the origin.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { toon, crisp } from '../materials.js';
+import { toon, crisp, keepSharp } from '../materials.js';
 import { LAYOUT as L, TONEARM, controlLayout } from '../tonearm.js';
 import { MIN_ANGLE, SWEEP } from '../knob.js';
 import {
@@ -17,8 +17,9 @@ import {
 // otherwise the blotches would swim across the leather as the cursor moves.
 export const caseSpace = { value: new THREE.Matrix4() };
 
-export function painted(color, extra) {
-  const m = toon(color, { ...extra, unique: true });
+export function painted(color, extra = {}) {
+  const { sharp = false, ...rest } = extra ?? {};
+  const m = toon(color, { ...rest, unique: true });
   const base = m.onBeforeCompile;
   if (base) {
     m.onBeforeCompile = (shader, renderer) => {
@@ -30,12 +31,12 @@ export function painted(color, extra) {
     };
     m.customProgramCacheKey = () => 'wc-blotch-case';
   }
-  return m;
+  return sharp ? keepSharp(m) : m;
 }
 
 // A part with brush strokes in its map. Its geometry gets brushUV when it is added to the case.
-const brushed = (color, map) => {
-  const m = painted(color, { map });
+const brushed = (color, map, sharp = false) => {
+  const m = painted(color, { map, sharp });
   m.userData.brushed = true;
   return m;
 };
@@ -63,15 +64,15 @@ export function setLabelMap(material, map) {
 }
 
 // ---- the record: shared by the platter and by records in flight ----
-export function createRecordKit() {
+export function createRecordKit({ sharp = false } = {}) {
   const labelFraction = L.labelRadius / L.recordRadius;
   const vinylGeo = cyl(L.recordRadius, 0.02, 64);
   const labelGeo = new THREE.CircleGeometry(L.labelRadius, 48).rotateX(-Math.PI / 2);
   const ringGeo = new THREE.RingGeometry(L.labelRadius - 0.004, L.labelRadius + 0.03, 48).rotateX(-Math.PI / 2);
   const spindleGeo = cyl(0.03, 0.045, 12);
-  const side = painted(COL.vinyl), bottom = painted(COL.vinyl);
-  const top = painted('#ffffff', { map: vinylTexture(labelFraction) });
-  const ringMat = painted(COL.ink), spindleMat = painted(COL.brassLight);
+  const side = painted(COL.vinyl, { sharp }), bottom = painted(COL.vinyl, { sharp });
+  const top = painted('#ffffff', { map: vinylTexture(labelFraction), sharp });
+  const ringMat = painted(COL.ink, { sharp }), spindleMat = painted(COL.brassLight, { sharp });
   const fallback = fallbackLabel();
   return {
     fallback,
@@ -85,6 +86,12 @@ export function createRecordKit() {
       ring.position.y = 0.0112;
       const spindle = new THREE.Mesh(spindleGeo, spindleMat);
       spindle.position.y = 0.025;
+      if (sharp) {
+        group.userData.noStrokes = true;
+        vinyl.castShadow = vinyl.receiveShadow = true;
+        label.receiveShadow = true;
+        spindle.castShadow = true;
+      }
       group.add(vinyl, ring, label, spindle);
       return { group, labelMat: label.material, label };
     },
@@ -92,11 +99,12 @@ export function createRecordKit() {
 }
 
 // ---- the case ----
-export function buildSuitcase({ recordKit, ground = 'shadow', big = false }) {
+export function buildSuitcase({ recordKit, ground = 'shadow', big = false, lights = true, sharp = false }) {
   const ctl = controlLayout(big);
   const w = L.caseWidth, d = L.caseDepth, bh = L.baseHeight, lh = L.lidHeight, deckTop = L.deckHeight;
 
   const root = new THREE.Group();       // placed by the caller
+  if (sharp) root.userData.noStrokes = true;
   const tilt = new THREE.Group();       // leans about the middle of the case
   const caseRoot = new THREE.Group();   // arrival offset, thump
   root.add(tilt);
@@ -106,22 +114,27 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false }) {
 
   const strokes = strokesTexture();
   const mats = {
-    leather: brushed('#ffffff', leatherTexture()),
-    welt: brushed(COL.leatherDark, strokes),
-    lining: brushed('#ffffff', liningTexture()),
-    brass: brushed(COL.brass, strokes),
-    deck: brushed('#ffffff', deckTexture()),
-    platter: brushed(COL.platter, strokes),
-    dark: brushed('#5d4f50', strokes),
-    cloth: brushed('#ffffff', clothTexture()),
-    steel: brushed('#9a8d78', strokes),
-    cart: brushed(COL.hot, strokes),
-    handle: brushed('#7e4c2c', strokes),
+    leather: brushed('#ffffff', leatherTexture(), sharp),
+    welt: brushed(COL.leatherDark, strokes, sharp),
+    lining: brushed('#ffffff', liningTexture(), sharp),
+    brass: brushed(COL.brass, strokes, sharp),
+    deck: brushed('#ffffff', deckTexture(), sharp),
+    platter: brushed(COL.platter, strokes, sharp),
+    dark: brushed('#5d4f50', strokes, sharp),
+    cloth: brushed('#ffffff', clothTexture(), sharp),
+    steel: brushed('#9a8d78', strokes, sharp),
+    cart: brushed(COL.hot, strokes, sharp),
+    handle: brushed('#7e4c2c', strokes, sharp),
   };
   const add = (parent, geo, mat, x = 0, y = 0, z = 0) => {
-    if ([mat].flat()[0].userData.brushed) brushUV(geo);
+    const first = [mat].flat()[0];
+    if (first.userData.brushed) brushUV(geo);
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
+    if (sharp && !first.transparent) {
+      m.castShadow = true;
+      m.receiveShadow = true;
+    }
     parent.add(m);
     return m;
   };
@@ -132,6 +145,7 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false }) {
   const addHit = (control, geo, x, y, z) => {
     const m = add(caseRoot, geo, hitMat, x, y, z);
     m.visible = false;
+    m.castShadow = m.receiveShadow = false;
     hits.push({ mesh: m, control });
     return m;
   };
@@ -226,7 +240,7 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false }) {
   const knob = new THREE.Group();
   knob.position.set(k.x, deckTop + 0.12, k.z);
   caseRoot.add(knob);
-  const knobMat = brushed(COL.ink, strokes), knobTopMat = brushed('#4c5282', strokes), pointerMat = painted(COL.paper);
+  const knobMat = brushed(COL.ink, strokes, sharp), knobTopMat = brushed('#4c5282', strokes, sharp), pointerMat = painted(COL.paper, { sharp });
   add(knob, cyl(kr, 0.18, 32), knobMat);
   add(knob, cyl(kr - 0.06, 0.014, 32), knobTopMat, 0, 0.094, 0);
   add(knob, new THREE.BoxGeometry(0.06, 0.02, 0.2), pointerMat, 0, 0.105, -(kr - 0.14));
@@ -240,11 +254,11 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false }) {
     const grp = new THREE.Group();
     grp.position.set(b.x, deckTop, b.z);
     caseRoot.add(grp);
-    const ringMat = brushed(COL.brass, strokes);
+    const ringMat = brushed(COL.brass, strokes, sharp);
     add(grp, cyl(b.radius + 0.04, 0.034, 24), ringMat, 0, 0.017, 0);
     const cap = new THREE.Group();
     grp.add(cap);
-    const capMat = brushed(COL.ink, strokes);
+    const capMat = brushed(COL.ink, strokes, sharp);
     add(cap, cyl(b.radius, 0.08, 24), capMat, 0, 0.045, 0);
     const glyphMat = crisp({ map: glyphs[initial[name]], alphaTest: 0.5 });
     const glyph = add(cap, new THREE.PlaneGeometry(2 * b.radius * 1.15, 2 * b.radius * 1.15).rotateX(-Math.PI / 2), glyphMat, 0, 0.0865, 0);
@@ -253,19 +267,24 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false }) {
   }
 
   // ---- shadow: a loose painted wash on the ground, outside the lean so it stays flat ----
-  // (ground 'paper': an unpainted patch of paper instead, for the busy shop view)
-  const paper = ground === 'paper';
-  const shadowMat = washBlend(new THREE.MeshBasicMaterial({ map: paper ? paperPatchTexture() : shadowTexture(), opacity: paper ? 1 : 0.9 }));
-  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(w + (paper ? 1.7 : 2.6), d + (paper ? 1.3 : 2.2)).rotateX(-Math.PI / 2), shadowMat);
-  shadow.position.set(paper ? 0.05 : 0.1, 0.004, paper ? 0.1 : 0.25);
-  shadow.renderOrder = -1;
-  root.add(shadow);
+  // (ground 'paper': an unpainted patch of paper instead, for the busy shop view; 'none': omitted on a real table)
+  let shadow = null;
+  if (ground !== 'none') {
+    const paper = ground === 'paper';
+    const shadowMat = washBlend(new THREE.MeshBasicMaterial({ map: paper ? paperPatchTexture() : shadowTexture(), opacity: paper ? 1 : 0.9 }));
+    shadow = new THREE.Mesh(new THREE.PlaneGeometry(w + (paper ? 1.7 : 2.6), d + (paper ? 1.3 : 2.2)).rotateX(-Math.PI / 2), shadowMat);
+    shadow.position.set(paper ? 0.05 : 0.1, 0.004, paper ? 0.1 : 0.25);
+    shadow.renderOrder = -1;
+    root.add(shadow);
+  }
 
   // ---- light: warm, from the upper left front; part of the case so a lean does not relight it ----
-  const hemi = new THREE.HemisphereLight('#fff1da', '#a98a6a', 1.55);
-  const sun = new THREE.DirectionalLight('#ffd9a2', 2.2);
-  sun.position.set(-4, 9, 6);
-  root.add(hemi, sun, sun.target);
+  if (lights) {
+    const hemi = new THREE.HemisphereLight('#fff1da', '#a98a6a', 1.55);
+    const sun = new THREE.DirectionalLight('#ffd9a2', 2.2);
+    sun.position.set(-4, 9, 6);
+    root.add(hemi, sun, sun.target);
+  }
 
   return {
     ctl, root, tilt, caseRoot, lidPivot, seat, record: rec, recordHit, armPivot, armLift, knob,
