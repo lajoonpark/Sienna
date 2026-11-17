@@ -176,12 +176,11 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   the colour there disagrees). Strokes on station furniture remember which piece they are on (`ownStrokes` = k,
   `aCol.w` += 10k) and go when a rack replaces it: before, they floated on the new rack. Spines thinner than a
   pixel of the bake (320 x 200) get no dab and show as drawn. Records (`userData.noStrokes` on a rack's Sleeve) get no strokes in any look, since they
-  move (a rack revealed mid-session used to pin strokes to its records). Coat and medium layers only, about half the coat's strokes
+  move (a rack revealed mid-session used to pin strokes to its records). Coat and medium layers only (the `TOUCH` layer is skipped by default; `?oillayers=3` or `1,1,1` keeps it), about half the coat's strokes
   (they are wider): `?oillayers=1,1,0`, `?oilkeep=0.55,0.7,1`, `?oilshape=2.2,1.0` (width, length), `?oilmax=`,
-  `?oilscale=1` (dab px per CSS px), `?dabwidth=`. The placed dabs are capped in size on screen (`MAX_SIZE`), so
+  `?oilscale=1` (dab px per CSS px), `?dabwidth=`, `?dabprepass=0` (draws the under-coat first instead of dabs-first with Early-Z under-coat culling). The placed dabs are capped in size on screen (`MAX_SIZE`), so
   they leave about half the canvas bare, and none are placed on mortar lines, thin edges or rails; an **under-coat**
-  fills it (`UNDER`, `?under=0.035` dab size as a share of the screen's height, `?under=0` off). It is worked out
-  per pixel in the first pass into the paint target: the pixel's world position and facing come from the scene's
+  fills it (`UNDER`, `?under=0.035` dab size as a share of the screen's height, `?under=0` off; `depthDown` reconstructs world position and normals from the depth buffer and a frustum ray without calling `worldAt` 9x per pixel). By default placed dabs render first into a float target (reading scene depth + sqrt colour cached by a prepass) and `depthDown` Early-Z culls covered/sky tiles so only bare gaps shade the under-coat; the under-coat is still worked out per pixel where gaps remain: the pixel's world position and facing come from the scene's
   depth, and dabs are laid on a grid on the plane of the axis that surface faces most (two grids half a cell apart,
   only the 2 x 2 cells nearest looked at), cells a power of two in metres that halve and double dab by dab with
   distance; each dab is one colour (the scene round where its middle lies: 4 pixels, each weighed by how surely it
@@ -222,9 +221,9 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   than its own, for all paint, placed dabs alone and under-coat alone, the biggest patches, a magenta map. At
   Sharpness light over the intro t1-8, home and stations 0-7: 4.1% -> 0.8% (street 6-10% -> 1-2%); what is left is
   mostly glows the dabs do not carry and patches under the cinema bars. No wash, bleed or border passes; the last pass lays the dabs
-  over the scene, crisp things, glass and the suitcase as drawn, a faint canvas weave. RX 550 @2x (frame-bench), against
-  the old Brush strokes look: home 48.6 -> 27.0 ms before the under-coat, 39.5 with it; station 0 38.9 -> 20.3 / 24 before,
-  29-30 with it; station 3 45.5 -> 23.2 / 24 before, 27 with it (bare canvas at home 52% -> 0%). The scene pass is
+  over the scene, crisp things, glass and the suitcase as drawn, a faint canvas weave. RX 550 @2x (1440x900 Balanced, `hour=14`):
+  home 48.9 -> 31.2 ms, station 0 -> 25.4 ms, station 3 -> 27.9 ms, station 6 -> 25.2 ms (Light: home 24.9 ms, 0/3/6 19-20.6 ms;
+  bare canvas at home 52% -> 0%; pigment blotches use a 64^3 3D texture, `?blotch=math` keeps the 3D sin-hash math; sun shadows use 1-tap hardware PCF and a 16-bit depth map, `?pcf=5` and `?shadow32=1` keep the 5-tap Vogel filter and 32-bit depth; hi-dpi / Light scenes use 2x MSAA, `?msaa=N` pins the sample count). The scene pass is
   still drawn whole. The strokes the dabs sit on are pinned to the world's surfaces, so the paint moves with the world and stays still when the camera does (`src/brushstrokes.js`; check with `scripts/still-check.mjs`). To check that the paint does not shimmer while the camera moves, measure with `node scripts/flicker-check.mjs <out> [query]`: share of pixels flipping brighter/darker during the intro, plus a heat map; `SHOTS=120,121 MARK=1` saves those frames with the flipped pixels in magenta; `hotPct` = pixels
 flipping in over a tenth of the frames). That count also takes in textured edges sliding past; to find what
 *jumps* as the camera moves, `node scripts/pop-check.mjs <out> [query] [times]` draws each moment twice a sliver
@@ -284,12 +283,10 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   faint light from the far end goes. A lamp never switches at once: one dropping out of the 5 dims over `FADE_S`
   (0.9 s) before its slot goes to the next, which brightens over the same; a lamp holding a slot scores 1.25x so
   close pairs do not keep trading.
-  **Bricks**: rounded pieces (bricks, blocks, flagstones: 108-300 triangles each) in an 8 m square more than 5 m from
-  the camera are drawn as plain boxes (12), sharing the same instances (`updateLod` in `src/kit.js`): about a quarter
-  fewer triangles at home.
-  **Start**: the brush strokes placed from the shop's 31 views (~2.8 s of every start) are kept in IndexedDB under a
+  **Kit LOD**: rounded pieces (bricks, blocks, flagstones, sleeves, leaves, beads, links, balls, pots, discs) in an 8 m square beyond `lodNear` from the camera swap to lower-triangle twins sharing the same instance matrices and colours (`updateLod` in `src/kit.js`; `?lod=0` keeps full detail; `strokeFingerprint` and `startBake` temporarily force full detail so stroke bakes always see it).
+  **Start**: the brush strokes placed from the shop's 31 views (`68k / 76k` strokes in coat + medium, buffers sized dynamically to fit) are kept in IndexedDB under a
   fingerprint of the scene, views and stroke settings (`src/strokecache.js`, `strokeFingerprint` in
-  `src/brushstrokes.js`); the next start reads them back (on the RX 550 the intro starts after 1.5 s instead of 5.7 s).
+  `src/brushstrokes.js`); the next start reads them back. Late shelf/rack arrivals run an async PBO stroke refill (`bakeAsync` / `runFillJob`, 1 step per frame) queued after the intro (`hitch-check.mjs`).
   Any change to the street, shop or stroke settings bakes again. `?strokecache=0` skips it.
   **Branch `other-optimizations`** (Lajoon's experiments, 2026-11-12; each has a URL switch to compare):
   - *Stage-set walls* (C5): bricks and flagstones are flat cards, just the face you see, in the same places and
@@ -305,9 +302,9 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
     suitcase). Small gain (~2.5 ms at home): that pass is limited
     by its noise maths, not its reads.
   - *Strokes baked at build time* (C1): `node scripts/bake-strokes.mjs` writes `strokes/shop.bin.gz` (packed by
-    `src/strokepack.js`, ~18.5 MB with each stroke's paint colour and room since the winding shop), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
+    `src/strokepack.js`, ~8.7 MB gzipped / ~12.7 MB raw after dropping the unrendered `TOUCH` layer and trimming buffers), which the stroke cache (`src/strokecache.js`) uses when nothing is kept yet and
     its fingerprint matches (the app reads it through the main process, `strokes:shipped`; a browser fetches it),
-    so a first start also skips placing them (fresh profile: 5.7 s -> 1.7 s to the intro here). Run it again after
+    so a first start also skips placing them (`firstFrameEnd ~1.9 s`). Run it again after
     changing the street, the shop or the stroke settings; until then the app places them itself as before.
     It is baked as the app starts (no `?shot`): station furniture stands where racks will go and gets strokes
     first. Those furniture strokes have places of their own (`ownStrokes` in `src/shop.js`, drawn with alpha 1 + k in
@@ -324,12 +321,9 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   **Measuring**: `node scripts/frame-bench.mjs [at=home,0] [dpr=2] [query]` paints whole frames back to back on the GPU
   and gives ms per frame, the JS cost of a still frame and of the scene's render call, draw calls and triangles;
   `VARIANTS='[{},{"noPoint":true},{"noBricks":true},{"noOverlay":true}]'` switches parts off to see their share.
-  On the server's RX 550 at 1440x900 Retina, home: 89 ms a frame before these changes, 59 ms now (Balanced, 5 lamps,
-  boxed far bricks); Full sharpness 87 ms. `__siennaDebug.profile()` times each step (each waits for the GPU, so the
-  steps do not add up to a whole frame; `save` and `overlay` are the suitcase's).
+  On the server's RX 550 at 1440x900 Retina, Balanced (`hour=14`): home 31.2 ms (48.9 ms before round 2), station 0 25.4 ms, station 3 27.9 ms, station 6 25.2 ms; Light home 24.9 ms; Full home 40.6 ms. `__siennaDebug.profile()` times each step (`renderer.setRenderTarget(null)` synced before `gl.readPixels`, so steps do not add up to a whole frame; `save` and `overlay` are the suitcase's).
   **Still frames**: a frame is painted again only as far as it differs from the one before. `src/still.js`
-  writes down everything a frame is made from (where each visible thing is, colours, textures, lights,
-  camera) and compares it with the last frame's; the painter (`Still frames` in `src/watercolour.js`) then
+  skips the scene walk altogether while the camera moved (`camBuf`), deduplicates materials per frame (`seenMat`), and compares what remains in batched typed buffers (`~0.47 ms` settled, `~2.15 ms` JS / `5.52 ms` GPU-synced listening frame with scissored overlay draw and MSAA resolve into `capBox`). The painter (`Still frames` in `src/watercolour.js`) then
   draws nothing if nothing changed, only four strips along the edges if just the ragged border boiled,
   only the suitcase's corner if just its record turned (the world's pixels under it are kept and put
   back), and the whole frame only when the world itself changed. So the shop's 3.8 million triangles,
