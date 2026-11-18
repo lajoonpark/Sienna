@@ -550,10 +550,10 @@ function updateFocus(dt) {
   if (at !== focus.rack) {
     focus.rack = at; focus.key = focus.aimed = -1; focus.tyaw = focus.tpitch = 0; focus.vyaw = focus.vpitch = 0; focus.freeze = null;
   }
-  // moving the cursor (a few px, not a twitch) lets the hover follow it again
+  // moving the cursor (a few px, not a twitch) lets the hover follow it again; turning the rack drops it
   const fz = focus.freeze;
-  if (fz && Math.hypot(pointerPx.x - fz.x, pointerPx.y - fz.y) > FOCUS.unfreezePx) focus.freeze = null;
-  const hov = rack && hoverArg === null ? rack.hovered : -1;
+  if (fz && (Math.hypot(pointerPx.x - fz.x, pointerPx.y - fz.y) > FOCUS.unfreezePx || (rack?.turning && fz.key >= 0))) focus.freeze = null;
+  const hov = rack && hoverArg === null && !rack.turning ? rack.hovered : -1;
   if (hov !== focus.key) { focus.key = hov; focus.on = 0; }
   // a couple of frames on a record is enough (brushing past one for a single frame does not count)
   if (hov >= 0) { focus.on += dt; focus.off = 0; } else focus.off += dt;
@@ -606,7 +606,7 @@ function updateFocus(dt) {
   finishFocus(rack);
 }
 function finishFocus(rack) {
-  if (hoverArg === null) for (const r of racks) if (r) r.forceHover = r === rack && focus.freeze ? focus.freeze.key : null;
+  if (hoverArg === null) for (const r of racks) if (r) r.forceHover = r === rack && focus.freeze && !r.turning ? focus.freeze.key : null;
 }
 document.addEventListener('pointerleave', () => { pointer = null; cursorX01 = null; });
 const currentRack = () => (nav.settled && nav.at !== AT_HOME ? racks[nav.at] : null);
@@ -640,6 +640,7 @@ renderer.domElement.addEventListener('pointermove', (e) => {
   if (!grab) return;
   if (!grab.moving && Math.hypot(e.clientX - grab.x, e.clientY - grab.y) <= DRAG_PX) return;
   if (!grab.moving) { grab.moving = true; renderer.domElement.style.cursor = 'grabbing'; }
+  if (focus.freeze?.key >= 0) focus.freeze = null;
   grab.rack.dragTo(ndcOf(e), camera);
 });
 const letGo = () => {
@@ -687,7 +688,11 @@ let wheelVol = null, wheelIdle = 0;
 addEventListener('wheel', (e) => {
   if (settingsPanel.isOpen() || search.isOpen()) return; // the wheel scrolls the search slips then, never the volume
   // mostly sideways (trackpad swipe): a rack that turns by hand takes it, and the volume stays put
-  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { if (spread.isOpen) spread.wheel(e.deltaX); else currentRack()?.wheel(e.deltaX); return; }
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+    if (spread.isOpen) spread.wheel(e.deltaX);
+    else if (currentRack()?.wheel(e.deltaX) && focus.freeze?.key >= 0) focus.freeze = null;
+    return;
+  }
   wheelVol = Math.min(100, Math.max(0, (wheelVol ?? player.volume ?? 70) + e.deltaY * 0.05));
   music.command('volume', wheelVol);
   clearTimeout(wheelIdle);

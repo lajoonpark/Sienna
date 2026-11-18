@@ -174,7 +174,7 @@ export function createSpinnerRack({ onPick }) {
       }
       if (drag || hold > 0) target = 0;
       ptr = null;
-      vel += (target - vel) * smooth(5, dt);
+      vel += (target - vel) * smooth(hovered >= 0 ? 18 : 5, dt);
       // a scroll eases in over a few frames; a flick runs down with friction
       const w = wheelTurn * smooth(14, dt);
       wheelTurn -= w;

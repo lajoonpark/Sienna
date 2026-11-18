@@ -921,6 +921,7 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
       dragTo(pointer, camera) { def.dragTo?.(core, pointer, camera); },
       release() { def.release?.(core); },
       get hovered() { return core.hovered; },
+      get turning() { return !!def.turning?.(core); },
       // metres the view should make room by (records move right = camera moves left; up = camera down)
       // where the hovered record is now (world), for the camera to turn toward; false if none
       focusPoint(out) {
