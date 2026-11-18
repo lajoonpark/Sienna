@@ -18,7 +18,7 @@ const TOP = 1.88;
 const PULL = 0.36;                    // a hovered cover first comes this far straight out of its pocket
 const CLEAR = 0.72, REACH_Y = 0.25;   // a lifted cover stays this far nearer you than the tower's axis (pocket corners reach 0.58, roof 0.64), over this much height
 const WHEEL_RAD = 0.005;               // turn per px of sideways scroll
-const HOLD = 0.25;                    // s after turning by hand before a record can lift again
+const HOLD = 0.06;                    // s after turning by hand before a record can lift again
 const FRICTION = 2.2, MAX_SPIN = 9;   // a flick's slow-down (1/s) and top speed (rad/s)
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(1, 1, 1), _p = new THREE.Vector3(), _u = new THREE.Vector3();
@@ -139,7 +139,7 @@ export function createSpinnerRack({ onPick }) {
     // sideways scroll: macOS natural scrolling sends +dx as the fingers move left, the front face goes left
     wheel(c, dx) {
       wheelTurn -= dx * WHEEL_RAD;
-      hold = HOLD;
+      if (c.hovered >= 0 || Math.abs(wheelTurn) * 14 + Math.abs(spin) > 0.2) hold = HOLD;
       return true;
     },
     grab(c, pointer, camera) {
@@ -181,7 +181,8 @@ export function createSpinnerRack({ onPick }) {
       spin *= Math.exp(-FRICTION * dt);
       if (Math.abs(spin) < 0.02) spin = 0;
       if (!drag) car.rotation.y += vel * dt + w + spin * dt;
-      if (!drag && Math.abs(wheelTurn) < 1e-3 && !spin) hold = Math.max(0, hold - dt);
+      if (!drag && Math.abs(wheelTurn) * 14 + Math.abs(spin) <= 0.2) hold = Math.max(0, hold - dt);
+      else if (drag?.moving) hold = HOLD;
       car.updateWorldMatrix(true, false);
       camera.getWorldPosition(cam);
       car.worldToLocal(cam);

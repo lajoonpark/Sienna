@@ -542,7 +542,7 @@ function spring(x, v, target, w, dt) {
 function aimAt(yaw, pitch, key) {
   if (Math.abs(yaw - focus.tyaw) + Math.abs(pitch - focus.tpitch) < 0.01) return;
   focus.tyaw = yaw; focus.tpitch = pitch;
-  focus.freeze = { key, x: pointerPx.x, y: pointerPx.y };
+  focus.freeze = currentRack()?.turning ? null : { key, x: pointerPx.x, y: pointerPx.y };
 }
 function updateFocus(dt) {
   const at = nav.settled && nav.at !== AT_HOME && !pinnedPose ? nav.at : -1;
@@ -552,7 +552,7 @@ function updateFocus(dt) {
   }
   // moving the cursor (a few px, not a twitch) lets the hover follow it again; turning the rack drops it
   const fz = focus.freeze;
-  if (fz && (Math.hypot(pointerPx.x - fz.x, pointerPx.y - fz.y) > FOCUS.unfreezePx || (rack?.turning && fz.key >= 0))) focus.freeze = null;
+  if (fz && (Math.hypot(pointerPx.x - fz.x, pointerPx.y - fz.y) > FOCUS.unfreezePx || rack?.turning)) focus.freeze = null;
   const hov = rack && hoverArg === null && !rack.turning ? rack.hovered : -1;
   if (hov !== focus.key) { focus.key = hov; focus.on = 0; }
   // a couple of frames on a record is enough (brushing past one for a single frame does not count)
