@@ -70,6 +70,12 @@ const num = (k, d) => params.get(k)?.split(',').map(Number) ?? d;
 const DAB_TOL = num('oiltol', [0.006, 0.0015]), DAB_COL = num('oilagreecol', [0.12, 0.22]);
 const UNDER_TOL = num('undertol', [0.01, 0.004]), UNDER_COL = num('undercol', [0.08, 0.16]);
 const f4 = (x) => x.toFixed(4);
+// How far the hand's lean swings over an open surface (radians each way, about) and how fast (per metre),
+// so the coat's dabs do not all line up one way; ?oilswing=0.6,0.9 (0 = one lean everywhere, as before)
+const [SWING, SWING_FREQ] = num('oilswing', [0.6, 0.9]);
+// The deeper, cooler note streaked into half the dabs (a multiplier on their paint). It was 0.8, 0.84, 0.92:
+// that dark, rows of such dabs read as bands across the walls. ?oilcool=0.9,0.92,0.96
+const COOL_NOTE = `vec3(${num('oilcool', [0.9, 0.92, 0.96]).map((x) => x.toFixed(3)).join(', ')})`;
 const MAX_POINTS = 8;
 const ATLAS_COLS = 4, ATLAS_ROWS = 2;
 
@@ -272,6 +278,14 @@ void main() {
   vec3 side0 = cross(sNor, sTan);
   vec3 P = sPos + sTan * ou + side0 * ov;
   float turn = (h1 - 0.5) * 0.22;
+  // On an open surface (room for a dab turned any way), the hand's lean swings slowly from one part of it to
+  // the next: one diagonal everywhere lined the coat's dabs up into long stripes on the big walls, darker
+  // rows reading as bands across them (Lajoon, 2026-11-19). Pinned to the world, so it never moves. Strokes
+  // fitted to a board or a post keep running along it.
+  float open = smoothstep(1.2, 2.2, min(aShape.z, aShape.w) / max(dl, 1e-4));
+  vec3 sw = sPos * ${SWING_FREQ.toFixed(3)};
+  turn += open * ${SWING.toFixed(3)} * (sin(sw.x * 1.3 + sw.z * 0.8 + 1.5 * sin(sw.y * 1.1 - sw.z * 0.7)) * 0.6
+                        + sin(sw.y * 1.9 - sw.x * 0.9 + sw.z * 1.2) * 0.4);
   vec3 tanD = sTan * cos(turn) + side0 * sin(turn);
   float r3 = fract(aTan.w * 5.37 + h2), r4 = fract(aTan.w * 11.9 + h3);
   // hidden here (behind something in front): no dab. Looked for at its own middle, so the dabs of a stroke
@@ -308,7 +322,7 @@ void main() {
   vC1 = c;
   vMine = sqrt(max(c, 0.0));
   // the second colour streaked into it: a lighter, warmer note or a deeper, cooler one
-  vC2 = r2 > 0.5 ? c * vec3(1.16, 1.1, 1.0) + 0.012 : c * vec3(0.8, 0.84, 0.92);
+  vC2 = r2 > 0.5 ? c * vec3(1.16, 1.1, 1.0) + 0.012 : c * ${COOL_NOTE};
 
   // which way it runs on the canvas, for the light raking across its ridges
   vec4 clipB = viewProj * vec4(P + tanD * len * 0.5, 1.0);
@@ -617,7 +631,7 @@ void main() {
   }
   float r3 = h21(bestC * 3.1), r4 = h21(bestC * 5.7 + 1.0);
   col *= (0.93 + 0.14 * r3) * mix(vec3(1.04, 1.0, 0.95), vec3(0.95, 1.0, 1.05), r4);
-  vec3 col2 = r3 > 0.5 ? col * vec3(1.16, 1.1, 1.0) + 0.012 : col * vec3(0.8, 0.84, 0.92);
+  vec3 col2 = r3 > 0.5 ? col * vec3(1.16, 1.1, 1.0) + 0.012 : col * ${COOL_NOTE};
   // which way it runs on the screen, for the light raking across its ridges
   vec3 Dw = U * bestA.x + V * bestA.y;
   Dw -= N * dot(Dw, N);
