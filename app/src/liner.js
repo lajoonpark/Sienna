@@ -11,18 +11,48 @@ import { onLettering } from './style.js';
 const CSS = `
 .ln-veil { position: fixed; inset: 0; z-index: 65; display: flex; align-items: center; justify-content: center;
   background: rgba(60,45,35,.18); perspective: 1500px; opacity: 0; visibility: hidden;
-  transition: opacity .28s ease, visibility 0s .28s; font-family: var(--sienna-font); color: #2b2436; }
-.ln-veil.show { opacity: 1; visibility: visible; transition: opacity .28s ease; }
-.ln-lean { display: flex; justify-content: center; will-change: transform; }
+  transition: opacity .26s ease, visibility 0s .32s; font-family: var(--sienna-font); color: #2b2436; }
+.ln-veil.show { opacity: 1; visibility: visible; transition: opacity .26s ease; }
+.ln-veil.closing { opacity: 0; visibility: visible; pointer-events: none; transition: opacity .26s ease; }
+.ln-lean { display: flex; justify-content: center; will-change: transform; transform-style: preserve-3d; }
 .ln-card { position: relative; width: min(560px, 90vw); max-height: min(640px, 84vh); box-sizing: border-box;
   display: flex; flex-direction: column; padding: 28px 34px 22px; filter: drop-shadow(0 8px 14px rgba(45,30,20,.28));
-  transform: translateY(16px) rotate(-1deg) scale(.96); transition: transform .4s cubic-bezier(.2,1.5,.4,1); }
-.ln-veil.show .ln-card { transform: rotate(-.4deg); }
+  transform-style: preserve-3d; transform-origin: 50% 54%; transform: rotate(-.4deg); }
+.ln-veil.show .ln-card.unfold { animation: ln-unfold .62s cubic-bezier(.22,.82,.28,1) both; }
+.ln-veil.closing .ln-card.unfold { animation: ln-fold .26s ease-in both; }
+@keyframes ln-unfold {
+  0%   { opacity: 0; transform: translateY(34px) translateZ(-90px) rotateX(66deg) rotateY(-10deg) rotateZ(-3.2deg) scaleY(.48) scaleX(.92); filter: drop-shadow(0 22px 26px rgba(45,30,20,.38)); }
+  38%  { opacity: 1; transform: translateY(-6px) translateZ(18px) rotateX(-15deg) rotateY(3.6deg) rotateZ(.9deg) scaleY(1.03) scaleX(1.01); filter: drop-shadow(0 14px 18px rgba(45,30,20,.32)); }
+  68%  { opacity: 1; transform: translateY(2px) translateZ(3px) rotateX(4.8deg) rotateY(-1.4deg) rotateZ(-.85deg) scaleY(.994) scaleX(1); filter: drop-shadow(0 9px 15px rgba(45,30,20,.29)); }
+  86%  { opacity: 1; transform: translateY(0) translateZ(0) rotateX(-1.4deg) rotateY(.4deg) rotateZ(-.25deg) scale(1); }
+  100% { opacity: 1; transform: rotate(-.4deg); filter: drop-shadow(0 8px 14px rgba(45,30,20,.28)); }
+}
+@keyframes ln-fold {
+  0%   { opacity: 1; transform: rotate(-.4deg); }
+  100% { opacity: 0; transform: translateY(26px) translateZ(-70px) rotateX(-52deg) rotateY(7deg) rotateZ(2.4deg) scaleY(.52) scaleX(.93); }
+}
 .ln-paper { position: absolute; inset: 0; background: #f4ead6; }
-/* subtle folded liner-note crease across the middle */
-.ln-paper.folded::after { content: ''; position: absolute; left: 4%; right: 4%; top: 50%; height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(122,90,64,.16) 15%, rgba(122,90,64,.22) 50%, rgba(122,90,64,.16) 85%, transparent);
-  box-shadow: 0 1px 0 rgba(255,250,240,.55); pointer-events: none; }
+/* transient 3D unfolding flap: visible only during the unfold/fold motion, completely gone once settled */
+.ln-flap { position: absolute; left: 0; right: 0; top: 0; height: 50%; background: linear-gradient(180deg, #f6eedc 0%, #efe2c8 100%);
+  transform-origin: 50% 100%; backface-visibility: visible; pointer-events: none; opacity: 0; z-index: 3; }
+.ln-veil.show .ln-card.unfold .ln-flap { animation: ln-flap-open .56s cubic-bezier(.22,.82,.3,1) both; }
+.ln-veil.closing .ln-card.unfold .ln-flap { animation: ln-flap-close .24s ease-in both; }
+@keyframes ln-flap-open {
+  0%   { opacity: .96; transform: rotateX(-165deg); box-shadow: 0 12px 24px rgba(55,38,24,.28); }
+  55%  { opacity: .62; transform: rotateX(-14deg); box-shadow: 0 4px 10px rgba(55,38,24,.12); }
+  85%  { opacity: .18; transform: rotateX(4deg); box-shadow: none; }
+  100% { opacity: 0; transform: rotateX(0deg); box-shadow: none; }
+}
+@keyframes ln-flap-close {
+  0%   { opacity: 0; transform: rotateX(0deg); }
+  35%  { opacity: .55; transform: rotateX(-55deg); }
+  100% { opacity: .9; transform: rotateX(-145deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ln-veil.show .ln-card.unfold, .ln-veil.closing .ln-card.unfold,
+  .ln-veil.show .ln-card.unfold .ln-flap, .ln-veil.closing .ln-card.unfold .ln-flap { animation: none !important; }
+  .ln-flap { display: none; }
+}
 .ln-head { position: relative; flex: none; margin: 0 0 4px; font-size: 36px; line-height: 1.05; color: ${INK}; }
 .ln-sub { position: relative; flex: none; margin: 0 0 14px; font-size: 20px; color: #7a5a40; }
 .ln-scroll { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
@@ -91,7 +121,7 @@ export function createLiner({ music } = {}) {
   // ---- modal sheet (lyrics or queue) ----
   const veil = document.createElement('div');
   veil.className = 'ln-veil';
-  veil.innerHTML = `<div class="ln-lean"><div class="ln-card"><div class="ln-paper"></div>
+  veil.innerHTML = `<div class="ln-lean"><div class="ln-card unfold"><div class="ln-paper"></div><div class="ln-flap"></div>
     <div class="ln-head"></div><div class="ln-sub"></div>
     <div class="ln-scroll"></div><div class="ln-src"></div>
     <div class="ln-foot"></div></div></div>`;
@@ -99,15 +129,18 @@ export function createLiner({ music } = {}) {
   const leaner = veil.querySelector('.ln-lean');
   const card = veil.querySelector('.ln-card');
   const paper = veil.querySelector('.ln-paper');
+  const flap = veil.querySelector('.ln-flap');
   const head = veil.querySelector('.ln-head');
   const sub = veil.querySelector('.ln-sub');
   const scroll = veil.querySelector('.ln-scroll');
   const srcEl = veil.querySelector('.ln-src');
   const foot = veil.querySelector('.ln-foot');
   paper.style.clipPath = torn(43);
+  flap.style.clipPath = torn(43, 4, 8);
 
   let mode = null; // null | 'lyrics' | 'queue'
   let unlean = null;
+  let closeTimer = 0;
   let seq = 0;
 
   const closeBtn = word('Close', 73, () => close());
@@ -116,8 +149,12 @@ export function createLiner({ music } = {}) {
   veil.addEventListener('click', () => close());
 
   function openSheet(nextMode) {
+    clearTimeout(closeTimer);
     mode = nextMode;
-    paper.classList.toggle('folded', nextMode === 'lyrics');
+    veil.classList.remove('closing');
+    // restart the CSS unfold animation cleanly even when switching modes
+    veil.classList.remove('show');
+    void card.offsetWidth;
     veil.classList.add('show');
     scroll.scrollTop = 0;
     requestAnimationFrame(() => closeBtn.paint());
@@ -128,7 +165,10 @@ export function createLiner({ music } = {}) {
     if (!mode) return;
     mode = null;
     seq++;
+    clearTimeout(closeTimer);
     veil.classList.remove('show');
+    veil.classList.add('closing');
+    closeTimer = setTimeout(() => { veil.classList.remove('closing'); }, 280);
     unlean?.(); unlean = null;
   }
 

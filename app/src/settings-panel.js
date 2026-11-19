@@ -38,15 +38,49 @@ const CSS = `
 .st-w span { position: relative; display: block; padding: .16em 1em .1em .7em; white-space: nowrap; text-shadow: 0 0 1px rgba(251,245,232,.7); }
 .st-btn .st-w span { padding: .16em .7em .1em 1em; }
 .st-veil { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
-  background: rgba(60,45,35,.18); perspective: 1600px; opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s .3s; }
-.st-veil.show { opacity: 1; visibility: visible; transition: opacity .3s ease; }
-/* the card leans toward the cursor (cursortilt.js); a wrapper carries the lean so the card's own open/close bounce stays */
-.st-lean { display: flex; justify-content: center; will-change: transform; }
+  background: rgba(60,45,35,.18); perspective: 1600px; opacity: 0; visibility: hidden; transition: opacity .26s ease, visibility 0s .32s; }
+.st-veil.show { opacity: 1; visibility: visible; transition: opacity .26s ease; }
+.st-veil.closing { opacity: 0; visibility: visible; pointer-events: none; transition: opacity .26s ease; }
+/* the card leans toward the cursor (cursortilt.js); a wrapper carries the lean so the card's own open/close unfold stays */
+.st-lean { display: flex; justify-content: center; will-change: transform; transform-style: preserve-3d; }
 .st-card { position: relative; width: min(940px, 94vw); height: min(640px, 92vh); box-sizing: border-box; display: flex; flex-direction: column; padding: 30px 40px 22px; color: #2b2436;
   font-family: var(--sienna-font); filter: drop-shadow(0 6px 10px rgba(50,35,25,.25));
-  transform: translateY(18px) rotate(-1.4deg) scale(.96); transition: transform .45s cubic-bezier(.2,1.5,.4,1); }
-.st-veil.show .st-card { transform: rotate(-.5deg); }
+  transform-style: preserve-3d; transform-origin: 50% 54%; transform: rotate(-.5deg); }
+.st-veil.show .st-card { animation: st-unfold .64s cubic-bezier(.22,.82,.28,1) both; }
+.st-veil.closing .st-card { animation: st-fold .26s ease-in both; }
+@keyframes st-unfold {
+  0%   { opacity: 0; transform: translateY(34px) translateZ(-95px) rotateX(64deg) rotateY(-9deg) rotateZ(-3deg) scaleY(.48) scaleX(.93); filter: drop-shadow(0 22px 28px rgba(50,35,25,.36)); }
+  38%  { opacity: 1; transform: translateY(-6px) translateZ(18px) rotateX(-14deg) rotateY(3.2deg) rotateZ(.85deg) scaleY(1.028) scaleX(1.008); filter: drop-shadow(0 13px 18px rgba(50,35,25,.3)); }
+  68%  { opacity: 1; transform: translateY(2px) translateZ(3px) rotateX(4.4deg) rotateY(-1.2deg) rotateZ(-.9deg) scaleY(.995) scaleX(1); }
+  86%  { opacity: 1; transform: translateY(0) translateZ(0) rotateX(-1.3deg) rotateY(.35deg) rotateZ(-.3deg) scale(1); }
+  100% { opacity: 1; transform: rotate(-.5deg); filter: drop-shadow(0 6px 10px rgba(50,35,25,.25)); }
+}
+@keyframes st-fold {
+  0%   { opacity: 1; transform: rotate(-.5deg); }
+  100% { opacity: 0; transform: translateY(26px) translateZ(-75px) rotateX(-50deg) rotateY(6deg) rotateZ(2.2deg) scaleY(.52) scaleX(.93); }
+}
 .st-paper { position: absolute; inset: 0; background: #f4ead6; }
+/* transient 3D unfolding flap: vanishes completely once the sheet settles flat */
+.st-flap { position: absolute; left: 0; right: 0; top: 0; height: 50%; background: linear-gradient(180deg, #f6eedc 0%, #efe2c8 100%);
+  transform-origin: 50% 100%; backface-visibility: visible; pointer-events: none; opacity: 0; z-index: 4; }
+.st-veil.show .st-flap { animation: st-flap-open .58s cubic-bezier(.22,.82,.3,1) both; }
+.st-veil.closing .st-flap { animation: st-flap-close .24s ease-in both; }
+@keyframes st-flap-open {
+  0%   { opacity: .95; transform: rotateX(-165deg); box-shadow: 0 12px 24px rgba(55,38,24,.26); }
+  55%  { opacity: .58; transform: rotateX(-14deg); box-shadow: 0 4px 10px rgba(55,38,24,.1); }
+  85%  { opacity: .16; transform: rotateX(4deg); box-shadow: none; }
+  100% { opacity: 0; transform: rotateX(0deg); box-shadow: none; }
+}
+@keyframes st-flap-close {
+  0%   { opacity: 0; transform: rotateX(0deg); }
+  35%  { opacity: .55; transform: rotateX(-55deg); }
+  100% { opacity: .9; transform: rotateX(-145deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-veil.show .st-card, .st-veil.closing .st-card,
+  .st-veil.show .st-flap, .st-veil.closing .st-flap { animation: none !important; }
+  .st-flap { display: none; }
+}
 .st-head { position: relative; flex: none; font-size: 42px; margin: 0 0 12px; color: ${INK}; }
 /* the rail on the left, the page on the right; a painted line between them */
 .st-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; gap: 0 30px; }
@@ -57,15 +91,19 @@ const CSS = `
 .st-side .st-w:not(.on):hover span { color: ${PAPER}; }
 .st-rule { flex: none; width: 4px; align-self: stretch; margin: 6px 0; background-size: 100% 100%; opacity: .55; }
 /* only the page scrolls: the paper, the title, the rail and DONE stay put, so the card is always whole */
-.st-scroll { position: relative; flex: 1 1 auto; min-width: 0; overflow-y: auto; overflow-x: hidden; margin-right: -14px; padding-right: 14px;
+.st-scroll { position: relative; flex: 1 1 auto; min-width: 0; overflow-y: auto; overflow-x: hidden; margin-right: -14px; padding-right: 14px; perspective: 900px;
   -webkit-mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 10px), transparent); mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 10px), transparent);
   padding-top: 8px; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: rgba(122,90,64,.45) transparent; }
 .st-scroll::-webkit-scrollbar { width: 8px; }
 .st-scroll::-webkit-scrollbar-track { background: transparent; }
 .st-scroll::-webkit-scrollbar-thumb { background: rgba(122,90,64,.45); border-radius: 4px; }
-.st-page { display: none; }
-.st-page.on { display: block; animation: st-in .3s ease; }
-@keyframes st-in { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+.st-page { display: none; transform-origin: 0% 45%; }
+.st-page.on { display: block; animation: st-in .36s cubic-bezier(.22,.82,.3,1); }
+@keyframes st-in {
+  0%   { opacity: 0; transform: translateX(14px) rotateY(-18deg) rotateZ(-.6deg); }
+  65%  { opacity: 1; transform: translateX(-1px) rotateY(2deg) rotateZ(.15deg); }
+  100% { opacity: 1; transform: none; }
+}
 .st-row { position: relative; margin: 0 0 18px; }
 .st-label { font-size: 30px; }
 .st-hint { font-size: 19px; color: #7a5a40; margin: 2px 0 10px; }
@@ -248,7 +286,7 @@ export function createSettingsPanel({ music = null, onTour = null, onToggleSourc
 
   const veil = document.createElement('div');
   veil.className = 'st-veil';
-  veil.innerHTML = `<div class="st-lean"><div class="st-card"><div class="st-paper"></div><div class="st-head">Settings</div>
+  veil.innerHTML = `<div class="st-lean"><div class="st-card"><div class="st-paper"></div><div class="st-flap"></div><div class="st-head">Settings</div>
     <div class="st-body"><div class="st-side"></div><div class="st-rule"></div><div class="st-scroll"></div></div>
     <div class="st-foot"></div></div></div>`;
   document.body.appendChild(veil);
@@ -258,7 +296,9 @@ export function createSettingsPanel({ music = null, onTour = null, onToggleSourc
   const rule = veil.querySelector('.st-rule');
   const scroller = veil.querySelector('.st-scroll');
   let unlean = null;
+  let closeTimer = 0;
   card.querySelector('.st-paper').style.clipPath = torn(7);
+  card.querySelector('.st-flap').style.clipPath = torn(7, 4, 8);
   card.addEventListener('click', (e) => e.stopPropagation());
   veil.addEventListener('click', () => close());
 
@@ -630,7 +670,11 @@ export function createSettingsPanel({ music = null, onTour = null, onToggleSourc
 
   let openNow = false;
   function open(page = null) {
+    clearTimeout(closeTimer);
     openNow = true;
+    veil.classList.remove('closing');
+    veil.classList.remove('show');
+    void card.offsetWidth;
     veil.classList.add('show');
     if (page || !current) show(page || 'account');
     else PAGES.find((x) => x.id === current)?.onShow?.();   // the same page as last time, brought up to date
@@ -640,10 +684,14 @@ export function createSettingsPanel({ music = null, onTour = null, onToggleSourc
     unlean ??= onCursorTilt((x, y) => { leaner.style.transform = tiltCSS(x, y, 5); });
   }
   function close() {
+    if (!openNow) return;
     stopRecording();
     openNow = false;
+    clearTimeout(closeTimer);
     veil.classList.remove('show');
-    unlean?.(); unlean = null; // it holds its last lean while it fades
+    veil.classList.add('closing');
+    closeTimer = setTimeout(() => { veil.classList.remove('closing'); }, 280);
+    unlean?.(); unlean = null; // it holds its last lean while it folds away
   }
   function toggle() { (openNow ? close : open)(); }
   function step(d) {
