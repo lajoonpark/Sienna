@@ -2,11 +2,12 @@
 // macOS reports a thermal state (nominal, fair, serious, critical) as the machine heats up; other systems
 // say 'unknown' and the shop then goes by its own frame times only. Sent to the shop window as
 // 'power:state' { thermal, battery } whenever either changes; 'power:get' answers the same on request.
-//   SIENNA_THERMAL=serious (or fair, critical) pretends the machine is that warm, to try the cool-down.
+//   SIENNA_THERMAL=serious (or fair, critical) pretends the machine is that warm (unpackaged runs only).
 const { powerMonitor, ipcMain } = require('electron');
+const { devEnv } = require('./security.cjs');
 
 function createPower({ send, guarded }) {
-  const thermal = () => process.env.SIENNA_THERMAL || (typeof powerMonitor.getCurrentThermalState === 'function' ? powerMonitor.getCurrentThermalState() : 'unknown');
+  const thermal = () => devEnv('SIENNA_THERMAL') || (typeof powerMonitor.getCurrentThermalState === 'function' ? powerMonitor.getCurrentThermalState() : 'unknown');
   const battery = () => { try { return powerMonitor.isOnBatteryPower(); } catch { return false; } };
   const state = () => ({ thermal: thermal(), battery: battery() });
   const push = () => send(state());

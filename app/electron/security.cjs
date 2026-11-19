@@ -1,7 +1,8 @@
 // What each Sienna window may do, in one place:
-//   - permissions (camera, mic, notifications, geolocation...): refused, except the few YouTube Music needs
+//   - permissions (camera, mic, notifications, geolocation...): refused everywhere
 //   - where a window may navigate, and popups (none)
 //   - which pages may call the main process (ipc): only Sienna's own pages, in Sienna's own windows
+//   - dev/test environment variables are ignored in packaged builds
 const { app, session } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -13,16 +14,38 @@ const YTM_ORIGIN = 'https://music.youtube.com';
 const DIST = path.join(__dirname, '..', 'dist');
 const DIST_URL = pathToFileURL(DIST).href + '/';
 const APP_PAGES = new Set(['index.html', 'mini.html']);
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
 function parse(u) {
   try { return new URL(u); } catch { return null; }
 }
 
-// Is `u` one of Sienna's own pages (the built files, or the dev server while developing)?
+function isPackaged() {
+  return !!app?.isPackaged;
+}
+
+// Dev-only env var helper: ignored in packaged builds so a launcher/env cannot hijack the app.
+function devEnv(name) {
+  if (isPackaged()) return '';
+  return process.env[name] || '';
+}
+
+// Loopback-only dev server URL, ignored in packaged builds.
+function devServerUrl() {
+  const raw = devEnv('SIENNA_DEV_URL');
+  if (!raw) return null;
+  const url = parse(raw);
+  if (!url) return null;
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (!LOOPBACK_HOSTS.has(url.hostname.toLowerCase())) return null;
+  return url;
+}
+
+// Is `u` one of Sienna's own pages (the built files, or a loopback dev server while developing)?
 function isAppUrl(u) {
   const url = parse(u);
   if (!url) return false;
-  const dev = process.env.SIENNA_DEV_URL && parse(process.env.SIENNA_DEV_URL);
+  const dev = devServerUrl();
   if (dev) return url.origin === dev.origin && (url.protocol === 'http:' || url.protocol === 'https:');
   if (url.protocol !== 'file:') return false;
   const bare = `${url.origin === 'null' ? 'file://' : url.origin}${url.pathname}`;
@@ -36,10 +59,30 @@ function isGoogleUrl(u) {
   return !!url && url.protocol === 'https:' && !url.username && !url.password && GOOGLE_HOST.test(url.hostname.toLowerCase());
 }
 
+// Optional extra SSO host allowlist (only used for a single sign-in window after explicit user confirmation).
+function isHttpsHostAllowed(u, extraHosts) {
+  if (isGoogleUrl(u)) return true;
+  if (!extraHosts?.size) return false;
+  const url = parse(u);
+  if (!url || url.protocol !== 'https:' || url.username || url.password) return false;
+  const host = url.hostname.toLowerCase();
+  for (const allowed of extraHosts) {
+    if (host === allowed || host.endsWith(`.${allowed}`)) return true;
+  }
+  return false;
+}
+
+// Strictly validate external release URLs before shell.openExternal.
+function isSafeReleaseUrl(u) {
+  const url = parse(u);
+  return !!url && url.protocol === 'https:' && url.hostname.toLowerCase() === 'github.com'
+    && url.pathname.startsWith('/lajoonpark/Sienna');
+}
+
 // ---- permissions -----------------------------------------------------------------------------------
-// The player (music.youtube.com) may go full screen and copy a share link; nothing else is granted, to it
-// or to any other page. Without these handlers Electron grants every request.
-const YTM_ALLOWED = new Set(['fullscreen', 'clipboard-sanitized-write']);
+// No special permissions are granted to either the shop/mini windows or the hidden YouTube Music player.
+// Without these handlers Electron grants every request by default.
+const YTM_ALLOWED = new Set();
 
 function originOf(u) {
   return parse(u)?.origin ?? null;
@@ -69,12 +112,14 @@ function lockAllContents() {
 }
 
 // `allowed(url)`: may this window's page go there? Checked on navigation and on redirects.
-function lockNavigation(contents, allowed) {
+// `onBlocked(url)`: optional callback when a navigation is refused (e.g., corporate/school SSO prompt).
+function lockNavigation(contents, allowed, onBlocked = null) {
   const guard = (e) => {
     const url = e.url;
     if (!allowed(url)) {
       e.preventDefault();
       console.warn('[sienna] blocked navigation to', String(url).slice(0, 200));
+      onBlocked?.(url);
     }
   };
   contents.on('will-navigate', guard);
@@ -99,7 +144,8 @@ class UntrustedSender extends Error {
 
 module.exports = {
   YTM_PARTITION, YTM_ORIGIN,
-  isAppUrl, isGoogleUrl,
+  devEnv, devServerUrl, isPackaged,
+  isAppUrl, isGoogleUrl, isHttpsHostAllowed, isSafeReleaseUrl,
   lockSessions, lockAllContents, lockNavigation,
   makeTrusted, UntrustedSender,
 };
