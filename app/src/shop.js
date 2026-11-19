@@ -19,20 +19,21 @@ import { recordShelf, binTable, crateOfRecords, turntable, speaker, armchair, ru
 import { toon } from './materials.js';
 import { rng } from './rand.js';
 import {
-  PLASTER, PAL, LOUNGE, LOUNGE_VAULT, LOUNGE_WINDOW as WINDOW, STACKS, GH, GARDEN,
+  PLASTER, PAL, LOUNGE, LOUNGE_VAULT, LOUNGE_WINDOW as WINDOW, STACKS, LIBRARY, GH, GARDEN,
   frame, reveal, cotto, lunetteWall, crossWall, sideWalls,
   buildLoungeCore, buildCourtyardVista,
 } from './loungecorner.js';
 
-export { LOUNGE, STACKS, GH, GARDEN };
+export { LOUNGE, STACKS, LIBRARY, GH, GARDEN };
 const HALL = { x: 5.4, z0: -0.55, z1: -10.5, spring: 3.6 };
 const { vx: VX, spring: VSPRING } = LOUNGE_VAULT;
 const TERRACE = { z0: -24, z1: -26, sx0: 8.6, sx1: 10.4, step: 0.32 };
 const GALLERY = { y: 3.0, inner: 3.7, front: -2.6, back: -9.3 };
 // What cannot be seen from where the camera stands, so main.js skips drawing it: the street from the stacks,
-// the glasshouse, the terrace and the garden; the hall from the stacks, the glasshouse and the terrace (not
-// from the garden: you see it through the lounge window). Never anything from inside the hall itself: the
-// counter's camera stands at x 4.0, which the stacks' x test alone took for the stacks (the hall vanished).
+// the library, the glasshouse, the terrace and the garden; the hall from the stacks, the library, the
+// glasshouse and the terrace (not from the garden: you see it through the lounge window). Never anything from
+// inside the hall itself: the counter's camera stands at x 4.0, which the stacks' x test alone took for the
+// stacks (the hall vanished).
 export const inHall = (p) => Math.abs(p.x) < HALL.x && p.z <= HALL.z0 && p.z >= HALL.z1;
 export const streetHidden = (p) => !inHall(p) && (p.x > 3.4 || p.z < -15.3);
 export const hallHidden = (p) => !inHall(p) && ((p.x > 3.9 && p.z > -15.3) || (p.x > 7.0 && p.z > -26.0));
@@ -42,6 +43,7 @@ export const ZONES = [
   { id: 'gallery', at: [-4.5, 4.6, -6] },
   { id: 'lounge', at: [0, 1.1, -13] },
   { id: 'stacks', at: [7.8, 1.1, -13] },
+  { id: 'library', at: [9.5, 1.1, -6.8] },
   { id: 'plants', at: [9.5, 2.9, -20.5] },
   { id: 'courtyard', at: [2, 1.7, -24] },
 ];
@@ -201,9 +203,16 @@ function stacks(root, kit, out) {
   const S = stacksFrame(), { hw, spring } = STACKS, len = STACKS.x1 - STACKS.x0, E = -len;
   const sk = createKit(), so = [];
   so.push(cotto(sk, -hw, hw, 0, E, 3));
-  // the stair up to the glasshouse opens in the back (garden-side) wall
+  // the stair up to the glasshouse opens in the back (garden-side) wall;
+  // opposite it, a brick arch in the north (hall-side) wall opens into the vaulted Library Room
   const upZ = STACKS.x0 - (GH.sx0 + GH.sx1) / 2;
-  sideWalls(sk, so, hw, 0, E, spring, { holes: [{ side: -1, z: upZ, w: GH.sx1 - GH.sx0, h: 3.0, depth: STACKS.z - STACKS.hw - GH.z0 }] });
+  const libZ = STACKS.x0 - LIBRARY.arch.x;
+  sideWalls(sk, so, hw, 0, E, spring, {
+    holes: [
+      { side: -1, z: upZ, w: GH.sx1 - GH.sx0, h: 3.0, depth: STACKS.z - STACKS.hw - GH.z0 },
+      { side: 1, z: libZ, w: LIBRARY.arch.w, h: LIBRARY.arch.h, depth: LIBRARY.z1 - (STACKS.z + STACKS.hw) },
+    ],
+  });
   so.push(barrelVault(sk, { spring, r: hw, z0: 0, z1: E, seed: 41 }));
   // the lounge end, with the arch in from the lounge; the far end, plain
   lunetteWall(sk, so, frame([hw, 0, 0], [-1, 0, 0], [0, 0, -1]), hw * 2, spring, { type: 'arch', x: hw - (LOUNGE.arch.z - STACKS.z), y: 0, w: LOUNGE.arch.w, h: LOUNGE.arch.h, ring: 0.26 }, 71);
@@ -216,13 +225,13 @@ function stacks(root, kit, out) {
 
   const F = (o, along, normal) => mul(S, frame(o, along, normal));
   const wallIn = hw - 0.22, wood = '#8a5a32', plank = '#a8743a', iron = '#2b2a2e';
-  // the hall-side wall: the tall rack's place (a tall shelf stands in), then a two-storey shelf and a rolling
-  // ladder on a brass rail
+  // the hall-side wall: the tall rack's place (a tall shelf stands in), then the arch to the Library Room
+  // and a flanking two-storey shelf past the arch
   const rackZ = -2.3;
   stationFurniture('stacks', (k) => recordShelf(k, F([wallIn, 0, rackZ], [0, 0, 1], [-1, 0, 0]), { w: 3.7, h: 2.95, levels: 7, seed: 152 }));
-  recordShelf(kit, F([wallIn, 0, -6.1], [0, 0, 1], [-1, 0, 0]), { w: 3.3, h: 4.1, levels: 9, seed: 153 });
-  ladder(kit, F([hw - 0.5, 0, -5.1], [0, 0, 1], [-1, 0, 0]), 4.1);
-  rod(kit, S, [hw - 0.42, 4.12, -4.3], [hw - 0.42, 4.12, E + 0.15], 0.015, '#c9a85a');
+  recordShelf(kit, F([wallIn, 0, -7.45], [0, 0, 1], [-1, 0, 0]), { w: 1.0, h: 4.1, levels: 9, seed: 153 });
+  ladder(kit, F([hw - 0.5, 0, -4.3], [0, 0, 1], [-1, 0, 0]), 4.1);
+  rod(kit, S, [hw - 0.42, 4.12, -4.1], [hw - 0.42, 4.12, E + 0.15], 0.015, '#c9a85a');
   pottedPlant(kit, S, -hw + 0.35, 0, -7.3, 0.9, 159, 'snake');
   // the garden-side wall: a two-storey shelf up to the stair's arch, plants trailing off its top
   recordShelf(kit, F([-wallIn, 0, -2.3], [0, 0, -1], [1, 0, 0]), { w: 3.9, h: 4.1, levels: 9, seed: 151 });
@@ -253,6 +262,44 @@ function stacks(root, kit, out) {
   const vy = (x) => spring + Math.sqrt(hw ** 2 - x ** 2);
   [[-1.0, -1.0, 'fern'], [1.0, -3.9, 'pearls'], [-0.9, -6.9, 'pothos'], [1.05, -7.6, 'fern']].forEach(([x, z, kind], i) => {
     hangingPlant(kit, mul(S, trs(x, vy(Math.abs(x)), z)), vy(Math.abs(x)) - 4.6 - (i % 2) * 0.3, 167 + i, kind);
+  });
+}
+
+// ---- the vaulted library room (north off the stacks: Your Playlists & Saved Albums) ---------------
+function libraryRoom(root, kit, out) {
+  const L = LIBRARY, { cx, hw, z0, z1, y, spring } = L;
+  const lk = createKit(), lo = [];
+  lo.push(cotto(lk, -hw, hw, z0, z1, 19, y));
+  // threshold tiles under the brick arch connecting from the stacks
+  out.push(cotto(kit, L.arch.x - L.arch.w / 2, L.arch.x + L.arch.w / 2, z1, STACKS.z + STACKS.hw, 18, y));
+  sideWalls(lk, lo, hw, z0, z1, spring, { y0: y });
+  lo.push(barrelVault(lk, { spring, r: hw, z0, z1, seed: 44 }));
+  // entrance wall (south, z = z1) with brick arch from the stacks; back wall (north, z = z0) solid
+  lunetteWall(lk, lo, frame([-hw, y, z1], [1, 0, 0], [0, 0, 1]), hw * 2, spring - y, { type: 'arch', x: hw, y: 0, w: L.arch.w, h: L.arch.h, ring: 0.26 }, 74);
+  lunetteWall(lk, lo, frame([hw, y, z0], [-1, 0, 0], [0, 0, -1]), hw * 2, spring - y, null, 75);
+  const g = new THREE.Group();
+  g.position.set(cx, 0, 0);
+  lk.flush(g);
+  lo.forEach((m) => g.add(m));
+  root.add(g);
+
+  // Stand-in shelves for the two library racks (hidden when Your Playlists / Saved Albums are stocked)
+  stationFurniture('libPlaylists', (k) => recordShelf(k, frame([L.x0 + 0.25, y, -6.8], [0, 0, -1], [1, 0, 0]), { w: 3.4, h: 2.4, levels: 5, seed: 173 }));
+  stationFurniture('libAlbums', (k) => recordShelf(k, frame([L.x1 - 0.25, y, -6.8], [0, 0, 1], [-1, 0, 0]), { w: 3.4, h: 2.4, levels: 5, seed: 174 }));
+
+  // Cozy Tuscan reading sanctuary furnishing: woven rug, back bookcase, armchair, lamp, crates, plants
+  rug(kit, trs(cx, y, -6.9), 2.8, 4.6, 5);
+  recordShelf(kit, frame([cx, y, z0 - 0.25], [-1, 0, 0], [0, 0, -1]), { w: 4.2, h: 3.0, levels: 7, seed: 171 });
+  armchair(kit, trs(L.x0 + 1.15, y, z0 - 1.15, 0, Math.PI - 0.55, 0), '#b84a3a');
+  out.push(floorLamp(kit, trs(L.x0 + 0.55, y, z0 - 0.75)));
+  crateOfRecords(kit, trs(L.x1 - 1.1, y, z0 - 1.05, 0, -0.35, 0), 0.7, 0.55, 175);
+  pottedPlant(kit, new THREE.Matrix4(), L.x0 + 0.65, y, z1 + 0.6, 1.15, 176, 'monstera');
+  pottedPlant(kit, new THREE.Matrix4(), L.x1 - 0.65, y, z1 + 0.6, 1.05, 177, 'fern');
+  pottedPlant(kit, new THREE.Matrix4(), L.x1 - 0.55, y, z0 - 0.7, 1.1, 178, 'snake');
+  out.push(...pendant(kit, trs(cx, 0, -6.9), spring + hw - 0.1, 2.35, { shade: '#c4673d' }));
+  const vy = (dx) => spring + Math.sqrt(hw ** 2 - dx ** 2);
+  [[-1.3, -5.2, 'pothos'], [1.35, -8.5, 'fern'], [-1.2, -8.7, 'pearls']].forEach(([dx, z, kind], i) => {
+    hangingPlant(kit, trs(cx + dx, vy(dx), z), vy(dx) - 4.1 - (i % 2) * 0.25, 181 + i, kind);
   });
 }
 
@@ -440,6 +487,7 @@ export function buildShop() {
 
   lounge(kit, out);
   stacks(root, kit, out);
+  libraryRoom(root, kit, out);
   glasshouse(kit, out);
   garden(root, kit, out);
 

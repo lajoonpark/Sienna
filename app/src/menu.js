@@ -7,7 +7,7 @@ import { brushStroke, INK, PAPER } from './controls.js';
 import { FONT, onLettering } from './style.js';
 
 const HOT = '#b4503a';
-const PER_SIDE = 4;
+const PER_SIDE = 5;
 
 const CSS = `
 .mn { position: fixed; z-index: 5; pointer-events: none; opacity: 0; transition: opacity .9s ease; user-select: none; perspective: 900px; }

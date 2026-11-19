@@ -218,19 +218,18 @@ function paintRule(el, seed) {
   el.style.backgroundImage = `url(${c.toDataURL()})`;
 }
 
-export function createSettingsPanel({ music = null, onTour = null, onToggleSource = null, onRestock = null } = {}) {
+export function createSettingsPanel({ music = null, onTour = null, onRestock = null } = {}) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
 
-  // Top-right painted words: Library/Home toggle, Restock, Settings — angled & reactive like the side menus
+  // Top-right painted words: Restock, Settings — angled & reactive like the side menus
   const btnWrap = document.createElement('div');
   btnWrap.className = 'st-btn';
   const btnStack = document.createElement('div');
   btnStack.className = 'st-btn-stack';
   btnWrap.appendChild(btnStack);
   const topWords = [];
-  let srcBtn = null;
   let restockBtn = null;
   let restocking = false;
   let restockResetTimer = 0;
@@ -268,11 +267,6 @@ export function createSettingsPanel({ music = null, onTour = null, onToggleSourc
     }
   }
 
-  if (onToggleSource) {
-    srcBtn = word('Library', 11, () => onToggleSource(), { flipX: true });
-    btnStack.appendChild(srcBtn);
-    topWords.push(srcBtn);
-  }
   if (onRestock) {
     restockBtn = word('Restock', 13, () => runRestock(), { flipX: true });
     restockBtn.title = 'Refresh shelves from YouTube Music';
@@ -730,12 +724,6 @@ export function createSettingsPanel({ music = null, onTour = null, onToggleSourc
     page: () => current,
     tilt,
     restock: runRestock,
-    setSource(src) {
-      if (!srcBtn) return;
-      srcBtn.querySelector('span').textContent = src === 'library' ? 'Home shelves' : 'Library';
-      srcBtn.classList.toggle('on', src === 'library');
-      requestAnimationFrame(() => srcBtn.paint());
-    },
     // the top-right words show once the intro is over (like the section buttons)
     show(on) { btnWrap.classList.toggle('show', on); if (on) requestAnimationFrame(paintAll); },
   };

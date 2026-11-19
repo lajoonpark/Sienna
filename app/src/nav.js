@@ -194,15 +194,20 @@ const ATTACH = {
   stacks:    { near: { join: 'stacks', pts: [] }, far: { join: 'stacks', pts: [] } },
   plants:    { near: { join: 'plants', pts: [] }, far: { join: 'plants', pts: [] } },
   courtyard: { near: { join: 'court', pts: [] }, far: { join: 'court', pts: [] } },
+  libPlaylists: { near: { join: 'stacksEnd', pts: [P(9.5, 1.05, -7.2), P(9.5, 1.05, -10.75)] },
+                  far:  { join: 'stacksEnd', pts: [P(9.5, 1.05, -7.2), P(9.5, 1.05, -10.75)] } },
+  libAlbums:    { near: { join: 'stacksEnd', pts: [P(9.5, 1.05, -7.2), P(9.5, 1.05, -10.75)] },
+                  far:  { join: 'stacksEnd', pts: [P(9.5, 1.05, -7.2), P(9.5, 1.05, -10.75)] } },
 };
 const HALL = new Set(['home', 'table', 'cubby', 'counter', 'gallery']);
-// Straight-ish trips inside the hall that need no detour through the aisle (listed one way, used both ways).
+// Straight-ish trips inside the hall or library room that need no detour through the aisle (listed one way, used both ways).
 const SHORT = {
   'home|table': [],
   'home|cubby': [P(2.2, 1.75, -2.9), P(3.0, 1.7, -4.5)],               // down the free strip between bin table and armchair
   'home|counter': [P(2.2, 1.75, -2.9), P(3.0, 1.75, -4.6), P(3.2, 1.75, -6.0), P(3.95, 1.75, -6.7)],
   'home|gallery': [P(-1.4, 2.9, -4.1), P(-3.0, 4.55, -5.5)],           // rises past the stair side, over the rail
   'cubby|counter': [],
+  'libPlaylists|libAlbums': [P(9.5, 1.05, -7.0)],
 };
 
 const FLIGHT_TAU = 0.22;   // how long a flight that is interrupted keeps its momentum (s)

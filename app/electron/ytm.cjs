@@ -229,24 +229,35 @@ function createYtm({ onState, onAccount, onStatus }) {
     return { shelves: parseShelves(res, { onNoArt }), next: continuation(res) };
   }
 
-  // User's YouTube Music Library: Liked Songs, Playlists, and Saved Albums.
+  // User's YouTube Music Library: Your Playlists (with a single "Liked music" vinyl first) & Saved Albums
+  // for the dedicated vaulted Library Room racks.
   async function library() {
-    const queries = [
-      ['FEmusic_liked_videos', 'Liked songs'],
-      ['FEmusic_liked_playlists', 'Your playlists'],
-      ['FEmusic_liked_albums', 'Saved albums'],
-      ['FEmusic_library_corpus_track_artists', 'Your artists'],
-    ];
-    const results = await Promise.all(queries.map(async ([browseId, title]) => {
-      try {
-        const res = await api('browse', { browseId });
-        return parseLibraryShelf(res, title, { onNoArt });
-      } catch (e) {
-        console.warn('[sienna] library', browseId, e.message);
-        return null;
-      }
-    }));
-    return { shelves: results.filter((s) => s && s.items.length), next: null };
+    const [plRes, albRes] = await Promise.all([
+      api('browse', { browseId: 'FEmusic_liked_playlists' }).catch((e) => { console.warn('[sienna] library playlists', e.message); return null; }),
+      api('browse', { browseId: 'FEmusic_liked_albums' }).catch((e) => { console.warn('[sienna] library albums', e.message); return null; }),
+    ]);
+    const out = [];
+    const plShelf = plRes ? parseLibraryShelf(plRes, 'Your playlists', { onNoArt }) : null;
+    if (plShelf?.items?.length) {
+      const isLiked = (it) => it.play?.playlistId === 'LM' || it.browseId === 'VLLM' || /^liked (music|songs)$/i.test(String(it.title ?? '').trim());
+      const existingLiked = plShelf.items.find(isLiked);
+      const others = plShelf.items.filter((it) => !isLiked(it));
+      const likedVinyl = {
+        ...(existingLiked ?? {}),
+        kind: 'playlist',
+        title: 'Liked music',
+        subtitle: existingLiked?.subtitle || 'Your liked songs',
+        browseId: 'VLLM',
+        play: { ...(existingLiked?.play ?? {}), playlistId: 'LM' },
+        isLikedMusic: true,
+      };
+      out.push({ title: 'Your playlists', librarySlot: 'playlists', items: [likedVinyl, ...others] });
+    }
+    const albShelf = albRes ? parseLibraryShelf(albRes, 'Saved albums', { onNoArt }) : null;
+    if (albShelf?.items?.length) {
+      out.push({ title: 'Saved albums', librarySlot: 'albums', items: albShelf.items });
+    }
+    return { shelves: out, next: null };
   }
 
   // Search songs, albums, playlists, artists, or all.

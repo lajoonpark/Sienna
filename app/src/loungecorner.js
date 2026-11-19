@@ -18,6 +18,7 @@ export const LOUNGE = { y: -0.6, z0: -11, z1: -15, floorZ: -11.6, arch: { z: -13
 export const LOUNGE_VAULT = { vx: 3.3, spring: 3.0 };
 export const LOUNGE_WINDOW = { x: 0, y: 0.3, w: 2.6, h: 3.0, deep: 0.6 };
 export const STACKS = { x0: 3.8, x1: 11.8, z: -13, hw: 2, y: -0.6, spring: 4.4 };
+export const LIBRARY = { x0: 6.4, x1: 12.6, cx: 9.5, hw: 3.1, z0: -3.5, z1: -10.5, y: -0.6, spring: 3.4, arch: { x: 9.5, w: 2.4, h: 3.0 } };
 export const GH = { x0: 7.0, x1: 12.0, xi0: 7.2, xi1: 11.8, z0: -15.2, z1: -24, y: 1.2, sx0: 8.3, sx1: 10.7, stairEnd: -17.9, eave: 4.8, ridge: 6.4, door: { x: 9.5, w: 1.4, h: 2.5 } };
 export const GARDEN = { x0: -4.5, x1: 12.0, z0: -15.6, z1: -31, wall: 6.6, north: 7.6 };
 

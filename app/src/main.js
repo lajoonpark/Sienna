@@ -244,12 +244,10 @@ const search = createSearch({
   onPlay: (item) => { startSong(music, suitcase.suitcase, item); suitcase.dispense(getCover(item.art, 512).tex); },
   onOpenCollection: (item) => spread.open(item, null),
 });
-// Settings (Cmd+, or the SETTINGS word), plus top-right Library/Home toggle and Restock button
-let shelfSource = 'home'; // 'home' | 'library'
+// Settings (Cmd+, or the SETTINGS word) and top-right Restock button
 const settingsPanel = createSettingsPanel({
   music,
   onTour: () => tour.restart(),
-  onToggleSource: () => switchShelfSource(shelfSource === 'home' ? 'library' : 'home'),
   onRestock: () => loadShelves({ force: true }),
 });
 // the first-run tour (src/tour.js): paper notes in the shop once the intro reaches home on a new install
@@ -402,7 +400,7 @@ function placeShelves(all, { first = false, prune = false } = {}) {
       if (!placed.has(i)) fill(i, shelf); else leftovers.push(shelf);
     }
     for (const shelf of leftovers) {
-      const free = STATIONS.findIndex((_, k) => !placed.has(k));
+      const free = STATIONS.findIndex((s, k) => !placed.has(k) && (shelf.librarySlot ? s.librarySlot === shelf.librarySlot : !s.librarySlot));
       if (free >= 0) fill(free, shelf);
     }
   }
@@ -418,15 +416,16 @@ function placeShelves(all, { first = false, prune = false } = {}) {
   if (prune && nav.at !== AT_HOME && !placed.has(nav.at) && !params.has('at') && !flySpec) nav.go(AT_HOME);
 }
 
-// ?shelves=8 (fake store only): pad the shelf list with copies under other titles, to try all 8 stations
+// ?shelves=8 (fake store only): pad the shelf list with copies under other titles, to try all 8 main stations
 const EXTRA_TITLES = ['Your library', 'Similar to Lemon Hours', 'Anything else'];
 function padShelves(list) {
   const want = Number(params.get('shelves')) || 0;
   if (music.real || want <= list.length) return list;
   const out = list.slice();
-  for (let k = 0; out.length < want && k < EXTRA_TITLES.length; k++) {
-    const src = list[(k + 1) % list.length];
-    out.push({ title: EXTRA_TITLES[k], items: src.items.slice().reverse().slice(0, 12 + k * 3) });
+  const base = list.filter((s) => !s.librarySlot);
+  for (let k = 0; out.filter((s) => !s.librarySlot).length < want && k < EXTRA_TITLES.length; k++) {
+    const src = base[(k + 1) % base.length];
+    if (src) out.push({ title: EXTRA_TITLES[k], items: src.items.slice().reverse().slice(0, 12 + k * 3) });
   }
   return out;
 }
@@ -444,14 +443,6 @@ function placeFirst() {
   everPlaced = placedThisLoad = true;
 }
 let loadSeq = 0;
-function switchShelfSource(next) {
-  if (shelfSource === next) return;
-  shelfSource = next;
-  settingsPanel.setSource(shelfSource);
-  spread.close();
-  if (nav.at !== AT_HOME) nav.go(AT_HOME);
-  loadShelves({ force: true });
-}
 async function loadShelves({ force = false } = {}) {
   const my = ++loadSeq;
   placedThisLoad = false;
@@ -460,30 +451,43 @@ async function loadShelves({ force = false } = {}) {
     for (const [i] of [...placed]) clearStation(i);
   }
   try {
-    if (shelfSource === 'library' && music.library) {
-      const page = await music.library();
+    // Load Home shelves and Library Room shelves (Your playlists + Saved albums) together in parallel
+    const libPromise = music.library
+      ? music.library().catch((e) => { console.warn('could not load library shelves', e); return { shelves: [] }; })
+      : Promise.resolve({ shelves: [] });
+    let page = await music.shelves();
+    if (my !== loadSeq) return { ok: true };
+    const homeList = page.shelves.slice();
+    let libList = [];
+    shelves = [...homeList];
+    liner.setStatus(null);
+    // Attach library shelves as soon as they arrive
+    libPromise.then((res) => {
       if (my !== loadSeq) return;
-      shelves = page.shelves.slice();
-      if (!shelves.length) {
-        liner.setStatus(player?.signedIn === false ? 'Sign in to see your YouTube Music library.' : 'No library shelves found right now.', () => loadShelves({ force: true }));
-      } else {
-        liner.setStatus(null);
-      }
-    } else {
-      let page = await music.shelves();
-      if (my !== loadSeq) return;
-      shelves = page.shelves.slice();
-      liner.setStatus(null);
-      if (!everPlaced && startAt !== null) placeFirst(); // ?at shot: no intro to wait for
-      for (let i = 1; i < SHELF_PAGES && page.next; i++) {
-        page = await music.shelves(page.next);
-        if (my !== loadSeq) return;
-        shelves.push(...page.shelves);
-        if (placedThisLoad) placeShelves(padShelves(shelves));
-      }
+      libList = (res?.shelves ?? []).slice();
+      shelves = [...homeList, ...libList];
+      if (placedThisLoad) placeShelves(padShelves(shelves));
+    });
+    if (!everPlaced && startAt !== null) {
+      const libRes = await libPromise;
+      if (my !== loadSeq) return { ok: true };
+      libList = (libRes?.shelves ?? []).slice();
+      shelves = [...homeList, ...libList];
+      placeFirst(); // ?at shot: no intro to wait for
     }
+    for (let i = 1; i < SHELF_PAGES && page.next; i++) {
+      page = await music.shelves(page.next);
+      if (my !== loadSeq) return { ok: true };
+      homeList.push(...page.shelves);
+      shelves = [...homeList, ...libList];
+      if (placedThisLoad) placeShelves(padShelves(shelves));
+    }
+    const libRes = await libPromise;
+    if (my !== loadSeq) return { ok: true };
+    libList = (libRes?.shelves ?? []).slice();
+    shelves = [...homeList, ...libList];
   } catch (e) {
-    if (my !== loadSeq) return;
+    if (my !== loadSeq) return { ok: false };
     failed = true;
     console.warn('could not load shelves', e);
     const offline = !navigator.onLine;
@@ -496,7 +500,7 @@ async function loadShelves({ force = false } = {}) {
       if (shelves.length) {
         placeShelves(padShelves(shelves), { first: !placedThisLoad, prune: true });
         everPlaced = placedThisLoad = true;
-      } else if (!failed && shelfSource === 'home') {
+      } else if (!failed) {
         liner.setStatus('YouTube Music returned no shelves right now.', () => { music.retry?.(); loadShelves({ force: true }); });
       }
       shelvesLoaded = true;
@@ -523,17 +527,20 @@ addEventListener('online', () => {
 addEventListener('offline', () => {
   liner.setStatus('You appear to be offline — playback may pause until you reconnect.', () => { music.retry?.(); loadShelves({ force: true }); });
 });
-// Periodic shelf restock every 45 minutes while settled at the entrance on Home shelves.
+// Periodic shelf restock every 45 minutes while settled at the entrance.
 setInterval(() => {
-  if (!document.hidden && shelfSource === 'home' && nav.at === AT_HOME && nav.settled && navigator.onLine) loadShelves();
+  if (!document.hidden && nav.at === AT_HOME && nav.settled && navigator.onLine) loadShelves();
 }, 45 * 60 * 1000);
-// Application menu actions (Settings, About, Restock, Home/Library).
+// Application menu actions (Settings, About, Restock, Home, Library Room).
 music.app?.onMenu?.((action) => {
   if (action === 'settings') settingsPanel.open();
   else if (action === 'about') settingsPanel.open('about');
   else if (action === 'restock') settingsPanel.restock();
-  else if (action === 'home') switchShelfSource('home');
-  else if (action === 'library') switchShelfSource('library');
+  else if (action === 'home') nav.go(AT_HOME);
+  else if (action === 'library') {
+    const idx = STATIONS.findIndex((s) => s.room === 'library' && placed.has(STATIONS.indexOf(s)));
+    if (idx >= 0) nav.go(idx);
+  }
 });
 
 // for tests and the devtools console (not exposed in packaged production builds)

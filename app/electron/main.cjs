@@ -199,8 +199,8 @@ function buildAppMenu() {
     {
       label: 'View',
       submenu: [
-        { label: 'Home Shelves', click: () => sendAction('home') },
-        { label: 'Your Library', click: () => sendAction('library') },
+        { label: 'Shop Entrance', click: () => sendAction('home') },
+        { label: 'Library Room', click: () => sendAction('library') },
         { type: 'separator' },
         { role: 'togglefullscreen' },
         ...(dev ? [

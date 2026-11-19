@@ -34,6 +34,12 @@ export const STATIONS = [
     prefer: /similar|recommended|because|비슷한|추천|おすすめ|関連|similares|recommandé|ähnlich|artist|아티스트|アーティスト/i },
   { id: 'courtyard', style: 'crates', room: 'courtyard', pos: v(3.6, 0, -26.4), rotY: Math.PI - 0.35,
     cam: { pos: v(4.12, 1.70, -28.13), target: v(3.57, 0.92, -26.31) }, prefer: null },
+  { id: 'libPlaylists', style: 'wall', room: 'library', pos: v(6.52, -0.6, -6.8), rotY: H,
+    cam: { pos: v(9.2, 1.05, -6.8), target: v(6.52, 1.0, -6.8) },
+    librarySlot: 'playlists', prefer: /^your playlists$/i },
+  { id: 'libAlbums', style: 'cubby', room: 'library', pos: v(12.4, -0.6, -6.8), rotY: -H,
+    cam: { pos: v(10.6, 0.95, -6.8), target: v(12.4, 0.5, -6.8) },
+    librarySlot: 'albums', prefer: /^saved albums$/i },
 ];
 
 export const HOME = { pos: v(0, 1.75, -2.2), target: v(0, 1.6, -12) };
@@ -55,12 +61,24 @@ function dominantKind(shelf) {
 }
 
 // shelves -> [{ station, index, shelf }] in station order (only stations that got a shelf).
+// Library shelves (tagged with librarySlot) always populate their dedicated racks in the vaulted Library Room;
+// Home shelves populate the 8 main shop stations and never spill into or get displaced by the Library Room.
 export function assignShelves(shelves) {
   const taken = new Map(); // station index -> shelf
+  const homeShelves = [];
+  for (const shelf of shelves) {
+    if (shelf.librarySlot) {
+      const i = STATIONS.findIndex((s, k) => !taken.has(k) && s.librarySlot === shelf.librarySlot);
+      if (i >= 0) taken.set(i, shelf);
+    } else {
+      homeShelves.push(shelf);
+    }
+  }
+  const isHomeSlot = (s, k) => !taken.has(k) && !s.librarySlot;
   const rest = [];
   // Pass 1: title preference match (EN + localized)
-  for (const shelf of shelves) {
-    const i = STATIONS.findIndex((s, k) => !taken.has(k) && s.prefer?.test(shelf.title));
+  for (const shelf of homeShelves) {
+    const i = STATIONS.findIndex((s, k) => isHomeSlot(s, k) && s.prefer?.test(shelf.title));
     if (i >= 0) taken.set(i, shelf);
     else rest.push(shelf);
   }
@@ -68,11 +86,11 @@ export function assignShelves(shelves) {
   const leftover = [];
   for (const shelf of rest) {
     const kind = dominantKind(shelf);
-    const i = kind ? STATIONS.findIndex((s, k) => !taken.has(k) && s.preferKind === kind) : -1;
+    const i = kind ? STATIONS.findIndex((s, k) => isHomeSlot(s, k) && s.preferKind === kind) : -1;
     if (i >= 0) taken.set(i, shelf);
     else leftover.push(shelf);
   }
-  // Pass 3: fill remaining free stations in order
-  STATIONS.forEach((_, k) => { if (!taken.has(k) && leftover.length) taken.set(k, leftover.shift()); });
+  // Pass 3: fill remaining free main-shop stations in order
+  STATIONS.forEach((s, k) => { if (isHomeSlot(s, k) && leftover.length) taken.set(k, leftover.shift()); });
   return STATIONS.map((station, k) => ({ station, index: k, shelf: taken.get(k) })).filter((a) => a.shelf);
 }

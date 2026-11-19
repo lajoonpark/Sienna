@@ -21,6 +21,11 @@ function realMusic(c) {
     },
     library: async () => {
       const res = await c.library();
+      for (const sh of res.shelves ?? []) {
+        for (const it of sh.items ?? []) {
+          if (it.isLikedMusic && !it.art) it.art = fakeLikedMusicCover();
+        }
+      }
       repairArt(res.shelves.flatMap((s) => s.items), { getSongArts: (play) => c.playlistArt(play), onChange: artChanged });
       return res;
     },
@@ -53,12 +58,13 @@ function realMusic(c) {
   };
 }
 
-// Raw album/playlist songs ({ videoId, title, subtitle, duration, art }) -> playable song items.
+// Raw album/playlist songs ({ videoId, title, subtitle, album, duration, art }) -> playable song items.
 function collectionSongItems(collection, songs) {
   return (songs ?? []).map((x, i) => ({
     kind: 'song',
     title: x.title,
     subtitle: x.subtitle || collection.subtitle || '',
+    ...(x.album ? { album: x.album } : collection.kind === 'album' ? { album: collection.title } : {}),
     ...(x.duration ? { duration: x.duration } : {}),
     art: x.art || collection.art,
     track: i + 1,
@@ -164,6 +170,34 @@ const FAKE_ACCOUNTS = [
   { name: 'Lemon Grove Records', byline: '@lemongrove', handle: '@lemongrove', photo: null },
 ];
 
+function fakeLikedMusicCover() {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, S, S);
+  grad.addColorStop(0, '#b4503a');
+  grad.addColorStop(0.55, '#8c3734');
+  grad.addColorStop(1, '#2d3158');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, S, S);
+  // cream heart emblem in the centre
+  g.fillStyle = '#fbf5e8';
+  g.beginPath();
+  g.moveTo(S / 2, S * 0.68);
+  g.bezierCurveTo(S * 0.22, S * 0.50, S * 0.20, S * 0.24, S * 0.37, S * 0.24);
+  g.bezierCurveTo(S * 0.45, S * 0.24, S * 0.50, S * 0.31, S * 0.50, S * 0.35);
+  g.bezierCurveTo(S * 0.50, S * 0.31, S * 0.55, S * 0.24, S * 0.63, S * 0.24);
+  g.bezierCurveTo(S * 0.80, S * 0.24, S * 0.78, S * 0.50, S / 2, S * 0.68);
+  g.closePath();
+  g.fill();
+  g.fillStyle = 'rgba(251,245,232,.92)';
+  g.font = '700 22px Georgia, serif';
+  g.textAlign = 'center';
+  g.fillText('LIKED MUSIC', S / 2, S - 24);
+  return c.toDataURL('image/jpeg', 0.88);
+}
+
 function fakeMusic() {
   const shelves = fakeShelves();
   const qs = new URLSearchParams(location.search);
@@ -174,9 +208,42 @@ function fakeMusic() {
   const withPlaylists = qs.has('playlists');
   if (withPlaylists) shelves.push(playlistsShelf);
 
+  const likedArt = fakeLikedMusicCover();
+  const likedSongs = all.slice(0, 48).map((s, idx) => ({
+    videoId: s.play.videoId,
+    title: s.title,
+    subtitle: s.subtitle,
+    album: `${WORDS[(idx * 3) % WORDS.length]} ${NOUNS[(idx * 5) % NOUNS.length]}`,
+    duration: s.duration,
+    art: s.art,
+  }));
+  const likedMusicVinyl = {
+    kind: 'playlist',
+    title: 'Liked music',
+    subtitle: `${likedSongs.length} liked songs`,
+    art: likedArt,
+    browseId: 'VLLM',
+    play: { playlistId: 'LM' },
+    isLikedMusic: true,
+    songs: likedSongs,
+  };
+  const richPlaylists = playlistsShelf.items.map((p, i) => ({
+    ...p,
+    art: fakeCover(500 + i * 17, p.title),
+    songs: all.slice(i * 5, i * 5 + (i === 0 ? 24 : 10)).map((s, k) => ({
+      videoId: s.play.videoId,
+      title: s.title,
+      subtitle: s.subtitle,
+      album: `${WORDS[(k + i * 4) % WORDS.length]} ${NOUNS[(k * 2 + i) % NOUNS.length]}`,
+      duration: s.duration,
+      art: s.art,
+    })),
+  }));
+
   const collections = new Map([
+    [likedMusicVinyl.play.playlistId, likedMusicVinyl],
     ...albumsShelf.items.map((a) => [a.play.playlistId, a]),
-    ...playlistsShelf.items.map((p) => [p.play.playlistId, p]),
+    ...richPlaylists.map((p) => [p.play.playlistId, p]),
   ]);
 
   const listeners = [];
@@ -231,9 +298,8 @@ function fakeMusic() {
     },
     library: async () => ({
       shelves: [
-        { title: 'Liked songs', items: all.slice(0, 14) },
-        { title: 'Your playlists', items: playlistsShelf.items.map((p, i) => ({ ...p, art: fakeCover(500 + i * 17, p.title) })) },
-        { title: 'Saved albums', items: albumsShelf.items },
+        { title: 'Your playlists', librarySlot: 'playlists', items: [likedMusicVinyl, ...richPlaylists] },
+        { title: 'Saved albums', librarySlot: 'albums', items: albumsShelf.items },
       ],
       next: null,
     }),
