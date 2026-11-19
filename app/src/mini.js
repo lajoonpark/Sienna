@@ -26,6 +26,7 @@ import { createSky } from './sky.js';
 import { createTimeOfDay } from './timeofday.js';
 import { registerLamp, glowMesh } from './env.js';
 import { LISTENING_TABLE, LOUNGE_LAMP, buildLoungeCore, buildCourtyardVista } from './loungecorner.js';
+import { showWebGLError } from './liner.js';
 
 const params = new URLSearchParams(location.search);
 const shot = params.has('shot');
@@ -36,7 +37,13 @@ document.documentElement.style.setProperty('--w', `${W}px`);
 document.documentElement.style.setProperty('--h', `${H}px`);
 const stage = document.getElementById('stage');
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: shot });
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: shot });
+} catch (err) {
+  showWebGLError(err);
+  throw err;
+}
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.setClearColor(0x000000, 0);
@@ -142,7 +149,12 @@ timeOfDay.update(0);
 updateLod(camera);
 painter?.bakeStrokes(scene, [{ pos: BASE_POS.clone(), target: BASE_TARGET.clone(), fov: Math.min(100, BASE_FOV * 1.2) }]);
 
-const caption = createCaption({ parent: stage, variant: 'mini', onSeek: (s) => music.command('seek', s) });
+const caption = createCaption({
+  parent: stage,
+  variant: 'mini',
+  onSeek: (s) => music.command('seek', s),
+  onCommand: (name, arg) => music.command(name, arg),
+});
 
 // ---- search (the search shortcut, as in the shop): a pick slides out of the drawer and flies onto the platter ----
 scene.add(camera);
@@ -161,7 +173,7 @@ async function paintAhead(items) {
 function refreshListenAgain() {
   if (listenAgainBusy || performance.now() - listenAgainAt < LISTEN_AGAIN_MAX_AGE) return listenAgainBusy;
   listenAgainBusy = music.shelves().then(({ shelves }) => {
-    const sh = shelves.find((x) => /listen again/i.test(x.title)) ?? shelves[0];
+    const sh = shelves.find((x) => /listen again|다시 듣기|もう一度聴く|volver a escuchar|réécouter|nochmal anhören|riascolta|ouvir de novo/i.test(x.title)) ?? shelves[0];
     if (!sh) return;
     listenAgainAt = performance.now();
     listenAgain = { title: sh.title, items: sh.items };
@@ -320,14 +332,15 @@ addEventListener('wheel', (e) => {
   e.preventDefault(); suitcase.wheel(e.deltaY, e.deltaMode);
 }, { passive: false });
 
-// ---- keys: Esc shuts it; Space, arrows, L as in the shop ----
+// ---- keys: Esc shuts it; Space, arrows, L, M as in the shop ----
 addEventListener('keydown', (e) => {
   if (search.isOpen()) return;
-  const cmd = { ' ': 'toggle', ArrowRight: 'next', ArrowLeft: 'previous', l: 'like', L: 'like' }[e.key];
+  const cmd = { ' ': 'toggle', ArrowRight: 'next', ArrowLeft: 'previous', l: 'like', L: 'like', m: 'mute', M: 'mute' }[e.key];
   if (e.key === 'Escape') { e.preventDefault(); dismiss(); }
   else if (cmd) { e.preventDefault(); music.command(cmd); }
   else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); suitcase.nudgeVolume(e.key === 'ArrowUp' ? 0.05 : -0.05); }
 });
+renderer.domElement.addEventListener('webglcontextrestored', () => { painter?.invalidate(); renderer.shadowMap.needsUpdate = true; });
 
 // ---- screenshots and browser preview ----
 if (shot) {
@@ -367,4 +380,6 @@ const screenOf = (name, dx = 0, dz = 0) => {
   const r = renderer.domElement.getBoundingClientRect();
   return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
 };
-window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, tray, flights, get phase() { return phase; }, get appear() { return appear; } };
+if (!window.sienna || window.sienna.isDev) {
+  window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, tray, flights, get phase() { return phase; }, get appear() { return appear; } };
+}

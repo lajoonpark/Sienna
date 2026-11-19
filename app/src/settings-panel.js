@@ -20,10 +20,10 @@ import { rng } from './rand.js';
 import { onCursorTilt, tiltCSS } from './cursortilt.js';
 
 const CSS = `
-.st-btn { position: fixed; top: 3.4vh; right: 2.6vw; z-index: 6; border: 0; padding: 0; background: none; cursor: pointer;
-  font-family: var(--sienna-font); color: ${PAPER}; font-size: 26px; line-height: 1; user-select: none; opacity: 0; transition: opacity .6s ease, transform .18s cubic-bezier(.3,1.6,.5,1); }
-.st-btn.show { opacity: .9; }
-.st-btn:hover { opacity: 1; transform: translateX(-4px) rotate(1deg); }
+.st-btn { position: fixed; top: 3.4vh; right: 2.6vw; z-index: 6; display: flex; align-items: center; gap: 6px;
+  font-family: var(--sienna-font); color: ${PAPER}; font-size: 26px; line-height: 1; user-select: none; opacity: 0; transition: opacity .6s ease; }
+.st-btn.show { opacity: .92; }
+.st-btn .st-w:hover { transform: translateY(-2px) rotate(1deg); }
 .st-w { position: relative; display: inline-block; border: 0; padding: 0; background: none; cursor: pointer; font-family: var(--sienna-font);
   font-size: inherit; color: ${PAPER}; line-height: 1; transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
 .st-w .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; filter: drop-shadow(0 1px 2px rgba(28,20,16,.2)); }
@@ -175,16 +175,30 @@ function paintRule(el, seed) {
   el.style.backgroundImage = `url(${c.toDataURL()})`;
 }
 
-export function createSettingsPanel({ music = null, onTour = null } = {}) {
+export function createSettingsPanel({ music = null, onTour = null, onToggleSource = null, onRestock = null } = {}) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
 
-  // the SETTINGS word, top right
+  // Top-right painted words: Library/Home toggle, Restock, Settings
   const btnWrap = document.createElement('div');
   btnWrap.className = 'st-btn';
+  const topWords = [];
+  let srcBtn = null;
+  if (onToggleSource) {
+    srcBtn = word('Library', 11, () => onToggleSource(), { flipX: true });
+    btnWrap.appendChild(srcBtn);
+    topWords.push(srcBtn);
+  }
+  if (onRestock) {
+    const restockBtn = word('Restock', 13, () => onRestock(), { flipX: true });
+    restockBtn.title = 'Refresh shelves from YouTube Music';
+    btnWrap.appendChild(restockBtn);
+    topWords.push(restockBtn);
+  }
   const btn = word('Settings', 17, () => toggle(), { flipX: true });
   btnWrap.appendChild(btn);
+  topWords.push(btn);
   document.body.appendChild(btnWrap);
 
   const veil = document.createElement('div');
@@ -379,9 +393,39 @@ export function createSettingsPanel({ music = null, onTour = null } = {}) {
     { key: 'covers', label: 'Cover art', hint: 'How strongly album covers are painted over.', opts: ['Off', 'Light', 'Medium', 'Heavy'].map((l, i) => [l, i]) },
     { key: 'font', label: 'Lettering', hint: 'The handwriting on tags, signs and buttons. It changes straight away.', opts: Object.entries(FONTS).map(([k, f]) => [f.label, k, f]) },
   ], 23);
-  settingRows(addPage('playback', 'Playback'), [
+  const isMac = /Mac/.test(navigator.platform);
+  const playbackPage = addPage('playback', 'Playback');
+  settingRows(playbackPage, [
     { key: 'playOnArm', label: 'Start of a song', hint: 'Play when the arm touches the record and it spins, or straight away.', opts: [['When the arm lands', true], ['At once', false]] },
+    ...(isMac ? [{ key: 'volumeMode', label: 'Volume control', hint: 'Control your Mac’s system volume, or keep Sienna’s volume separate from other apps.', opts: [['Mac system volume', 'system'], ['Sienna only', 'app']] }] : []),
+    { key: 'discordRpc', label: 'Discord Rich Presence', hint: 'Opt-in: show your current track in a local Discord desktop app. Never contacts remote servers.', opts: [['Off', false], ['On', true]] },
   ], 61);
+  if (music?.volumeMode && isMac) {
+    music.volumeMode(settings.get('volumeMode'));
+    settings.on('volumeMode', (v) => music.volumeMode(v));
+  }
+  if (music?.app?.discordRpc) {
+    music.app.discordRpc(!!settings.get('discordRpc')).catch(() => {});
+    settings.on('discordRpc', (v) => music.app.discordRpc(!!v).catch(() => {}));
+  }
+  if (music?.app?.loginItem) {
+    const { row: loginRow, box: loginBox } = makeRow('Start at login', 'Launch Sienna automatically when you sign in to your computer.');
+    playbackPage.appendChild(loginRow);
+    let loginState = false;
+    const loginOff = word('Off', 173, () => setLogin(false));
+    const loginOn = word('On', 179, () => setLogin(true));
+    loginBox.append(loginOff, loginOn);
+    optWords.push(loginOff, loginOn);
+    const markLogin = () => {
+      loginOff.classList.toggle('on', !loginState);
+      loginOn.classList.toggle('on', !!loginState);
+    };
+    const setLogin = (v) => {
+      music.app.loginItem(v).then((res) => { loginState = !!res; markLogin(); }).catch(() => {});
+    };
+    markLogin();
+    music.app.info?.().then((info) => { if (info) { loginState = !!info.loginItem; markLogin(); } }).catch(() => {});
+  }
   settingRows(addPage('performance', 'Performance'), [
     { key: 'maxFps', label: 'Smoothness', hint: 'Frames per second at most. 30 runs cooler and saves battery.', opts: [['60 fps', 60], ['30 fps', 30]] },
     { key: 'sharp', label: 'Sharpness', hint: 'How many pixels the shop is drawn with. Lighter runs cooler; the paint hides most of the difference.', opts: [['Full', 'full'], ['Balanced', 'balanced'], ['Light', 'light']] },
@@ -466,11 +510,70 @@ export function createSettingsPanel({ music = null, onTour = null } = {}) {
     optWords.push(again);
   }
 
+  // ---- About & Diagnostics: version, manual update check (privacy-first), sanitized debug report ----
+  const aboutPage = addPage('about', 'About');
+  const verHint = el('div', 'st-hint', 'Sienna — free, open-source 3D vinyl shop for YouTube Music (MIT License).');
+  const unsignedNote = el('div', 'st-small', 'Open-source releases are unsigned (no paid Apple or Microsoft certificate). Installing via Homebrew on macOS automatically clears macOS quarantine (xattr).');
+  const { row: updRow, box: updBox } = makeRow('Updates', 'Sienna never phones home in the background. Check GitHub Releases manually whenever you like.');
+  const updMsg = el('div', 'st-hint');
+  updRow.appendChild(updMsg);
+  let releaseUrl = null;
+  const openRelBtn = word('Open release page', 293, () => { if (releaseUrl) music?.app?.openRelease?.(releaseUrl); });
+  openRelBtn.style.display = 'none';
+  const checkBtn = word('Check for updates', 283, async () => {
+    updMsg.textContent = 'Checking GitHub Releases…';
+    openRelBtn.style.display = 'none';
+    const res = await music?.app?.checkUpdates?.().catch(() => ({ ok: false, error: 'Could not check for updates.' }));
+    if (!res?.ok) {
+      updMsg.textContent = res?.error || 'Could not reach GitHub.';
+    } else if (res.hasUpdate) {
+      releaseUrl = res.url;
+      updMsg.textContent = `Sienna ${res.latest} is available (you have ${res.current}).`;
+      openRelBtn.style.display = '';
+      requestAnimationFrame(paintAll);
+    } else {
+      updMsg.textContent = res.note || `You are up to date (v${res.current}).`;
+    }
+  });
+  updBox.append(checkBtn, openRelBtn);
+  optWords.push(checkBtn, openRelBtn);
+
+  const { row: diagRow, box: diagBox } = makeRow('Diagnostics', 'Copy a sanitized summary (version, OS, GPU, player status — never cookies, account info, or listening history) for bug reports.');
+  const diagMsg = el('div', 'st-hint');
+  diagRow.appendChild(diagMsg);
+  const copyDiagBtn = word('Copy debug info', 307, async () => {
+    try {
+      const base = (await music?.app?.diagnostics?.()) ?? {};
+      let webgl = null;
+      try {
+        const gl = document.querySelector('canvas')?.getContext('webgl2') || document.querySelector('canvas')?.getContext('webgl');
+        const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+        webgl = { renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl?.getParameter(gl.RENDERER) ?? 'unknown' };
+      } catch { /* ignore */ }
+      const report = JSON.stringify({
+        ...base,
+        viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio },
+        settings: { sharp: settings.get('sharp'), maxFps: settings.get('maxFps'), autoCool: settings.get('autoCool'), covers: settings.get('covers'), volumeMode: settings.get('volumeMode') },
+        webgl,
+      }, null, 2);
+      await navigator.clipboard.writeText(report);
+      diagMsg.textContent = 'Copied sanitized debug info to clipboard.';
+    } catch {
+      diagMsg.textContent = 'Could not copy debug info to clipboard.';
+    }
+  });
+  diagBox.appendChild(copyDiagBtn);
+  optWords.push(copyDiagBtn);
+  aboutPage.append(verHint, updRow, diagRow, unsignedNote);
+  music?.app?.info?.().then((info) => {
+    if (info?.version) verHint.textContent = `Sienna v${info.version} — free, open-source 3D vinyl shop for YouTube Music (MIT License).`;
+  }).catch(() => {});
+
   const done = word('Done', 31, () => close());
   card.querySelector('.st-foot').appendChild(done);
 
   const paintAll = () => {
-    btn.paint();
+    for (const w of topWords) w.paint();
     if (!openNow) return;
     for (const w of [...Object.values(railWords), ...optWords, done]) w.paint();
     paintRule(rule, 5);
@@ -527,7 +630,13 @@ export function createSettingsPanel({ music = null, onTour = null } = {}) {
     open, close, toggle,
     isOpen: () => openNow,
     page: () => current,
-    // the SETTINGS word shows once the intro is over (like the section buttons)
+    setSource(src) {
+      if (!srcBtn) return;
+      srcBtn.querySelector('span').textContent = src === 'library' ? 'Home shelves' : 'Library';
+      srcBtn.classList.toggle('on', src === 'library');
+      requestAnimationFrame(() => srcBtn.paint());
+    },
+    // the top-right words show once the intro is over (like the section buttons)
     show(on) { btnWrap.classList.toggle('show', on); if (on) requestAnimationFrame(paintAll); },
   };
 }

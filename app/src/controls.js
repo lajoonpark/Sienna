@@ -190,6 +190,16 @@ const TAG_CSS = `
 .cad-tag .cap .bar:hover::before { top: 4px; height: 4px; }
 .cad-tag .cap .bar i { position: absolute; left: 0; top: 3px; height: 6px; border-radius: 3px 6px 6px 3px; background: ${INK}; opacity: .85; transition: background .15s, height .15s, top .15s; }
 .cad-tag .cap .bar:hover i { top: 2px; height: 8px; background: ${HOT}; }
+.cad-tag .cap .meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 3px; font-size: 16px; color: #7a5a40; line-height: 1; }
+.cad-tag .cap .time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cad-tag .cap .tools { display: flex; align-items: center; gap: 7px; }
+.cad-tag .cap .tool { pointer-events: auto; border: 0; background: none; padding: 1px 4px; margin: 0; cursor: pointer;
+  font-family: var(--sienna-font); font-size: 16px; line-height: 1; color: #5a4636; opacity: .78; border-radius: 3px;
+  transition: opacity .15s, color .15s, transform .15s; }
+.cad-tag .cap .tool:hover { opacity: 1; color: ${HOT}; transform: translateY(-1px); }
+.cad-tag .cap .tool.on { opacity: 1; color: ${HOT}; text-decoration: underline; text-underline-offset: 2px; }
+.cad-tag.mini .cap .meta { font-size: 15px; margin-top: 4px; }
+.cad-tag.mini .cap .tool { font-size: 15px; }
 .cad-tag .cap.empty { opacity: 0; pointer-events: none; }
 /* the small window's progress line is a pull of the brush, shown as far as the song has got */
 .cad-tag.mini .cap .bar { height: 16px; }
@@ -222,9 +232,17 @@ const fitLine = (el, big, small, lines) => {
   if (lines > 1) el.classList.add('wrap');
 };
 
+const fmtTime = (s) => {
+  if (!Number.isFinite(s) || s < 0) return '0:00';
+  const total = Math.floor(s);
+  const m = Math.floor(total / 60);
+  const sec = String(total % 60).padStart(2, '0');
+  return `${m}:${sec}`;
+};
+
 // Title / artist / progress line on a torn paper tag, and the SIGN IN word when needed.
 //   variant 'shop': fixed beside the suitcase in the bottom-left; 'mini': inside the small window's card.
-export function createCaption({ parent = document.body, variant = 'shop', onSeek, onSignIn } = {}) {
+export function createCaption({ parent = document.body, variant = 'shop', onSeek, onSignIn, onCommand, onQueue, onLyrics } = {}) {
   if (!document.getElementById('cad-tag-css')) {
     const st = document.createElement('style');
     st.id = 'cad-tag-css';
@@ -242,10 +260,31 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
   signin.addEventListener('click', (e) => { e.stopPropagation(); onSignIn?.(); });
   const cap = document.createElement('div');
   cap.className = 'cap empty';
-  cap.innerHTML = '<div class="t"></div><div class="a"></div><div class="bar"><i></i></div>';
+  cap.innerHTML = '<div class="t"></div><div class="a"></div><div class="bar"><i></i></div><div class="meta"><span class="time"></span><span class="tools"></span></div>';
   turn.append(signin, cap);
   parent.appendChild(root);
   const capT = cap.querySelector('.t'), capA = cap.querySelector('.a'), bar = cap.querySelector('.bar'), fill = cap.querySelector('.bar i');
+  const timeEl = cap.querySelector('.time'), toolsEl = cap.querySelector('.tools');
+
+  const toolBtns = {};
+  const addTool = (id, label, title, click) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tool';
+    b.tabIndex = -1;
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener('click', (e) => { e.stopPropagation(); click(); });
+    toolsEl.appendChild(b);
+    toolBtns[id] = b;
+  };
+  if (onCommand) {
+    addTool('mute', 'Mute', 'Mute / Unmute (M)', () => onCommand('mute'));
+    addTool('shuffle', 'Shuffle', 'Toggle shuffle', () => onCommand('shuffle'));
+    addTool('repeat', 'Repeat', 'Cycle repeat (Off / All / One)', () => onCommand('repeat'));
+  }
+  if (onQueue) addTool('queue', 'Queue', 'Up next', () => onQueue());
+  if (onLyrics) addTool('lyrics', 'Lyrics', 'Liner notes & lyrics', () => onLyrics());
 
   const paint = () => {
     const { width, height } = signin.getBoundingClientRect();
@@ -306,7 +345,11 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
       turn.style.transform = `rotateY(${14 + tx * 6}deg) rotateX(${-ty * 4}deg)`;
     },
     // Show this fraction instead of the player's position while the record is being dragged (null = follow the player).
-    setScrub(p) { scrubP = p; fill.style.width = `${p == null ? lastP : p * 100}%`; },
+    setScrub(p) {
+      scrubP = p;
+      fill.style.width = `${p == null ? lastP : p * 100}%`;
+      if (duration > 0) timeEl.textContent = `${fmtTime(p == null ? (lastP / 100) * duration : p * duration)} / ${fmtTime(duration)}`;
+    },
     setState(s, { real = false } = {}) {
       const show = real && s.ready && !s.signedIn ? '' : 'none';
       if (signin.style.display !== show) { signin.style.display = show; if (!show) fontReady.then(paint); }
@@ -317,7 +360,20 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
       if (capT.textContent !== t || capA.textContent !== a) { capT.textContent = t; capA.textContent = a; fit(); }
       duration = s.duration || 0;
       lastP = duration ? Math.min(100, (s.position / duration) * 100) : 0;
-      if (scrubP == null) fill.style.width = `${lastP}%`;
+      if (scrubP == null) {
+        fill.style.width = `${lastP}%`;
+        timeEl.textContent = duration > 0 && !s.adPlaying ? `${fmtTime(s.position)} / ${fmtTime(duration)}` : '';
+      }
+      if (toolBtns.mute) {
+        toolBtns.mute.classList.toggle('on', !!s.muted);
+        toolBtns.mute.textContent = s.muted ? 'Muted' : 'Mute';
+      }
+      if (toolBtns.shuffle) toolBtns.shuffle.classList.toggle('on', !!s.shuffle);
+      if (toolBtns.repeat) {
+        const rep = s.repeat || 'OFF';
+        toolBtns.repeat.classList.toggle('on', rep !== 'OFF');
+        toolBtns.repeat.textContent = rep === 'ONE' ? 'Repeat 1' : rep === 'ALL' ? 'Repeat all' : 'Repeat';
+      }
     },
   };
 }

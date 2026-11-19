@@ -42,7 +42,7 @@ const TUCK = { delay: 0.35, shutFirst: 0.3, sink: 0.62, rate: 8, hold: 0.9 };
 // and its record clear the bottom edge of the picture.
 const DRAWER_RISE = 0.3;
 
-export function createPlayer({ renderer, painter, music, camera }) {
+export function createPlayer({ renderer, painter, music, camera, onQueue = null, onLyrics = null }) {
   const scene = new THREE.Scene();
   const ocam = new THREE.PerspectiveCamera(camera.fov, camera.aspect, camera.near, camera.far);
   const overlay = { scene, camera: ocam, render: (r = renderer) => renderOverlay(r, overlay) };
@@ -56,7 +56,14 @@ export function createPlayer({ renderer, painter, music, camera }) {
   const tray = createRecordTray({ suitcase, kit: suitcase.recordKit, camera, onDisc: (d) => flights.receive(d) });
   const points = suitcase.fitPoints();
 
-  const caption = createCaption({ variant: 'shop', onSeek: (s) => music.command('seek', s), onSignIn: () => music.signIn() });
+  const caption = createCaption({
+    variant: 'shop',
+    onSeek: (s) => music.command('seek', s),
+    onSignIn: () => music.signIn(),
+    onCommand: (name, arg) => music.command(name, arg),
+    onQueue,
+    onLyrics,
+  });
 
   let shown = false, opened = false;
   place.visible = false;

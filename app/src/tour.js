@@ -416,7 +416,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
     },
     letters() {
       where('upper');
-      text('Make it yours', 'Pick the handwriting for the tags, the sign and every button. Picking one repaints the shop, so it blinks for a moment.');
+      text('Make it yours', 'Pick the handwriting for the tags, the sign and every button. It changes straight away, no reload.');
       choices('font', Object.entries(FONTS).map(([k, f]) => [f.label, k, f.family]));
       brk();
       float('Next', next, { big: true });
@@ -438,8 +438,8 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
     player() {
       where('player');
       text('Your record player', `The knob is the volume: drag it, scroll, or press <b>↑ ↓</b>.${mac
-        ? " It turns your Mac's own volume, the same one the volume keys change, so it can go louder than the player alone could."
-        : ''} Drag the record to jump through the song. <b>Space</b> pauses, <b>← →</b> go back and skip, <b>L</b> likes it.`);
+        ? " It turns your Mac's own volume by default (or switch to Sienna-only in Settings)."
+        : ''} Drag the record to jump through the song. <b>Space</b> pauses, <b>← →</b> go back and skip, <b>L</b> likes it, <b>M</b> mutes.`);
       float('Got it', next, { big: true });
       onKey = (e) => { if (e.key === 'Enter') { next(); return true; } };
     },

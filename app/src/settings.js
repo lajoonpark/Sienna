@@ -2,23 +2,19 @@
 // mini window share one origin, so a change in one reaches the other through the
 // 'storage' event. Storage can be unavailable (private mode, blocked): everything still works with
 // the defaults, it just does not remember.
-//
-//   import { settings } from './settings.js';
-//   settings.get('covers')            -> 3
-//   settings.set('covers', 2)
-//   const off = settings.on('covers', (v) => ...)   // also fires for changes made in the other window
-
 const KEY = 'sienna.settings';
-const OLD_KEY = 'cadence.settings';   // the app was called Cadence until 2026-11-08; read once, then dropped
+const OLD_KEY = 'cadence.settings';
 
 export const DEFAULTS = {
-  covers: 3, // how strongly album covers are painted, 0..3 (COVER_LEVELS in coverpaint.js)
-  playOnArm: true, // the song starts when the tonearm lands and the record spins up (false: at once)
-  maxFps: 60, // frame-rate cap, 60 or 30 (pacer.js); 30 runs cooler on a laptop
-  sharp: 'balanced', // how many pixels the shop is drawn with: 'full', 'balanced', 'light' (quality.js)
-  autoCool: true, // draw lighter while the computer is warm or frames are slow (quality.js)
-  font: 'amatic', // lettering, a key of FONTS in style.js (changes live, see style.js)
-  fps: false, // frame-rate readout in the corner (for perf reports)
+  covers: 3,            // how strongly album covers are painted, 0..3 (COVER_LEVELS in coverpaint.js)
+  playOnArm: true,      // the song starts when the tonearm lands and the record spins up (false: at once)
+  volumeMode: 'system', // macOS: 'system' (Mac output volume) or 'app' (Sienna player volume only)
+  discordRpc: false,    // opt-in Discord Rich Presence over local IPC (off by default)
+  maxFps: 60,           // frame-rate cap, 60 or 30 (pacer.js); 30 runs cooler on a laptop
+  sharp: 'balanced',    // how many pixels the shop is drawn with: 'full', 'balanced', 'light' (quality.js)
+  autoCool: true,       // draw lighter while the computer is warm or frames are slow (quality.js)
+  font: 'amatic',       // lettering, a key of FONTS in style.js (changes live, see style.js)
+  fps: false,           // frame-rate readout in the corner (for perf reports)
 };
 
 function load() {
@@ -30,7 +26,7 @@ function load() {
     }
     const raw = JSON.parse(text || '{}');
     if (!raw || typeof raw !== 'object') return {};
-    delete raw.paint; delete raw.paintV; // the Painting setting is gone (Oil paint is the only look, 2026-11-13)
+    delete raw.paint; delete raw.paintV;
     return raw;
   } catch {
     return {};

@@ -26,6 +26,7 @@ import { createMusic } from './music.js';
 import { createPlayer } from './suitcase/player.js';
 import { startSong } from './suitcase.js';
 import { createSpread } from './spread.js';
+import { createLiner, showWebGLError } from './liner.js';
 import './fonts.js';
 
 const params = new URLSearchParams(location.search);
@@ -57,7 +58,13 @@ if (params.get('pcf') !== '5') {
 // painted: the scene is antialiased in its own target, the screen only gets a full-screen quad.
 // The screen keeps its picture between frames (preserveDrawingBuffer), so the painter can repaint just the
 // part of it that changed: the suitcase's corner, the boiling border (watercolour.js, `Still frames`).
-const renderer = new THREE.WebGLRenderer({ antialias: !WATERCOLOUR, preserveDrawingBuffer: shotMode || WATERCOLOUR });
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: !WATERCOLOUR, preserveDrawingBuffer: shotMode || WATERCOLOUR });
+} catch (err) {
+  showWebGLError(err);
+  throw err;
+}
 // Settings > Performance > Sharpness, lowered while the Mac is warm or frames are slow (quality.js)
 const quality = createQuality();
 renderer.setPixelRatio(quality.pixelRatio());
@@ -185,8 +192,14 @@ function ensureRack(i) {
   return rack;
 }
 
+// the torn-paper overlays for Lyrics (liner notes), Up Next Queue, and offline/error status banner
+const liner = createLiner({ music });
 // the suitcase record player in the bottom-left corner (drawn in an overlay pass, subscribes to the player state itself)
-const suitcase = createPlayer({ renderer, painter, music, camera });
+const suitcase = createPlayer({
+  renderer, painter, music, camera,
+  onQueue: () => liner.openQueue(),
+  onLyrics: () => liner.openLyrics(player),
+});
 // a hovered record never floats up underneath the suitcase or its caption
 const menu = createMenu({
   onGo: (i) => nav.go(i),
@@ -196,7 +209,7 @@ const menu = createMenu({
 });
 // heading to a rack: make its hover covers while the camera flies (see prewarm in racks/common.js)
 function warm() { if (nav.at !== AT_HOME) racks[nav.at]?.prewarm((tex) => renderer.initTexture(tex)); }
-// pressing an album's record fans its songs out in front of you (src/spread.js); a song or the red
+// pressing an album or playlist record fans its songs out in front of you (src/spread.js); a song or the red
 // play-all record flies from there to the suitcase like any picked record
 const spread = createSpread({
   camera,
@@ -207,9 +220,19 @@ nav.onChange(() => { menu.setCurrent(nav.at); warm(); spread.close(); });
 menu.setCurrent(nav.at);
 // the search bar (Control+Option+J by default, Settings > Shortcuts) must exist before the key handlers below are registered
 // a search pick has no sleeve: the drawer in the suitcase slides out with the record in it
-const search = createSearch({ music, onPlay: (item) => { startSong(music, suitcase.suitcase, item); suitcase.dispense(getCover(item.art, 512).tex); } });
-// Settings (Cmd+, or the SETTINGS word): a rail of pages (Account, Look, ...); swallows keys itself while open; Settings > Tour starts the tour again
-const settingsPanel = createSettingsPanel({ music, onTour: () => tour.restart() });
+const search = createSearch({
+  music,
+  onPlay: (item) => { startSong(music, suitcase.suitcase, item); suitcase.dispense(getCover(item.art, 512).tex); },
+  onOpenCollection: (item) => spread.open(item, null),
+});
+// Settings (Cmd+, or the SETTINGS word), plus top-right Library/Home toggle and Restock button
+let shelfSource = 'home'; // 'home' | 'library'
+const settingsPanel = createSettingsPanel({
+  music,
+  onTour: () => tour.restart(),
+  onToggleSource: () => switchShelfSource(shelfSource === 'home' ? 'library' : 'home'),
+  onRestock: () => loadShelves({ force: true }),
+});
 // the first-run tour (src/tour.js): paper notes in the shop once the intro reaches home on a new install
 const tour = createTour({
   music,
@@ -401,33 +424,99 @@ function placeFirst() {
   placeShelves(padShelves(shelves), { first: true });
   everPlaced = placedThisLoad = true;
 }
-async function loadShelves() {
+let loadSeq = 0;
+function switchShelfSource(next) {
+  if (shelfSource === next) return;
+  shelfSource = next;
+  settingsPanel.setSource(shelfSource);
+  spread.close();
+  if (nav.at !== AT_HOME) nav.go(AT_HOME);
+  loadShelves({ force: true });
+}
+async function loadShelves({ force = false } = {}) {
+  const my = ++loadSeq;
   placedThisLoad = false;
+  let failed = false;
+  if (force) {
+    for (const [i] of [...placed]) clearStation(i);
+  }
   try {
-    let page = await music.shelves();
-    shelves = page.shelves.slice();
-    if (!everPlaced && startAt !== null) placeFirst(); // ?at shot: no intro to wait for
-    for (let i = 1; i < SHELF_PAGES && page.next; i++) {
-      page = await music.shelves(page.next);
-      shelves.push(...page.shelves);
-      if (placedThisLoad) placeShelves(padShelves(shelves));
+    if (shelfSource === 'library' && music.library) {
+      const page = await music.library();
+      if (my !== loadSeq) return;
+      shelves = page.shelves.slice();
+      if (!shelves.length) {
+        liner.setStatus(player?.signedIn === false ? 'Sign in to see your YouTube Music library.' : 'No library shelves found right now.', () => loadShelves({ force: true }));
+      } else {
+        liner.setStatus(null);
+      }
+    } else {
+      let page = await music.shelves();
+      if (my !== loadSeq) return;
+      shelves = page.shelves.slice();
+      liner.setStatus(null);
+      if (!everPlaced && startAt !== null) placeFirst(); // ?at shot: no intro to wait for
+      for (let i = 1; i < SHELF_PAGES && page.next; i++) {
+        page = await music.shelves(page.next);
+        if (my !== loadSeq) return;
+        shelves.push(...page.shelves);
+        if (placedThisLoad) placeShelves(padShelves(shelves));
+      }
     }
   } catch (e) {
+    if (my !== loadSeq) return;
+    failed = true;
     console.warn('could not load shelves', e);
+    const offline = !navigator.onLine;
+    liner.setStatus(
+      offline ? 'You appear to be offline — shelves will restock when you reconnect.' : 'Could not reach YouTube Music to stock the shelves.',
+      () => { music.retry?.(); loadShelves({ force: true }); },
+    );
   } finally {
-    // everything is in (or the load failed part-way): place now unless the camera got home first
+    if (my !== loadSeq) return;
     if (shelves.length) {
       placeShelves(padShelves(shelves), { first: !placedThisLoad, prune: true });
       everPlaced = placedThisLoad = true;
+    } else if (!failed && shelfSource === 'home') {
+      liner.setStatus('YouTube Music returned no shelves right now.', () => { music.retry?.(); loadShelves({ force: true }); });
     }
     shelvesLoaded = true;
   }
 }
 loadShelves();
-music.onAccount(loadShelves);   // signed in, out or switched: that account's shelves
+music.onAccount(() => loadShelves({ force: true }));   // signed in, out or switched: that account's shelves
+music.onStatus?.((st) => {
+  if (!st?.ok) {
+    liner.setStatus(st?.error || 'Connection to YouTube Music was interrupted.', () => { music.retry?.(); loadShelves({ force: true }); });
+  } else if (!shelves.length) {
+    liner.setStatus(null);
+    loadShelves({ force: true });
+  } else {
+    liner.setStatus(null);
+  }
+});
+addEventListener('online', () => {
+  liner.setStatus(null);
+  if (!shelves.length) { music.retry?.(); loadShelves({ force: true }); }
+});
+addEventListener('offline', () => {
+  liner.setStatus('You appear to be offline — playback may pause until you reconnect.', () => { music.retry?.(); loadShelves({ force: true }); });
+});
+// Periodic shelf restock every 45 minutes while settled at the entrance on Home shelves.
+setInterval(() => {
+  if (!document.hidden && shelfSource === 'home' && nav.at === AT_HOME && nav.settled && navigator.onLine) loadShelves();
+}, 45 * 60 * 1000);
+// Application menu actions (Settings, About, Restock, Home/Library).
+music.app?.onMenu?.((action) => {
+  if (action === 'settings') settingsPanel.open();
+  else if (action === 'about') settingsPanel.open('about');
+  else if (action === 'restock') loadShelves({ force: true });
+  else if (action === 'home') switchShelfSource('home');
+  else if (action === 'library') switchShelfSource('library');
+});
 
-// for tests and the devtools console
-window.__siennaDebug = {
+// for tests and the devtools console (not exposed in packaged production builds)
+if (!window.sienna || window.sienna.isDev) window.__siennaDebug = {
   renderer,
   painter,
   get scene() { return scene; },
@@ -617,15 +706,17 @@ const currentRack = () => (nav.settled && nav.at !== AT_HOME ? racks[nav.at] : n
 addEventListener('pointerdown', () => { if (nav.intro) nav.skipIntro(curT); });
 // a pick wakes the tucked suitcase straight away, so it is up with the lid open before the record arrives
 // (not when the press was a drag that turned the rack)
+const canSpread = (it) => !!it && (it.kind === 'album' || it.kind === 'playlist') && !!(it.play?.playlistId || it.browseId);
+
 renderer.domElement.addEventListener('click', () => {
   if (grabbed) { grabbed = false; return; }
   if (nav.intro) return;
   shadowsBusy(1.5);
-  // the album spread is out: a record or an arrow, else the click puts the records back
+  // the album/playlist spread is out: a record or an arrow, else the click puts the records back
   if (spread.isOpen) { spread.click(); return; }
   const rack = currentRack();
   const s = rack && rack.core.control < 0 ? rack.core.sleeves[rack.hovered] : null;
-  if (s?.item.kind === 'album' && !s.picking) { s.bump = 1; spread.open(s.item, s.mesh); return; }
+  if (canSpread(s?.item) && !s.picking) { s.bump = 1; spread.open(s.item, s.mesh); return; }
   if (rack?.click()) suitcase.wake();
 });
 // grab and turn a rack by hand (the spinner): press on it and drag; past a few px it is a drag, not a click
@@ -673,7 +764,7 @@ addEventListener('keydown', (e) => {
     nav.skipIntro(curT);
     if (e.key === 'Tab' || e.key === 'Escape') { e.preventDefault(); return; }
   }
-  const cmd = { ' ': 'toggle', ArrowRight: 'next', ArrowLeft: 'previous', l: 'like', L: 'like' }[e.key];
+  const cmd = { ' ': 'toggle', ArrowRight: 'next', ArrowLeft: 'previous', l: 'like', L: 'like', m: 'mute', M: 'mute' }[e.key];
   if (cmd) { e.preventDefault(); music.command(cmd); return; }
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
     e.preventDefault();
@@ -689,7 +780,7 @@ addEventListener('keydown', (e) => {
 // Scrolling down turns it down (Lajoon's ask; with macOS natural scrolling that is the finger moving down).
 let wheelVol = null, wheelIdle = 0;
 addEventListener('wheel', (e) => {
-  if (settingsPanel.isOpen() || search.isOpen()) return; // the wheel scrolls the search slips then, never the volume
+  if (settingsPanel.isOpen() || search.isOpen() || liner.isOpen()) return; // the wheel scrolls sheets/slips then, never the volume
   // mostly sideways (trackpad swipe): a rack that turns by hand takes it, and the volume stays put
   if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
     if (spread.isOpen) spread.wheel(e.deltaX);
@@ -794,9 +885,9 @@ function frame(t, dtOverride, draw = true) {
     // the cursor over the suitcase does not pick records through it
     rack.update(dt, camera, active && !suitcase.over && !spread.isOpen ? pointer : null, active);
   });
-  // an album under the cursor: fetch its songs now, so pressing it opens the spread at once
+  // an album or playlist under the cursor: fetch its songs now, so pressing it opens the spread at once
   const hovItem = currentRack()?.core.sleeves[currentRack().hovered]?.item;
-  if (hovItem?.kind === 'album') spread.prefetch(hovItem);
+  if (canSpread(hovItem)) spread.prefetch(hovItem);
   spread.update(dt, !suitcase.over ? pointer : null);
 
   const ui = nav.introDone || !!pinnedPose;
