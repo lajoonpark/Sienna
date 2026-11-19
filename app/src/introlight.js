@@ -11,7 +11,7 @@
 //   cine 0..1 how much of the intro look is on (the bars' value), door 0..1 open, camZ camera z,
 //   sunE sun elevation in degrees. Returns { grade: [r, g, b], vignette } for the painter.
 import * as THREE from 'three';
-import { GLOW_BLENDING } from './materials.js';
+import { GLOW_BLENDING, GLOW_LAYER } from './materials.js';
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const smooth = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -96,7 +96,7 @@ export function createIntroLight(root) {
   });
   root.add(spill, doorway, ...beams);
   const parts = [spill, doorway, ...beams];
-  parts.forEach((p) => { p.visible = false; });
+  parts.forEach((p) => { p.visible = false; p.layers.set(GLOW_LAYER); });
 
   const grade = [1, 1, 1];
   return {

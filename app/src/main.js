@@ -8,7 +8,7 @@ import { createLightSlots } from './lightslots.js';
 import { WATERCOLOUR } from './style.js';
 import { createWatercolour, renderOverlay } from './watercolour.js';
 import { createSky } from './sky.js';
-import { toon, crisp, unpinned } from './materials.js';
+import { toon, crisp, unpinned, GLOW_LAYER } from './materials.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
 import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
@@ -81,6 +81,7 @@ scene.background = skyColor;
 scene.fog = new THREE.Fog('#f1cf9b', 18, 52);
 
 const camera = new THREE.PerspectiveCamera(BASE_FOV, innerWidth / innerHeight, 0.1, 120);
+camera.layers.enable(GLOW_LAYER);
 const rig = new THREE.Group();
 rig.add(camera);
 scene.add(rig);

@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { paperTexture } from './paint.js';
 import { createBrushStrokes, strokeFingerprint } from './brushstrokes.js';
 import { createOilPaint } from './oilpaint.js';
+import { GLOW_LAYER } from './materials.js';
 import { loadStrokes, saveStrokes } from './strokecache.js';
 import { packStrokes } from './strokepack.js';
 const EXPORT_STROKES = new URLSearchParams(globalThis.location?.search ?? '').has('bakeexport');
@@ -922,8 +923,12 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       }
       const drawWorld = () => {
         scene.matrixWorldAutoUpdate = false;
+        const skipGlow = !!brush?.oil.handlesGlows;
+        const hadGlow = skipGlow && camera.layers.isEnabled(GLOW_LAYER);
+        if (hadGlow) camera.layers.disable(GLOW_LAYER);
         renderer.setRenderTarget(target);
         renderer.render(scene, camera);
+        if (hadGlow) camera.layers.enable(GLOW_LAYER);
         scene.matrixWorldAutoUpdate = autoWorld;
       };
 

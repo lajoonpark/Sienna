@@ -5,6 +5,7 @@ import { trs, mul } from './kit.js';
 import { blk, rod, chain, fernFronds, BRASS } from './details.js';
 import { rng } from './rand.js';
 import { glass } from './materials.js';
+import { glowMesh } from './env.js';
 
 const C = new THREE.Color();
 const SLEEVE_H = [0.04, 0.12, 0.58, 0.33, 0.95, 0.07, 0.5, 0.75];
@@ -236,7 +237,6 @@ export function pendant(kit, M, top, hang, { light = true, shade = '#3f6e6a' } =
   if (!pendantMats) pendantMats = {
     lining: new THREE.MeshBasicMaterial({ color: '#f7dfae' }),
     bulb: glass(new THREE.MeshBasicMaterial({ color: '#ffe2a8' })),
-    halo: new THREE.MeshBasicMaterial({ color: '#ffb85a', transparent: true, opacity: 0.14, depthWrite: false }),
   };
   // the shade's warm lining, where the bulb lights it: the shade's own underside (green on the hall's) lit that
   // close glowed lime, and Oil paint laid greenish dabs round the light (Lajoon, 2026-11-13)
@@ -247,8 +247,9 @@ export function pendant(kit, M, top, hang, { light = true, shade = '#3f6e6a' } =
   const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), pendantMats.bulb);
   bulb.applyMatrix4(mul(M, trs(0, top - hang - 0.28, 0)));
   out.push(bulb);
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), pendantMats.halo);
-  halo.applyMatrix4(mul(M, trs(0, top - hang - 0.3, 0)));
+  const halo = glowMesh('sprite', 1.15, 0.26, '#ffb85a');
+  halo.material.opacity = 0.26;
+  halo.position.set(0, top - hang - 0.36, 0).applyMatrix4(M);
   out.push(halo);
   if (light) {
     const l = new THREE.PointLight('#ffb866', 4.5, 10, 1.5);

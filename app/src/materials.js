@@ -185,6 +185,9 @@ export const GLASS_ALPHA = 0.993;
 // Light added on top (halos, washes, the intro's beams): its colour adds like AdditiveBlending, but the alpha
 // already in the scene buffer stays as it was, so a glow over glass, a record or a cover does not wipe out
 // the flag that tells the paint looks how to treat it. Spread it into a material's parameters.
+// Glows also sit on GLOW_LAYER so Oil paint can render them after the dabs (depth-tested against the scene)
+// instead of inside tScene, where additive light disagreed with each dab's lit paint and ate holes in the wall dabs.
+export const GLOW_LAYER = 1;
 export const GLOW_BLENDING = {
   blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
   blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,

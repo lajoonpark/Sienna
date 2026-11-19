@@ -1,7 +1,7 @@
 // Things that respond to the time of day: lamps (light up one by one at dusk, with a warm-up
 // flicker) and windows (lit gradually in the evening, some go dark late at night).
 import * as THREE from 'three';
-import { GLOW_BLENDING } from './materials.js';
+import { GLOW_BLENDING, GLOW_LAYER } from './materials.js';
 
 export const lamps = [];
 
@@ -33,6 +33,7 @@ export function glowMesh(kind, size, opacity, color = '#ffb54a') {
   m.scale.set(size, size, 1);
   m.userData.glowOpacity = opacity;
   m.renderOrder = 2;
+  m.layers.set(GLOW_LAYER);
   return m;
 }
 export const windows = [];
