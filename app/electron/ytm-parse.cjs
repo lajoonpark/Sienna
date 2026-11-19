@@ -306,27 +306,58 @@ function parseArtistPage(response, { onNoArt } = {}) {
 }
 
 // The songs of a playlist or album (browse VL<id>: rows) or of a mix / radio / album queue (the `next`
-// endpoint: queue panel), in order: [{ videoId, title, subtitle (artist), duration (s)?, art }].
+// endpoint: queue panel), in order: [{ videoId, title, subtitle (artist), album?, duration (s)?, art }].
 const NO_COUNTERPARTS = new Set(['counterpart']);
 function parsePlaylistSongs(response) {
   const out = [];
   for (const row of findAll(response, 'musicResponsiveListItemRenderer')) {
     const it = listRow(row);
-    if (it.play?.videoId) out.push({ videoId: it.play.videoId, title: it.title, subtitle: it.subtitle, ...(it.duration ? { duration: it.duration } : {}), art: it.art });
+    if (it.play?.videoId) {
+      out.push({
+        videoId: it.play.videoId,
+        title: it.title,
+        subtitle: it.subtitle,
+        ...(it.album ? { album: it.album } : {}),
+        ...(it.duration ? { duration: it.duration } : {}),
+        art: it.art,
+      });
+    }
   }
   for (const row of findAll(response, 'playlistPanelVideoRenderer', [], NO_COUNTERPARTS)) {
     if (!row.videoId) continue;
     const duration = seconds(text(row.lengthText));
+    const longSegs = segments(row.longBylineText?.runs).map((rs) => ({
+      text: rs.map((x) => x.text).join(''),
+      album: rs.some((x) => runType(x) === 'MUSIC_PAGE_TYPE_ALBUM'),
+    }));
+    const album = longSegs.find((x) => x.album)?.text;
     out.push({
       videoId: row.videoId,
       title: text(row.title),
       subtitle: text(row.shortBylineText),
+      ...(album ? { album } : {}),
       ...(duration ? { duration } : {}),
       art: artOf(row.thumbnail).art,
       selected: !!row.selected,
     });
   }
   return out;
+}
+
+// Next-page continuation token for a playlist / liked-songs browse response.
+function playlistContinuation(response) {
+  for (const key of ['musicPlaylistShelfRenderer', 'musicPlaylistShelfContinuation', 'musicShelfRenderer', 'musicShelfContinuation']) {
+    const shelf = first(response, key);
+    const tok = shelf?.continuations?.[0]?.nextContinuationData?.continuation;
+    if (tok) return tok;
+    const item = first(shelf, 'continuationItemRenderer');
+    const cmdTok = item?.continuationEndpoint?.continuationCommand?.token;
+    if (cmdTok) return cmdTok;
+  }
+  const item = first(response, 'continuationItemRenderer');
+  const cmdTok = item?.continuationEndpoint?.continuationCommand?.token;
+  if (cmdTok) return cmdTok;
+  return continuation(response);
 }
 
 // Find the Lyrics tab browseId ("MPLYt...") inside a `next` response.
@@ -377,6 +408,6 @@ function parseAccounts(res) {
 
 module.exports = {
   parseAccount, parseAccounts, parseShelves, parseLibraryShelf, shelfTitle,
-  parseSearch, parseArtistPage, parsePlaylistSongs, parseLyricsTab, parseLyrics,
+  parseSearch, parseArtistPage, parsePlaylistSongs, playlistContinuation, parseLyricsTab, parseLyrics,
   continuation, artOf, artDebug, text, findAll, cleanUrl,
 };

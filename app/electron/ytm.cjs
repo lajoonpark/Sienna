@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   parseShelves, parseLibraryShelf, parseSearch, parseArtistPage,
-  parsePlaylistSongs, parseLyricsTab, parseLyrics,
+  parsePlaylistSongs, playlistContinuation, parseLyricsTab, parseLyrics,
   continuation, artDebug, cleanUrl, parseAccount, parseAccounts,
 } = require('./ytm-parse.cjs');
 const { createSystemVolume } = require('./sysvolume.cjs');
@@ -301,8 +301,25 @@ function createYtm({ onState, onAccount, onStatus }) {
     return songArts.get(id);
   }
 
-  // Songs of an album, playlist, or mix in order, for the 3D record spread (src/spread.js).
+  // Songs of an album, playlist, Liked Music, or mix in order, for the 3D record spread or Collection List.
+  // For playlists/albums/Liked Music, follows InnerTube browse continuations so large collections (~600+ songs) load in full.
+  const MAX_PLAYLIST_PAGES = 15;
   const albumCache = new Map();
+  async function browseAllSongs(browseId) {
+    const seen = new Set();
+    const out = [];
+    let res = await api('browse', { browseId });
+    for (let page = 0; page < MAX_PLAYLIST_PAGES && res; page++) {
+      let added = 0;
+      for (const s of parsePlaylistSongs(res)) {
+        if (!seen.has(s.videoId)) { seen.add(s.videoId); out.push(s); added++; }
+      }
+      const nextTok = playlistContinuation(res);
+      if (!nextTok || (page > 0 && added === 0)) break;
+      res = await api('browse', { continuation: nextTok }).catch(() => null);
+    }
+    return out;
+  }
   async function albumSongs(play) {
     const ep = cleanEndpoint(play);
     const browseId = cleanId(play?.browseId, 128);
@@ -311,17 +328,30 @@ function createYtm({ onState, onAccount, onStatus }) {
     if (!albumCache.has(id)) {
       const attempt = (async () => {
         const ways = [];
-        if (ep?.playlistId) {
-          const mix = /^RD/.test(ep.playlistId) && !/^RDCLAK/.test(ep.playlistId);
-          const viaNext = () => api('next', { playlistId: ep.playlistId, videoId: ep.videoId, params: ep.params, isAudioOnly: true });
-          const viaBrowse = () => api('browse', { browseId: ep.playlistId.startsWith('VL') ? ep.playlistId : `VL${ep.playlistId}` });
-          ways.push(...(mix ? [viaNext, viaBrowse] : [viaNext, viaBrowse]));
+        const isLiked = ep?.playlistId === 'LM' || browseId === 'VLLM';
+        const mix = !!ep?.playlistId && /^RD/.test(ep.playlistId) && !/^RDCLAK/.test(ep.playlistId);
+        const viaNext = async () => {
+          const seen = new Set();
+          return parsePlaylistSongs(await api('next', { playlistId: ep.playlistId, videoId: ep.videoId, params: ep.params, isAudioOnly: true }))
+            .filter((x) => !seen.has(x.videoId) && seen.add(x.videoId));
+        };
+        if (isLiked) {
+          ways.push(() => browseAllSongs('VLLM'), () => browseAllSongs('FEmusic_liked_videos'));
+          if (ep?.playlistId) ways.push(viaNext);
+        } else if (mix) {
+          ways.push(viaNext);
+          if (ep?.playlistId) ways.push(() => browseAllSongs(ep.playlistId.startsWith('VL') ? ep.playlistId : `VL${ep.playlistId}`));
+        } else {
+          if (browseId) ways.push(() => browseAllSongs(browseId));
+          if (ep?.playlistId) {
+            const vl = ep.playlistId.startsWith('VL') ? ep.playlistId : `VL${ep.playlistId}`;
+            if (vl !== browseId) ways.push(() => browseAllSongs(vl));
+            ways.push(viaNext);
+          }
         }
-        if (browseId) ways.push(() => api('browse', { browseId }));
         for (const get of ways) {
           try {
-            const seen = new Set();
-            const songs = parsePlaylistSongs(await get()).filter((x) => !seen.has(x.videoId) && seen.add(x.videoId));
+            const songs = await get();
             if (songs.length) return songs;
           } catch (e) { console.warn('[sienna] albumSongs', id, e.message); }
         }

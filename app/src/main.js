@@ -26,6 +26,8 @@ import { createMusic } from './music.js';
 import { createPlayer } from './suitcase/player.js';
 import { startSong } from './suitcase.js';
 import { createSpread } from './spread.js';
+import { createCollectionList } from './collection-list.js';
+import { isLikedCollection, shouldUseCollectionList } from './collection-filter.js';
 import { createLiner, showWebGLError } from './liner.js';
 import './fonts.js';
 
@@ -235,14 +237,45 @@ const spread = createSpread({
   music,
   onPlay: (item, disc) => { pick(item, -1, disc); if (disc) suitcase.wake(); },
 });
-nav.onChange(() => { menu.setCurrent(nav.at); warm(); spread.close(); });
+// Liked music & playlists/albums with >15 songs open the searchable, filterable list view with Shuffle
+const collectionList = createCollectionList({
+  onPlay: (item) => {
+    startSong(music, suitcase.suitcase, item);
+    suitcase.dispense(getCover(item.art, 512).tex);
+  },
+  onShuffle: (item) => {
+    startSong(music, suitcase.suitcase, item);
+    if (!player.shuffle) music.command('shuffle');
+    suitcase.dispense(getCover(item.art, 512).tex);
+  },
+});
+let openColSeq = 0;
+async function openCollection(item, sleeve = null) {
+  const my = ++openColSeq;
+  if (isLikedCollection(item)) {
+    spread.close();
+    collectionList.open(item, spread.fetch(item));
+    return;
+  }
+  const songs = await spread.fetch(item);
+  if (my !== openColSeq) return;
+  if (!songs.length) { pick(item, -1, null); return; }
+  if (shouldUseCollectionList(item, songs.length)) {
+    spread.close();
+    collectionList.open(item, songs);
+  } else {
+    collectionList.close();
+    spread.open(item, sleeve, songs);
+  }
+}
+nav.onChange(() => { menu.setCurrent(nav.at); warm(); spread.close(); collectionList.close(); });
 menu.setCurrent(nav.at);
 // the search bar (Control+Option+J by default, Settings > Shortcuts) must exist before the key handlers below are registered
 // a search pick has no sleeve: the drawer in the suitcase slides out with the record in it
 const search = createSearch({
   music,
   onPlay: (item) => { startSong(music, suitcase.suitcase, item); suitcase.dispense(getCover(item.art, 512).tex); },
-  onOpenCollection: (item) => spread.open(item, null),
+  onOpenCollection: (item) => openCollection(item, null),
 });
 // Settings (Cmd+, or the SETTINGS word) and top-right Restock button
 const settingsPanel = createSettingsPanel({
@@ -254,7 +287,7 @@ const settingsPanel = createSettingsPanel({
 const tour = createTour({
   music,
   goHome: () => nav.go(AT_HOME),
-  isSearchOpen: () => search.isOpen(),
+  isSearchOpen: () => search.isOpen() || collectionList.isOpen(),
   playerBox: () => suitcase.avoidRect(),
 });
 // covers that were repaired in the background: let the racks reload them
@@ -744,7 +777,7 @@ renderer.domElement.addEventListener('click', () => {
   if (spread.isOpen) { spread.click(); return; }
   const rack = currentRack();
   const s = rack && rack.core.control < 0 ? rack.core.sleeves[rack.hovered] : null;
-  if (canSpread(s?.item) && !s.picking) { s.bump = 1; spread.open(s.item, s.mesh); return; }
+  if (canSpread(s?.item) && !s.picking) { s.bump = 1; openCollection(s.item, s.mesh); return; }
   if (rack?.click()) suitcase.wake();
 });
 // grab and turn a rack by hand (the spinner): press on it and drag; past a few px it is a drag, not a click
@@ -782,7 +815,7 @@ const typing = (e) => {
   const t = e.target;
   return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
 };
-const searchOpen = () => search.isOpen();
+const searchOpen = () => search.isOpen() || collectionList.isOpen();
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock']);
 addEventListener('keydown', (e) => {
   if (typing(e) || searchOpen()) return;
@@ -808,7 +841,7 @@ addEventListener('keydown', (e) => {
 // Scrolling down turns it down (Lajoon's ask; with macOS natural scrolling that is the finger moving down).
 let wheelVol = null, wheelIdle = 0;
 addEventListener('wheel', (e) => {
-  if (settingsPanel.isOpen() || search.isOpen() || liner.isOpen()) return; // the wheel scrolls sheets/slips then, never the volume
+  if (settingsPanel.isOpen() || search.isOpen() || collectionList.isOpen() || liner.isOpen()) return; // the wheel scrolls sheets/slips then, never the volume
   // mostly sideways (trackpad swipe): a rack that turns by hand takes it, and the volume stays put
   if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
     if (spread.isOpen) spread.wheel(e.deltaX);
@@ -910,8 +943,8 @@ function frame(t, dtOverride, draw = true) {
   racks.forEach((rack, i) => {
     if (!rack || !rack.root.visible) return;
     const active = (nav.settled && nav.at === i) || (!!pinnedPose && i === hoverAt);
-    // the cursor over the suitcase does not pick records through it
-    rack.update(dt, camera, active && !suitcase.over && !spread.isOpen ? pointer : null, active);
+    // the cursor over the suitcase or collection list does not pick records through them
+    rack.update(dt, camera, active && !suitcase.over && !spread.isOpen && !collectionList.isOpen() ? pointer : null, active);
   });
   // an album or playlist under the cursor: fetch its songs now, so pressing it opens the spread at once
   const hovItem = currentRack()?.core.sleeves[currentRack().hovered]?.item;

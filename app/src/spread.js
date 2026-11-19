@@ -235,7 +235,7 @@ export function createSpread({ camera, music, onPlay }) {
     return { pos: _a, quat: _q, scale: _s.x };
   }
 
-  function open(album, sleeve = null) {
+  function open(album, sleeve = null, preloadedSongs = null) {
     if (st && keyOf(st.album) === keyOf(album) && !st.closing) return;
     close();
     const my = ++seq;
@@ -244,7 +244,8 @@ export function createSpread({ camera, music, onPlay }) {
     if (sleeve) { sleeve.updateWorldMatrix(true, false); from.copy(sleeve.matrixWorld); }
     const pending = { album, loading: true, sleeve, from, hasFrom };
     st = pending;
-    fetchSongs(album).then((songs) => {
+    const songsPromise = Array.isArray(preloadedSongs) ? Promise.resolve(preloadedSongs) : fetchSongs(album);
+    songsPromise.then((songs) => {
       if (my !== seq || st !== pending) return;
       if (!songs.length) { st = null; onPlay?.(album, null); return; } // no songs: play as before
       const cover = getCover(album.art, 256);
@@ -434,6 +435,7 @@ export function createSpread({ camera, music, onPlay }) {
     root,
     open,
     close,
+    fetch: fetchSongs,
     prefetch: (album) => { fetchSongs(album); },
     update,
     click,

@@ -22,6 +22,7 @@ const { compareVersions, parseSemver } = require('../electron/updater.cjs');
 const { encodeFrame } = require('../electron/discord.cjs');
 const {
   parseSearch, parseLibraryShelf, parseLyricsTab, parseLyrics, parseArtistPage,
+  parsePlaylistSongs, playlistContinuation,
 } = require('../electron/ytm-parse.cjs');
 
 test('security: SIENNA_DEV_URL is ignored when packaged and restricted to loopback in dev', () => {
@@ -201,4 +202,74 @@ test('ytm-parse: library shelf & artist page parsing', () => {
   assert.equal(artist.name, 'Mira Sol');
   assert.equal(artist.items.length, 1);
   assert.equal(artist.items[0].play.videoId, 'vid1234');
+});
+
+test('ytm-parse: playlist continuation tokens and album metadata preservation', () => {
+  const page1 = {
+    contents: {
+      musicPlaylistShelfRenderer: {
+        contents: [
+          {
+            musicResponsiveListItemRenderer: {
+              flexColumns: [
+                { musicResponsiveListItemFlexColumnRenderer: { text: { runs: [{ text: 'Olive Tide', navigationEndpoint: { watchEndpoint: { videoId: 'v_olive' } } }] } } },
+                { musicResponsiveListItemFlexColumnRenderer: { text: { runs: [{ text: 'Mira Sol' }] } } },
+                { musicResponsiveListItemFlexColumnRenderer: { text: { runs: [{ text: 'Afternoon Light' }] } } },
+              ],
+            },
+          },
+        ],
+        continuations: [{ nextContinuationData: { continuation: 'TOK_PAGE_2' } }],
+      },
+    },
+  };
+  const songs = parsePlaylistSongs(page1);
+  assert.equal(songs.length, 1);
+  assert.equal(songs[0].videoId, 'v_olive');
+  assert.equal(songs[0].album, 'Afternoon Light');
+  assert.equal(playlistContinuation(page1), 'TOK_PAGE_2');
+
+  const page2 = {
+    continuationContents: {
+      musicPlaylistShelfContinuation: {
+        contents: [
+          { continuationItemRenderer: { continuationEndpoint: { continuationCommand: { token: 'TOK_PAGE_3' } } } },
+        ],
+      },
+    },
+  };
+  assert.equal(playlistContinuation(page2), 'TOK_PAGE_3');
+});
+
+test('collection-list: filters large song lists by all, title, artist, and album, and routes >15 songs + Liked Music', async () => {
+  const { filterCollectionSongs, shouldUseCollectionList } = await import('../src/collection-filter.js');
+  const songs = Array.from({ length: 620 }, (_, i) => ({
+    title: i === 412 ? 'Lemon Hours' : `Track ${i}`,
+    subtitle: i === 412 ? 'Mira Sol' : i === 500 ? 'The Arches' : `Artist ${i % 25}`,
+    album: i === 412 ? 'Tuscan Afternoon' : i === 500 ? 'Lemon Grove' : `Album ${i % 40}`,
+  }));
+  assert.equal(filterCollectionSongs(songs, '', 'all').length, 620);
+  assert.equal(filterCollectionSongs(songs, 'lemon', 'all').length, 2);
+  assert.equal(filterCollectionSongs(songs, 'lemon', 'title').length, 1);
+  assert.equal(filterCollectionSongs(songs, 'lemon', 'album').length, 1);
+  assert.equal(filterCollectionSongs(songs, 'mira sol', 'artist').length, 1);
+  assert.equal(filterCollectionSongs(songs, 'mira sol', 'title').length, 0);
+  assert.equal(shouldUseCollectionList({ kind: 'album', title: 'Short' }, 15), false);
+  assert.equal(shouldUseCollectionList({ kind: 'album', title: 'Long' }, 16), true);
+  assert.equal(shouldUseCollectionList({ kind: 'playlist', title: 'Liked music', play: { playlistId: 'LM' }, isLikedMusic: true }, 3), true);
+});
+
+test('stations: library room slots isolate Your Playlists & Saved Albums from Home shelves', async () => {
+  const { assignShelves } = await import('../src/stations.js');
+  const assigned = assignShelves([
+    { title: 'Quick picks', items: [] },
+    { title: 'Listen again', items: [] },
+    { title: 'Your playlists', librarySlot: 'playlists', items: [] },
+    { title: 'Saved albums', librarySlot: 'albums', items: [] },
+  ]);
+  const byId = Object.fromEntries(assigned.map((a) => [a.station.id, a.shelf.title]));
+  assert.equal(byId.table, 'Quick picks');
+  assert.equal(byId.cubby, 'Listen again');
+  assert.equal(byId.libPlaylists, 'Your playlists');
+  assert.equal(byId.libAlbums, 'Saved albums');
 });
