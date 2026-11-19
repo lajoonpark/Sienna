@@ -176,11 +176,11 @@ const TAG_CSS = `
 .cad-tag.shop > .turn { transform-origin: 0% 50%; will-change: transform; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 100%; }
 .cad-tag.mini { position: absolute; left: 50%; bottom: 8.5%; transform: translateX(-50%); width: 76%; align-items: center; }
 .cad-tag.mini > .turn { width: 100%; }   /* else a long title's one-line width stretches it past the card */
-.cad-tag .cap { pointer-events: auto; padding: 8px 20px 10px 16px; max-width: 100%; box-sizing: border-box; min-width: 200px;
+.cad-tag .cap { pointer-events: auto; padding: 10px 22px 16px 20px; max-width: 100%; box-sizing: border-box; min-width: 220px;
   background: ${PAPER}; color: #2b2436;
-  clip-path: polygon(0 6%, 18% 0, 47% 4%, 72% 0, 100% 5%, 98% 52%, 100% 96%, 66% 100%, 38% 95%, 9% 100%, 2% 60%);
+  clip-path: polygon(0 5%, 18% 0, 47% 3%, 72% 0, 100% 4%, 99% 52%, 100% 96%, 70% 100%, 38% 97%, 2% 100%, 1% 56%);
   filter: drop-shadow(0 2px 0 rgba(60,40,30,.15)); transform: rotate(-2deg); transition: opacity .4s; }
-.cad-tag.mini .cap { width: 100%; padding: 12px 26px 12px 24px; clip-path: none; filter: drop-shadow(0 2px 3px rgba(45,30,20,.22)); background: var(--cap) 0 0 / 100% 100% no-repeat; }
+.cad-tag.mini .cap { width: 100%; padding: 12px 26px 16px 24px; clip-path: none; filter: drop-shadow(0 2px 3px rgba(45,30,20,.22)); background: var(--cap) 0 0 / 100% 100% no-repeat; }
 .cad-tag .cap .t { font-size: 27px; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cad-tag .cap .a { font-size: 19px; color: #7a5a40; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* a title still too long once shrunk (fitLine) takes a second line, and only the end of that one is cut */
@@ -190,11 +190,11 @@ const TAG_CSS = `
 .cad-tag .cap .bar:hover::before { top: 4px; height: 4px; }
 .cad-tag .cap .bar i { position: absolute; left: 0; top: 3px; height: 6px; border-radius: 3px 6px 6px 3px; background: ${INK}; opacity: .85; transition: background .15s, height .15s, top .15s; }
 .cad-tag .cap .bar:hover i { top: 2px; height: 8px; background: ${HOT}; }
-.cad-tag .cap .meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 3px; font-size: 16px; color: #7a5a40; line-height: 1; }
+.cad-tag .cap .meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; padding-bottom: 2px; font-size: 16px; color: #7a5a40; line-height: 1.25; }
 .cad-tag .cap .time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cad-tag .cap .tools { display: flex; align-items: center; gap: 7px; }
-.cad-tag .cap .tool { pointer-events: auto; border: 0; background: none; padding: 1px 4px; margin: 0; cursor: pointer;
-  font-family: var(--sienna-font); font-size: 16px; line-height: 1; color: #5a4636; opacity: .78; border-radius: 3px;
+.cad-tag .cap .tool { pointer-events: auto; border: 0; background: none; padding: 2px 4px; margin: 0; cursor: pointer;
+  font-family: var(--sienna-font); font-size: 16px; line-height: 1.15; color: #5a4636; opacity: .78; border-radius: 3px;
   transition: opacity .15s, color .15s, transform .15s; }
 .cad-tag .cap .tool:hover { opacity: 1; color: ${HOT}; transform: translateY(-1px); }
 .cad-tag .cap .tool.on { opacity: 1; color: ${HOT}; text-decoration: underline; text-underline-offset: 2px; }
