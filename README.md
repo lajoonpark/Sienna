@@ -9,65 +9,45 @@ player. The sky outside follows your real clock, and the lanterns come on one by
 Sienna is an unofficial app, not affiliated with YouTube or Google. It relies on YouTube Music's
 web page and internal API, so a change on their side can break it.
 
-## What it does
+## Install
 
-- **A first-run tour.** The first time you open Sienna, paper notes in the shop show you around: sign in
-  (or look around as a guest), pick how it is painted and lettered, play a first record, meet the player
-  and try the shortcuts. Skip it any time; Settings > Tour shows it again. Its welcome note says it
-  plainly: Sienna is free and open source, makes no money and keeps nothing about you, and the ads you
-  hear without YouTube Premium come from YouTube Music, not Sienna.
-- **The shop.** Eight sections, each with its own kind of rack, from a crate table in the hall to a
-  spinner rack in the glasshouse and a market stall in the garden, through a shop that winds back over four
-  floor levels. Your shelves ("Quick picks",
-  "Listen again"...) are brush-stroke words down the sides of the screen; click one and the camera
-  walks there.
-- **Records.** Hover a record and it comes out toward you with a paper name tag. Click it to play.
-- **Albums.** Click an album and its songs come out of the sleeve as records, fanned out in front of
-  you with their track numbers, plus a red record that plays the whole album. Pick a song and the
-  album plays on from there.
-- **The suitcase player.** A record player in a leather case, bottom left. The record spins with the
-  cover on its label and the tonearm creeps in as the song plays. Turn the knob for volume, or drag
-  the record to scrub. By default the song starts when the needle lands.
-- **Mini player.** Press **⌃⌥K** anywhere to open the suitcase at your cursor, without opening
-  the shop.
-- **Search.** Press **⌃⌥J** to find a song. It has no sleeve, so the bottom of the suitcase slides
-  out like a drawer and the record lifts out of it onto the platter. Shut the mini player early and the song starts
-  at once.
-- **A painted look.** The world is painted in thick, opaque dabs of oil paint pinned to its surfaces, each
-  loaded with its own object's colour and lit by the shop's lights, with ridges that catch the light. Album
-  covers are painted to match; Settings can turn cover painting down or off.
-- **Runs cool.** It only draws at full speed while something is moving. Once the shop is still it is
-  not drawn again at all: only the turning record's corner is repainted. It stops drawing while its window is hidden. On a Retina
-  screen it draws fewer pixels than the screen has (Settings > Performance > Sharpness), and when the Mac
-  gets warm it draws lighter until it cools down. Left in the menu bar it lets go of the mini player's
-  window after five minutes unused (the next ⌃⌥K loads it again). The second start is quicker: the
-  brush strokes are kept from the first.
+> [!IMPORTANT]
+> **Unsigned open-source builds:** Sienna is a free, open-source project maintained without a paid
+> Apple Developer account or a paid Microsoft code-signing certificate. Prebuilt releases are
+> **not code-signed or notarized**. Every line of code and the GitHub Actions release workflow
+> (`.github/workflows/release.yml`) are public so you can inspect them or build from source.
 
-## Controls
+### macOS via Homebrew (recommended)
 
-| Key | Action |
-| --- | --- |
-| `⌃⌥K` (`Ctrl+Alt+K` on Windows/Linux) | Open or close the mini player, from any app |
-| `⌃⌥L` (`Ctrl+Alt+L`) | Bring up the full app, from any app |
-| `⌃⌥J` (`Ctrl+Alt+J`) | Search, in the shop or the mini player |
-| `Space` | Play / pause |
-| `←` `→` | Back / skip |
-| `↑` `↓` or scroll | Volume |
-| Scroll sideways, or drag | Turn the spinner rack (glasshouse), or the page of an album's songs |
-| `L` | Like |
+```sh
+brew tap lajoonpark/sienna https://github.com/lajoonpark/Sienna
+brew install --cask sienna
+```
 
-The first three can be changed in Settings > Shortcuts.
-| `Tab` / `Shift+Tab` | Next / previous section |
-| `Esc` | Put an album's records back, else back to the home spot, or close the mini player |
-| `⌘,` (`Ctrl+,` on Windows/Linux) | Settings |
+Because Sienna is unsigned, macOS Gatekeeper normally quarantines downloaded apps. The Homebrew
+Cask (`Casks/sienna.rb`) **automatically clears the quarantine flag** on install by running:
 
-Click or press any key to skip the intro.
+```sh
+xattr -dr com.apple.quarantine /Applications/Sienna.app
+```
 
-On macOS the volume controls set the Mac's own output volume. Elsewhere they set the player's volume.
+### Manual downloads (GitHub Releases)
 
-## Run it
+Download the latest release from [GitHub Releases](https://github.com/lajoonpark/Sienna/releases):
 
-There are no packaged releases yet, so Sienna runs from source. You need Node.js 22.12 or newer.
+- **macOS (`.dmg` or `.zip`, Apple Silicon & Intel):** Drag `Sienna.app` to `/Applications`. Because
+  the build is unsigned, remove the quarantine attribute before opening it:
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/Sienna.app
+  ```
+- **Windows (`.exe` installer or portable):** Windows SmartScreen will warn that the app is unsigned.
+  Click **More info → Run anyway** to launch.
+- **Linux (`.AppImage` or `.deb`):** Make the AppImage executable (`chmod +x Sienna-*.AppImage`) or
+  install the `.deb` package.
+
+### Run from source
+
+You need Node.js 22.12 or newer.
 
 ```sh
 cd app
@@ -77,12 +57,14 @@ npm run dev
 
 After a `git pull`, `npm run dev` installs any new packages by itself before it starts.
 
-The first time, use the sign-in button to log in to your Google account. Without signing in, it
-works as a guest, with ads and generic shelves.
+The first time, use the sign-in button to log in to your Google account (if your work or school
+account redirects to an external SSO provider, Sienna asks for your confirmation before allowing
+that host for the sign-in session). Without signing in, it works as a guest, with ads and generic
+shelves.
 
 On Linux, Electron keeps Chromium's sandbox on, which needs either unprivileged user namespaces
-(most distributions) or its setuid sandbox helper. If it stops with a sandbox error, set the helper up
-once after each `npm install`:
+(most distributions) or its setuid sandbox helper. If it stops with a sandbox error, set the helper
+up once after each `npm install`:
 
 ```sh
 sudo chown root:root node_modules/electron/dist/chrome-sandbox
@@ -91,60 +73,99 @@ sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 
 Please don't run it with `--no-sandbox`: that turns off a protection for the YouTube pages it loads.
 
-macOS is the main target. Automated tests also run on Linux. Windows is untested.
+## What it does
+
+- **A first-run tour.** The first time you open Sienna, paper notes in the shop show you around: sign in
+  (or look around as a guest), pick how it is lettered, play a first record, meet the player
+  and try the shortcuts. Skip it any time; Settings > Tour shows it again. Its welcome note says it
+  plainly: Sienna is free and open source, makes no money and keeps nothing about you, and the ads you
+  hear without YouTube Premium come from YouTube Music, not Sienna.
+- **The shop — Home & Your Library.** Eight sections, each with its own kind of rack, from a crate
+  table in the hall to a spinner rack in the glasshouse and a market stall in the garden, through a
+  shop that winds back over four floor levels. Switch between **Home shelves** and **Your Library**
+  (Liked songs, Your playlists, Saved albums, Your artists) or hit **Restock** anytime from the top
+  right. Works cleanly with non-English YouTube Music accounts too.
+- **Records, Albums & Playlists.** Hover a record and it comes out toward you with a paper name tag.
+  Click a song to play. Click an **album or playlist** and its songs fan out of the sleeve as bare
+  vinyls in front of you with their track numbers (and each track's cover on playlists), plus a red
+  record that plays the whole thing. Pick any song and playback continues from there.
+- **The suitcase player.** A record player in a leather case, bottom left. The record spins with the
+  cover on its label and the tonearm creeps in as the song plays. Turn the knob for volume, or drag
+  the record to scrub. Its torn-paper tag shows elapsed/total time, **Mute**, **Shuffle**, **Repeat**,
+  **Up Next Queue**, and a **folded liner-note Lyrics sheet**.
+- **Mini player & System Tray.** Press **⌃⌥K** anywhere to open the suitcase at your cursor, without
+  opening the shop. Closing the shop window frees GPU memory while Sienna stays in the menu bar /
+  system tray (macOS, Windows, and Linux) with now-playing info and playback controls.
+- **Hardware media keys.** Play/Pause, Next, Previous, and Stop keys on keyboards and headphones work
+  globally.
+- **Richer Search.** Press **⌃⌥J** to search **Songs**, **Albums**, **Playlists**, or **Artists**
+  (`Tab` switches tabs). Songs slide out of the suitcase drawer; albums and playlists fan open into
+  records; artists open into their top songs and releases.
+- **Privacy-first extras.** Settings lets macOS users choose between **Mac system volume** and
+  **Sienna only**, toggle **Start at login**, opt in to **Discord Rich Presence** (off by default,
+  local Discord IPC only), manually **Check for updates** on GitHub Releases (never phones home in
+  the background), and copy **sanitized Diagnostics** for bug reports.
+- **A painted look & runs cool.** The world is painted in thick, opaque dabs of oil paint pinned to
+  its surfaces and lit live by the shop's lights. Once the shop is still it stops redrawing the room,
+  scales sharpness automatically when the computer warms up, and ships pre-baked brush strokes for
+  fast starts.
+
+## Controls
+
+| Key | Action |
+| --- | --- |
+| `⌃⌥K` (`Ctrl+Alt+K` on Windows/Linux) | Open or close the mini player, from any app |
+| `⌃⌥L` (`Ctrl+Alt+L`) | Bring up the full app, from any app |
+| `⌃⌥J` (`Ctrl+Alt+J`) | Search (Songs / Albums / Playlists / Artists; `Tab` switches filter) |
+| `Space` / Media Play-Pause | Play / pause |
+| `←` `→` / Media Prev-Next | Back / skip |
+| `↑` `↓` or scroll | Volume |
+| `M` | Mute / unmute |
+| Scroll sideways, or drag | Turn the spinner rack (glasshouse), or turn pages of an album/playlist |
+| `L` | Like |
+| `Tab` / `Shift+Tab` | Next / previous section |
+| `Esc` | Close open sheet/spread, return home, or close the mini player |
+| `⌘,` (`Ctrl+,` on Windows/Linux) | Settings |
+
+The first three shortcuts can be changed in **Settings → Shortcuts**. Click or press any key to skip the intro.
 
 ## How it works
 
 Sienna is an Electron app with a Three.js scene. All the scenery is built in code.
 
-A hidden `music.youtube.com` window does the actual playing, so YouTube Music itself handles the
-queue, radio, ads, history and likes. Sienna drives that page with a small injected script and
-reads your shelves and search results from the same internal API the page uses.
+A hidden, sandboxed `music.youtube.com` window in an isolated `persist:ytm` session does the actual
+playing, so YouTube Music itself handles the queue, radio, ads, history, and likes. Sienna drives
+that page through a small injected script and reads shelves, library, search, queue, and lyrics from
+the same internal API the page uses. If the network drops or the hidden player crashes, Sienna
+recovers automatically and surfaces a paper retry banner.
 
 ```
-app/                 the app
-  electron/          main process, hidden YouTube Music window, mini window
-  src/               the shop, racks, suitcase, painting, search, settings
-  scripts/           dev launcher, screenshot tool, end-to-end and behaviour checks
-  test/              unit tests
-Sources/, Tests/,    the first prototype: a macOS suitcase remote for Kaset, written in Swift.
-  Package.swift,     Shelved and not part of the app.
-  scripts/build.sh
+app/                        the Electron + Three.js app
+  electron/                 main process, sandboxed YTM player, mini player, shortcuts, updater, Discord IPC
+  src/                      the shop, racks, suitcase, painting, search, liner notes, settings
+  build/                    macOS entitlements for Electron packaging
+  scripts/                  dev launcher, screenshot tool, end-to-end and behaviour checks
+  test/                     unit tests
+Casks/sienna.rb             Homebrew Cask (auto-clears macOS quarantine via xattr)
+.github/workflows/          automated unsigned release builds (macOS, Linux, Windows)
+archive/swift-prototype/    shelved early Swift macOS prototype (not part of the app)
 ```
 
-[`app/README.md`](app/README.md) has the details: each feature and its source file, URL options for
-pinning the camera or time of day, and the dev pages.
+[`app/README.md`](app/README.md) has the rendering, performance, and dev-flag details.
 
-## Develop
+## Develop & Package
 
 Run these from `app/`:
 
 ```sh
-npm test                                   # unit tests: parser and suitcase
+npm test                                   # unit tests: security, parser, updater, discord IPC, suitcase
 npm run web                                # the shop in a browser, with a fake record store
 npm run build && npm run electron          # run the production build
+npm run dist:mac                           # build unsigned macOS arm64 + x64 (.dmg + .zip)
+npm run dist:linux                         # build Linux AppImage + .deb
+npm run dist:win                           # build unsigned Windows NSIS + portable
 npm run build && xvfb-run -a npm run e2e -- out_dir   # real app against YouTube Music (Linux)
-node scripts/tour-check.mjs                # walk the first-run tour like a new user (fake store)
-node scripts/tilt-check.mjs                # tour notes and Settings card lean with the cursor
-node scripts/tear-check.mjs                # torn paper edges never reach the text
-node scripts/account-check.mjs out_dir     # Settings rail + Account page: switch, sign out (fake store)
-node scripts/frame-bench.mjs home,0 2      # ms per whole frame on the GPU (Retina size)
-node scripts/route-check.mjs               # no camera flight goes through a wall or furniture, or hides the hall it is in
-node scripts/wipe-check.mjs out_dir        # a long trip's cut always hides under the paint wipe
-node scripts/idle-check.mjs                # drops to idle, then deep idle, wakes on input
-node scripts/bake-strokes.mjs              # (other-optimizations) bake the brush strokes shipped in strokes/
 ```
-
-On the `other-optimizations` branch (experiments, see `app/README.md`): walls are flat cards, strokes are laid on a
-smaller canvas and fewer far away, full paint detail follows the cursor, the strokes ship pre-placed, and the hidden
-YouTube Music page skips pictures. Playing music without that page (it costs ~320 MB) would mean fetching the audio
-streams directly, which skips YouTube's ads and breaks whenever YouTube changes things, so it waits for a decision.
-
-## Not done yet
-
-- Packaged downloads
-- Playlists opening into their own songs like albums do (clicking one plays all of it for now)
-- Media keys
 
 ## License
 

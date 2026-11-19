@@ -4,6 +4,8 @@
   "private": true,
   "description": "Sienna: a 3D vinyl shop for YouTube Music",
   "license": "MIT",
+  "author": "lajoonpark",
+  "homepage": "https://github.com/lajoonpark/Sienna",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -13,6 +15,10 @@
     "web": "vite",
     "build": "vite build",
     "electron": "electron .",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac --arm64 --x64",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:win": "npm run build && electron-builder --win",
     "shot": "node scripts/shot.mjs",
     "test": "node --test test/*.test.cjs",
     "e2e": "node scripts/e2e-electron.mjs"
@@ -26,7 +32,105 @@
   },
   "devDependencies": {
     "electron": "^45.2.1",
+    "electron-builder": "^26.0.12",
     "playwright": "^1.64.1",
     "vite": "^8.3.5"
+  },
+  "build": {
+    "appId": "com.lajoonpark.sienna",
+    "productName": "Sienna",
+    "copyright": "MIT License — Sienna Contributors",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "strokes/shop.bin.gz",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "strokes/shop.bin.gz"
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "icon": "electron/icon.png",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Sienna-${version}-mac-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "Sienna ${version}"
+    },
+    "linux": {
+      "category": "AudioVideo;Audio;Music;Player",
+      "icon": "electron/icon.png",
+      "maintainer": "lajoonpark",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "Sienna-${version}-linux-${arch}.${ext}"
+    },
+    "win": {
+      "icon": "electron/icon.png",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Sienna-${version}-win-${arch}-${target}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true,
+    "electron-winstaller@5.4.0": true
   }
 }
