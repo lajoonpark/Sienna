@@ -50,6 +50,18 @@ const CSS = `
 .cs-list::-webkit-scrollbar { width: 6px; } .cs-list::-webkit-scrollbar-thumb { background: rgba(45,49,88,.45); border-radius: 3px; }
 .cs-head { position: relative; display: inline-block; margin: 0 0 4px 22px; padding: 4px 26px 4px 18px; color: ${PAPER}; font-size: 26px;
   background-size: 100% 100%; background-image: var(--note); transform: rotate(-1.2deg); }
+.cs-head.back { cursor: pointer; }
+.cs-head.back:hover { filter: brightness(1.12); }
+.cs-tabs { display: flex; align-items: center; gap: 6px; margin: -6px 0 6px 26px; pointer-events: auto; }
+.cs.closing .cs-tabs { opacity: 0; transition: opacity .15s; }
+.cs-tab { border: 0; background: rgba(244,234,214,.92); color: #5a4636; font-family: var(--sienna-font); font-size: 21px;
+  line-height: 1; padding: 4px 13px 3px; border-radius: 3px; cursor: pointer; transform: rotate(-.8deg);
+  box-shadow: 0 2px 4px rgba(35,24,18,.22); transition: background .15s, color .15s, transform .15s; }
+.cs-tab:nth-child(even) { transform: rotate(.7deg); }
+.cs-tab:hover { transform: translateY(-1px); color: ${INK}; }
+.cs-tab.on { background: ${HOT}; color: ${PAPER}; }
+.cs-kind { flex: none; font-size: 16px; color: #8c6c50; text-transform: uppercase; letter-spacing: .03em; }
+.cs-slipwrap.on .cs-kind { color: rgba(251,245,232,.85); }
 .cs.show .cs-head { animation: cs-head .34s cubic-bezier(.2,.8,.3,1) var(--lead, 0ms) both; }
 .cs.closing .cs-head { animation: cs-lift .16s ease-in both; }
 .cs-head[hidden] { display: none; }
@@ -95,18 +107,26 @@ const GLASS = `<svg viewBox="0 0 32 32" fill="none" stroke="${INK}" stroke-linec
 let openCount = 0;
 export const searchOpen = () => openCount > 0;
 
-export function createSearch({ music, onPlay, suggest = null }) {
+const FILTERS = [
+  ['songs', 'Songs'],
+  ['albums', 'Albums'],
+  ['playlists', 'Playlists'],
+  ['artists', 'Artists'],
+];
+
+export function createSearch({ music, onPlay, onOpenCollection = null, suggest = null }) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
 
   const root = document.createElement('div');
   root.className = 'cs';
-  root.innerHTML = `<div class="cs-bar"><canvas class="cs-fx"></canvas><div class="cs-paper">${GLASS}<input class="cs-input" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="search songs" aria-label="Search songs"></div></div><div class="cs-head" hidden></div><ul class="cs-list"></ul>`;
+  root.innerHTML = `<div class="cs-bar"><canvas class="cs-fx"></canvas><div class="cs-paper">${GLASS}<input class="cs-input" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="search music" aria-label="Search music"></div></div><div class="cs-tabs"></div><div class="cs-head" hidden></div><ul class="cs-list"></ul>`;
   document.body.appendChild(root);
   const bar = root.querySelector('.cs-bar');
   const paper = root.querySelector('.cs-paper');
   const input = root.querySelector('.cs-input');
+  const tabsEl = root.querySelector('.cs-tabs');
   const list = root.querySelector('.cs-list');
   const head = root.querySelector('.cs-head');
   const masks = slipMasks();
@@ -150,9 +170,39 @@ export function createSearch({ music, onPlay, suggest = null }) {
   let timer = 0;
   let shown = [];         // items on the slips
   let shownFor = null;    // the query those items answer
+  let filter = 'songs';   // songs | albums | playlists | artists
+  let artistView = null;  // when browsing an artist's releases: { name, prevFilter, prevQ }
   let hl = -1;
   let pendingEnter = false;
   const cache = new Map();
+
+  const tabBtns = {};
+  FILTERS.forEach(([id, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `cs-tab${id === filter ? ' on' : ''}`;
+    b.tabIndex = -1;
+    b.textContent = label;
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    b.addEventListener('click', () => setFilter(id));
+    tabsEl.appendChild(b);
+    tabBtns[id] = b;
+  });
+  function setFilter(next) {
+    if (filter === next && !artistView) return;
+    filter = next;
+    artistView = null;
+    for (const [id, b] of Object.entries(tabBtns)) b.classList.toggle('on', id === filter);
+    input.placeholder = `search ${filter}`;
+    if (input.value.trim()) { clearTimeout(timer); run(); }
+    else showSuggestions();
+  }
+  head.addEventListener('mousedown', (e) => e.preventDefault());
+  head.addEventListener('click', () => {
+    if (!artistView) return;
+    artistView = null;
+    run();
+  });
 
   function setHl(i, reveal = false) {
     hl = i;
@@ -160,15 +210,24 @@ export function createSearch({ music, onPlay, suggest = null }) {
     if (reveal && i >= 0) list.children[i]?.scrollIntoView({ block: 'nearest' });
   }
 
-  function note(html) {
+  function note(text, { dots = false } = {}) {
     head.hidden = true;
     list.className = 'cs-list';
-    list.innerHTML = `<li class="cs-slipwrap" style="--i:0;--r:-.6deg;--lead:${paint.lead()}ms"><div class="cs-note" style="background-image:var(--note)">${html}</div></li>`;
+    list.innerHTML = `<li class="cs-slipwrap" style="--i:0;--r:-.6deg;--lead:${paint.lead()}ms"><div class="cs-note" style="background-image:var(--note)"><span></span></div></li>`;
+    const box = list.querySelector('.cs-note');
+    box.firstChild.textContent = text;
+    if (dots) {
+      const d = document.createElement('span');
+      d.className = 'cs-dots';
+      d.innerHTML = '<span>.</span><span>.</span><span>.</span>';
+      box.appendChild(d);
+    }
   }
 
-  function render(items, title = null) {
+  function render(items, title = null, { back = false } = {}) {
     shown = items.slice(0, MAX_SLIPS);
     head.hidden = !title;
+    head.classList.toggle('back', back);
     head.textContent = title ?? '';
     head.style.setProperty('--lead', `${paint.lead()}ms`);
     list.className = 'cs-list';
@@ -199,7 +258,8 @@ export function createSearch({ music, onPlay, suggest = null }) {
       } else cover.innerHTML = '<i></i>';
       slip.querySelector('.cs-t').textContent = item.title;
       slip.querySelector('.cs-a').textContent = [item.subtitle, item.album && item.album !== item.title ? item.album : ''].filter(Boolean).join(' · ');
-      slip.querySelector('.cs-d').textContent = mmss(item.duration);
+      const dur = mmss(item.duration);
+      slip.querySelector('.cs-d').textContent = dur || (item.kind !== 'song' ? item.kind : '');
       li.appendChild(slip);
       li.addEventListener('mouseenter', () => setHl(i));
       li.addEventListener('mousemove', () => hl !== i && setHl(i)); // after a scroll moved another slip under a still cursor
@@ -210,22 +270,44 @@ export function createSearch({ music, onPlay, suggest = null }) {
     setHl(-1);
   }
 
+  async function openArtist(item) {
+    const mine = ++seq;
+    artistView = { name: item.title };
+    note(`opening ${item.title}`, { dots: true });
+    try {
+      const res = await music.artistSongs?.(item.browseId);
+      if (mine !== seq || !isOpen) return;
+      render(res?.items ?? [], `← ${res?.name || item.title}`, { back: true });
+    } catch {
+      if (mine !== seq) return;
+      note('could not open artist');
+    }
+  }
+
   function pick(i) {
     const item = shown[i];
     if (!item) return;
+    if (item.kind === 'artist' && item.browseId && music.artistSongs) {
+      openArtist(item);
+      return;
+    }
     close();
+    if ((item.kind === 'album' || item.kind === 'playlist') && onOpenCollection) {
+      onOpenCollection(item);
+      return;
+    }
     onPlay(item);
   }
 
-  function apply(items, q) {
-    shownFor = q;
+  function apply(items, key) {
+    shownFor = key;
     render(items);
     if (pendingEnter) { pendingEnter = false; if (shown.length) pick(0); }
   }
 
   // the empty box: the suggestions (mini window), or nothing
   async function showSuggestions() {
-    shown = []; shownFor = null; list.innerHTML = ''; head.hidden = true; pendingEnter = false;
+    shown = []; shownFor = null; list.innerHTML = ''; head.hidden = true; head.classList.remove('back'); pendingEnter = false;
     if (!suggest) return;
     const mine = ++seq;
     try {
@@ -237,15 +319,17 @@ export function createSearch({ music, onPlay, suggest = null }) {
 
   async function run() {
     const q = input.value.trim();
+    artistView = null;
     if (!q) return showSuggestions();
-    if (cache.has(q)) { seq++; apply(cache.get(q), q); return; }
+    const cacheKey = `${filter}|${q}`;
+    if (cache.has(cacheKey)) { seq++; apply(cache.get(cacheKey), cacheKey); return; }
     const mine = ++seq;
-    if (!shown.length) note(`looking<span class="cs-dots"><span>.</span><span>.</span><span>.</span></span>`);
+    if (!shown.length) note('looking', { dots: true });
     try {
-      const items = await music.search(q);
+      const items = await music.search(q, filter);
       if (mine !== seq) return; // typed on since: this answer is for an older query
-      cache.set(q, items);
-      apply(items, q);
+      cache.set(cacheKey, items);
+      apply(items, cacheKey);
     } catch (e) {
       if (mine !== seq) return;
       console.warn('[sienna] search failed', e);
@@ -267,7 +351,12 @@ export function createSearch({ music, onPlay, suggest = null }) {
   input.addEventListener('keydown', (e) => {
     e.stopPropagation(); // the shop never sees keys typed here
     if (isToggle(e)) return; // handled by the window listener below
-    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === 'Escape') { e.preventDefault(); if (artistView) { artistView = null; run(); } else close(); }
+    else if (e.key === 'Tab') {
+      e.preventDefault();
+      const idx = FILTERS.findIndex(([id]) => id === filter);
+      setFilter(FILTERS[(idx + (e.shiftKey ? -1 : 1) + FILTERS.length) % FILTERS.length][0]);
+    }
     else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!shown.length) return;
@@ -277,7 +366,8 @@ export function createSearch({ music, onPlay, suggest = null }) {
       e.preventDefault();
       const q = input.value.trim();
       if (!q) { if (shown.length && hl >= 0) pick(hl); return; } // a suggestion chosen with the arrows
-      if (shownFor === q && shown.length) pick(hl >= 0 ? hl : 0);
+      const cacheKey = `${filter}|${q}`;
+      if ((shownFor === cacheKey || artistView) && shown.length) pick(hl >= 0 ? hl : 0);
       else { pendingEnter = true; clearTimeout(timer); run(); } // play the top result as soon as it arrives
     }
   });

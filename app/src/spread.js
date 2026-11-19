@@ -141,7 +141,7 @@ export function createSpread({ camera, music, onPlay }) {
     return m;
   });
 
-  const keyOf = (album) => album?.play?.playlistId ?? null;
+  const keyOf = (album) => album?.play?.playlistId ?? album?.browseId ?? null;
   function fetchSongs(album) {
     const k = keyOf(album);
     if (!k || !music.albumSongs) return Promise.resolve([]);
@@ -159,7 +159,8 @@ export function createSpread({ camera, music, onPlay }) {
     const g = new THREE.Group();
     const spin = new THREE.Group();
     const vinylMesh = new THREE.Mesh(v.geo, all ? vinylMaterial(PLAY_ALL) : v.mat);
-    const label = new THREE.Mesh(geos().labelGeo, all ? crisp({ map: playAllTexture() }) : cover.mat);
+    const ownArt = !all && item.art && item.art !== cover.artUrl ? crisp({ map: getCover(item.art, 256).tex }) : null;
+    const label = new THREE.Mesh(geos().labelGeo, all ? crisp({ map: playAllTexture() }) : ownArt ?? cover.mat);
     spin.add(vinylMesh, label);
     spin.rotation.z = rng(i * 13 + 5)() * Math.PI * 2;
     g.add(spin);
@@ -174,7 +175,7 @@ export function createSpread({ camera, music, onPlay }) {
     }
     g.visible = false;
     root.add(g);
-    return { item, all, g, spin, stick, t: 0, delay: 0, out: false, lift: 0, liftV: 0, slot: null, spinV: SPIN, gone: false };
+    return { item, all, g, spin, stick, ownMat: ownArt, t: 0, delay: 0, out: false, lift: 0, liftV: 0, slot: null, spinV: SPIN, gone: false };
   }
 
   function disposeSpread(sp) {
@@ -182,6 +183,7 @@ export function createSpread({ camera, music, onPlay }) {
       r.g.removeFromParent();
       if (r.stick) r.stick.material.dispose();
       if (r.all) r.spin.children[1].material.dispose();
+      if (r.ownMat) r.ownMat.dispose();
     }
     sp.cover.mat.dispose();
   }
@@ -220,28 +222,34 @@ export function createSpread({ camera, music, onPlay }) {
     });
   }
 
-  // the sleeve's pose in the camera's frame (live while it is still on the rack)
+  // the sleeve's pose in the camera's frame (live while it is still on the rack, or lower-centre if opened from search)
   function sleevePose(sp) {
+    if (!sp.sleeve && !sp.hasFrom) {
+      _a.set(0, -0.45, -DIST);
+      _q.identity();
+      return { pos: _a, quat: _q, scale: 0.45 };
+    }
     const m = sp.sleeve?.parent ? (sp.sleeve.updateWorldMatrix(true, false), sp.from.copy(sp.sleeve.matrixWorld)) : sp.from;
     camera.updateWorldMatrix(true, false);
     _m.copy(camera.matrixWorld).invert().multiply(m).decompose(_a, _q, _s);
     return { pos: _a, quat: _q, scale: _s.x };
   }
 
-  function open(album, sleeve) {
+  function open(album, sleeve = null) {
     if (st && keyOf(st.album) === keyOf(album) && !st.closing) return;
     close();
     const my = ++seq;
     const from = new THREE.Matrix4();
+    const hasFrom = !!sleeve;
     if (sleeve) { sleeve.updateWorldMatrix(true, false); from.copy(sleeve.matrixWorld); }
-    const pending = { album, loading: true, sleeve, from };
+    const pending = { album, loading: true, sleeve, from, hasFrom };
     st = pending;
     fetchSongs(album).then((songs) => {
       if (my !== seq || st !== pending) return;
-      if (!songs.length) { st = null; onPlay?.(album, null); return; } // no songs: play the album as before
+      if (!songs.length) { st = null; onPlay?.(album, null); return; } // no songs: play as before
       const cover = getCover(album.art, 256);
       const coverMat = crisp({ map: cover.tex });
-      const sp = { album, songs, sleeve, from, page: 0, cover: { mat: coverMat }, recs: [], closing: false, t: 0 };
+      const sp = { album, songs, sleeve, from, hasFrom, page: 0, cover: { mat: coverMat, artUrl: album.art }, recs: [], closing: false, t: 0 };
       sp.recs.push(makeRecord({ ...album }, 0, sp.cover, true));
       songs.forEach((s, i) => sp.recs.push(makeRecord(s, i + 1, sp.cover, false)));
       layoutPage(sp);
@@ -399,7 +407,7 @@ export function createSpread({ camera, music, onPlay }) {
     if (!r) { close(); return false; }
     // that record flies to the suitcase; the rest go back into the sleeve
     r.g.updateWorldMatrix(true, true);
-    const disc = { matrixWorld: r.spin.matrixWorld.clone(), cover: getCover(st.album.art, 512).tex }; // the platter shows the album cover (play-all too)
+    const disc = { matrixWorld: r.spin.matrixWorld.clone(), cover: getCover((r.all ? st.album.art : r.item.art) || st.album.art, 512).tex }; // the platter shows the track/album cover
     r.gone = true;
     r.g.visible = false;
     const item = r.all ? st.album : r.item;
