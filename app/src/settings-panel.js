@@ -20,13 +20,18 @@ import { rng } from './rand.js';
 import { onCursorTilt, tiltCSS } from './cursortilt.js';
 
 const CSS = `
-.st-btn { position: fixed; top: 3.4vh; right: 2.6vw; z-index: 6; display: flex; align-items: center; gap: 6px;
+.st-btn { position: fixed; top: 3.4vh; right: 2.2vw; z-index: 6; pointer-events: none; perspective: 900px; perspective-origin: 80% 50%;
   font-family: var(--sienna-font); color: ${PAPER}; font-size: 26px; line-height: 1; user-select: none; opacity: 0; transition: opacity .6s ease; }
-.st-btn.show { opacity: .92; }
-.st-btn .st-w:hover { transform: translateY(-2px) rotate(1deg); }
+.st-btn.show { opacity: .94; }
+.st-btn-stack { display: flex; align-items: center; gap: 6px; transform-style: preserve-3d; transform-origin: 100% 50%; will-change: transform; }
+.st-btn .st-w { pointer-events: auto; }
+.st-btn:not(.show) .st-w { pointer-events: none; }
+.st-btn .st-w:hover { transform: translateX(-6px) translateZ(18px) rotate(1deg); }
+.st-btn .st-w:active { transform: translateZ(4px) scale(.97); }
+.st-btn .st-w[disabled] { cursor: default; opacity: .92; }
 .st-w { position: relative; display: inline-block; border: 0; padding: 0; background: none; cursor: pointer; font-family: var(--sienna-font);
   font-size: inherit; color: ${PAPER}; line-height: 1; transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
-.st-w .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; filter: drop-shadow(0 1px 2px rgba(28,20,16,.2)); }
+.st-w .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; filter: drop-shadow(0 2px 3px rgba(28,20,16,.24)); }
 .st-w .plate.hot { opacity: 0; }
 .st-w:hover .plate.hot, .st-w.on .plate.hot { opacity: 1; }
 .st-w:hover { transform: translateY(-2px) rotate(-1deg); }
@@ -180,24 +185,64 @@ export function createSettingsPanel({ music = null, onTour = null, onToggleSourc
   style.textContent = CSS;
   document.head.appendChild(style);
 
-  // Top-right painted words: Library/Home toggle, Restock, Settings
+  // Top-right painted words: Library/Home toggle, Restock, Settings — angled & reactive like the side menus
   const btnWrap = document.createElement('div');
   btnWrap.className = 'st-btn';
+  const btnStack = document.createElement('div');
+  btnStack.className = 'st-btn-stack';
+  btnWrap.appendChild(btnStack);
   const topWords = [];
   let srcBtn = null;
+  let restockBtn = null;
+  let restocking = false;
+  let restockResetTimer = 0;
+
+  function setRestockLabel(text, hot = false) {
+    if (!restockBtn) return;
+    restockBtn.querySelector('span').textContent = text;
+    restockBtn.classList.toggle('on', hot);
+    requestAnimationFrame(() => restockBtn.paint());
+  }
+
+  async function runRestock() {
+    if (!onRestock || restocking) return;
+    clearTimeout(restockResetTimer);
+    restocking = true;
+    if (restockBtn) restockBtn.disabled = true;
+    setRestockLabel('Restocking…', true);
+    const t0 = performance.now();
+    let ok = true;
+    try {
+      const res = await onRestock();
+      if (res === false || res?.ok === false) ok = false;
+    } catch {
+      ok = false;
+    }
+    const elapsed = performance.now() - t0;
+    if (elapsed < 400) await new Promise((r) => setTimeout(r, 400 - elapsed));
+    restocking = false;
+    if (restockBtn) restockBtn.disabled = false;
+    setRestockLabel(ok ? 'Done!' : 'Restock', ok);
+    if (ok) {
+      restockResetTimer = setTimeout(() => {
+        setRestockLabel('Restock', false);
+      }, 1800);
+    }
+  }
+
   if (onToggleSource) {
     srcBtn = word('Library', 11, () => onToggleSource(), { flipX: true });
-    btnWrap.appendChild(srcBtn);
+    btnStack.appendChild(srcBtn);
     topWords.push(srcBtn);
   }
   if (onRestock) {
-    const restockBtn = word('Restock', 13, () => onRestock(), { flipX: true });
+    restockBtn = word('Restock', 13, () => runRestock(), { flipX: true });
     restockBtn.title = 'Refresh shelves from YouTube Music';
-    btnWrap.appendChild(restockBtn);
+    btnStack.appendChild(restockBtn);
     topWords.push(restockBtn);
   }
   const btn = word('Settings', 17, () => toggle(), { flipX: true });
-  btnWrap.appendChild(btn);
+  btnStack.appendChild(btn);
   topWords.push(btn);
   document.body.appendChild(btnWrap);
 
@@ -626,10 +671,17 @@ export function createSettingsPanel({ music = null, onTour = null, onToggleSourc
   const shot = new URLSearchParams(location.search);
   if (shot.has('settings')) open(shot.get('settings') || null);
 
+  function tilt(tx = 0, ty = 0) {
+    btnStack.style.transform = `rotateY(${-30 + tx * 10}deg) rotateX(${-ty * 8}deg) rotateZ(${2 - tx * 1.5}deg)`;
+  }
+  tilt(0, 0);
+
   return {
     open, close, toggle,
     isOpen: () => openNow,
     page: () => current,
+    tilt,
+    restock: runRestock,
     setSource(src) {
       if (!srcBtn) return;
       srcBtn.querySelector('span').textContent = src === 'library' ? 'Home shelves' : 'Library';

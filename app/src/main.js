@@ -473,15 +473,17 @@ async function loadShelves({ force = false } = {}) {
       () => { music.retry?.(); loadShelves({ force: true }); },
     );
   } finally {
-    if (my !== loadSeq) return;
-    if (shelves.length) {
-      placeShelves(padShelves(shelves), { first: !placedThisLoad, prune: true });
-      everPlaced = placedThisLoad = true;
-    } else if (!failed && shelfSource === 'home') {
-      liner.setStatus('YouTube Music returned no shelves right now.', () => { music.retry?.(); loadShelves({ force: true }); });
+    if (my === loadSeq) {
+      if (shelves.length) {
+        placeShelves(padShelves(shelves), { first: !placedThisLoad, prune: true });
+        everPlaced = placedThisLoad = true;
+      } else if (!failed && shelfSource === 'home') {
+        liner.setStatus('YouTube Music returned no shelves right now.', () => { music.retry?.(); loadShelves({ force: true }); });
+      }
+      shelvesLoaded = true;
     }
-    shelvesLoaded = true;
   }
+  return { ok: !failed };
 }
 loadShelves();
 music.onAccount(() => loadShelves({ force: true }));   // signed in, out or switched: that account's shelves
@@ -510,7 +512,7 @@ setInterval(() => {
 music.app?.onMenu?.((action) => {
   if (action === 'settings') settingsPanel.open();
   else if (action === 'about') settingsPanel.open('about');
-  else if (action === 'restock') loadShelves({ force: true });
+  else if (action === 'restock') settingsPanel.restock();
   else if (action === 'home') switchShelfSource('home');
   else if (action === 'library') switchShelfSource('library');
 });
@@ -898,7 +900,10 @@ function frame(t, dtOverride, draw = true) {
   menu.show(ui, shotMode);
   settingsPanel.show(ui);
   tour.update(ui && !pinnedPose, tilt.x, tilt.y, nav.at === AT_HOME);
-  menu.tilt(tilt.x, tilt.y);
+  const uiTiltX = THREE.MathUtils.clamp(tilt.x - focus.yaw * 2.2, -1.2, 1.2);
+  const uiTiltY = THREE.MathUtils.clamp(tilt.y + focus.pitch * 2.2, -1.2, 1.2);
+  menu.tilt(uiTiltX, uiTiltY);
+  settingsPanel.tilt(uiTiltX, uiTiltY);
   // at a station (or flying to one) the side words step back so the racks stay reachable
   menu.update(dt, cursorX01, !pinnedPose && nav.at !== AT_HOME);
   if (!draw) return;
