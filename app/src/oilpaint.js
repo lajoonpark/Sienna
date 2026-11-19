@@ -70,6 +70,9 @@ const num = (k, d) => params.get(k)?.split(',').map(Number) ?? d;
 const DAB_TOL = num('oiltol', [0.006, 0.0015]), DAB_COL = num('oilagreecol', [0.12, 0.22]);
 const UNDER_TOL = num('undertol', [0.01, 0.004]), UNDER_COL = num('undercol', [0.08, 0.16]);
 const f4 = (x) => x.toFixed(4);
+// How much a dab's size on screen follows the camera coming nearer (0: one size wherever you stand, 1: as big as
+// the stroke it is laid for, up to the clamp in the dab shader); ?oilloom=0 for the old fixed size
+const LOOM = Number(params.get('oilloom') ?? 0.4);
 // How far the hand's lean swings over an open surface (radians each way, about) and how fast (per metre),
 // so the coat's dabs do not all line up one way; ?oilswing=0.6,0.9 (0 = one lean everywhere, as before)
 const [SWING, SWING_FREQ] = num('oilswing', [0.6, 0.9]);
@@ -260,7 +263,13 @@ void main() {
   // A dab is never bigger on the canvas than a brush that size could lay (far walls get broad dabs, not
   // smears), and no wider than most of its length. So the patch is laid as a few dabs side by side and end to
   // end, as many as it takes to leave no canvas showing, each overlapping the last.
-  float px = clipA.w * heightAt1m;
+  // The cap comes closer with the wall (LOOM): a dab grows on screen as the camera nears it, from a little under
+  // the cap when its stroke is newly in this layer to a little over it when it hands over to the next, so the
+  // paint looms with the room. Held at one size on screen, the dabs' middles spread outward from the middle of
+  // the picture while the marks themselves stayed put, and on the intro's push-in the paint seemed to slide
+  // off over the walls (north-west, in the upper left) rather than come nearer (Lajoon, 2026-11-19).
+  float loom = clamp(pow(onScreen / sqrt(window.x * window.y), ${LOOM.toFixed(3)}), 0.6, 1.5);
+  float px = clipA.w * heightAt1m * loom;
   float dl = min(patchL, maxSize.y * px), dw = min(min(patchW, maxSize.x * px), dl * 0.75);
   float nA = clamp(ceil((patchL - dl) / (dl * STEP_ALONG) - 0.05) + 1.0, 1.0, ${SUB_ALONG}.0);
   float nC = clamp(ceil((patchW - dw) / (dw * STEP_ACROSS) - 0.05) + 1.0, 1.0, ${SUB_ACROSS}.0);
