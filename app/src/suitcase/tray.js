@@ -21,7 +21,8 @@ const LIFT_Y = 1.25;                      // how high it rises before it flies t
 const TIP = 0.72;                         // and how far it tips its face towards you
 
 // the beats, in seconds
-const T_OPEN = 0.44, T_RISE = 0.36, T_HOLD = 0.15, T_SHUT = 0.36;
+const T_OPEN = 0.42, T_RISE = 0.36, T_HOLD = 0.15, T_SHUT = 0.36;
+const T_LAUNCH = 0.38;                    // queue discs rise out of the drawer and hand off to the emerging list
 const T_HAND = T_OPEN + T_RISE;           // the record leaves here
 const T_END = T_HAND + T_HOLD + T_SHUT;
 
@@ -40,7 +41,7 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
   let openFrac = 0;         // current normalized extension 0..1 (tracks drawer.position.z / OUT)
   let startFrac = 0;        // where a transition started from (smooth handoff between queue & dispense)
   let disc = null, cover = null;
-  let stackDiscs = [];      // visual stack of records peeking in the drawer when held open for Queue
+  let stackDiscs = [];      // queue discs that launch out of the drawer as the list emerges
   let openResolvers = [];
 
   function resolveOpened() {
@@ -70,8 +71,9 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
     const list = covers.slice(0, 4);
     list.forEach((tex, i) => {
       const d = kit.build(tex);
-      d.group.position.set((i - (list.length - 1) / 2) * 0.12, REST_Y + i * 0.032, 0.05 - i * 0.04);
-      d.group.rotation.y = (i - 1.5) * 0.08;
+      d.group.position.set(0, REST_Y + i * 0.026, 0.08);
+      d.group.rotation.set(0, i * 0.14, 0);
+      d.group.scale.setScalar(1);
       drawer.add(d.group);
       stackDiscs.push(d);
     });
@@ -100,6 +102,7 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
     else clearStack();
     frozen = false;
     if (mode === 'hold-open' && openFrac >= 0.99) {
+      clearStack();
       return Promise.resolve();
     }
     startFrac = openFrac;
@@ -111,6 +114,7 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
   function closeHold() {
     if (mode !== 'hold-open') return;
     resolveOpened();
+    clearStack();
     startFrac = openFrac;
     t = 0;
     mode = 'hold-close';
@@ -168,13 +172,28 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
       openFrac = Math.max(0, out);
       drawer.position.z = OUT * out;
       if (t < T_OPEN && startFrac < 0.5) suitcase.thump(0.016 * (1 - u));
-      // stack gently lifts and fans as the drawer reaches open
-      const fan = easeOut(clamp01((t - T_OPEN * 0.45) / 0.28));
-      stackDiscs.forEach((d, i) => {
-        d.group.position.y = REST_Y + i * 0.032 + fan * (0.14 + i * 0.06);
-        d.group.rotation.x = fan * (0.28 + i * 0.05);
-      });
       if (u >= 1) resolveOpened();
+      // As the drawer finishes opening, the discs launch up and out of the drawer (handing off to the
+      // emerging Queue slips) and clear out completely so the open drawer is clean while browsing.
+      if (stackDiscs.length && t >= T_OPEN * 0.88) {
+        const elapsed = t - T_OPEN * 0.88;
+        let allGone = true;
+        stackDiscs.forEach((d, i) => {
+          const idxFromTop = stackDiscs.length - 1 - i;
+          const lu = clamp01((elapsed - idxFromTop * 0.045) / (T_LAUNCH * 0.72));
+          if (lu <= 0) { allGone = false; return; }
+          if (lu >= 1) { d.group.visible = false; return; }
+          allGone = false;
+          const e = easeOut(lu);
+          d.group.position.y = REST_Y + i * 0.026 + e * 2.1;
+          d.group.position.z = 0.08 + e * 0.45;
+          d.group.rotation.x = e * 0.85;
+          d.group.rotation.y += dt * 4.5;
+          const sc = lu < 0.55 ? 1 : Math.max(0.01, 1 - (lu - 0.55) / 0.45);
+          d.group.scale.setScalar(sc);
+        });
+        if (allGone) clearStack();
+      }
       return;
     }
 
@@ -183,11 +202,6 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
       const out = startFrac * (1 - easeInOut(u));
       openFrac = Math.max(0, out);
       drawer.position.z = OUT * out;
-      const tuck = 1 - easeOut(clamp01(u * 1.8));
-      stackDiscs.forEach((d, i) => {
-        d.group.position.y = REST_Y + i * 0.032 + tuck * (0.14 + i * 0.06);
-        d.group.rotation.x = tuck * (0.28 + i * 0.05);
-      });
       if (u >= 1) {
         mode = 'idle';
         openFrac = 0;
@@ -218,7 +232,7 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
     },
     seek(at) { if (mode === 'idle') return; frozen = true; t = at; update(0); },
     get active() { return mode !== 'idle'; },
-    get moving() { return mode === 'dispense' || mode === 'hold-close' || (mode === 'hold-open' && t < T_OPEN + 0.35); },
+    get moving() { return mode === 'dispense' || mode === 'hold-close' || (mode === 'hold-open' && (t < T_OPEN + T_LAUNCH + 0.08 || stackDiscs.length > 0)); },
     get isOpen() { return mode === 'hold-open' || openFrac > 0.25; },
     duration: T_END,
     handAt: T_HAND,

@@ -112,17 +112,48 @@
     },
   };
 
-  // Read live queue entries from YouTube Music's queue DOM panel (if populated).
+  // Read live queue entries from YouTube Music's queue DOM panel (if populated), skipping
+  // audio/video counterpart duplicates and reading thumbnail URLs from Polymer data (since images
+  // are blocked in the hidden player window).
   function queue() {
-    const items = [...document.querySelectorAll('ytmusic-player-queue #contents ytmusic-player-queue-item')];
-    return items.slice(0, 50).map((el, index) => {
-      const title = el.querySelector('.song-title')?.textContent?.trim() || '';
-      const artist = el.querySelector('.byline')?.textContent?.trim() || '';
-      const durationText = el.querySelector('.duration')?.textContent?.trim() || '';
-      const art = el.querySelector('img')?.src || null;
+    const root = document.querySelector('ytmusic-player-queue #contents');
+    if (!root) return [];
+    const out = [];
+    const seen = new Set();
+    const seenWrappers = new Set();
+    const rows = [...root.querySelectorAll('ytmusic-player-queue-item')];
+    for (let domIndex = 0; domIndex < rows.length && out.length < 50; domIndex++) {
+      const el = rows[domIndex];
+      if (el.hidden || el.getAttribute('aria-hidden') === 'true') continue;
+      if (el.closest('[hidden], [slot="counterpart"]')) continue;
+      // Inside a wrapper renderer (audio + video counterpart pair), only keep one entry per wrapper
+      const wrapper = el.closest('ytmusic-playlist-panel-video-wrapper-renderer, ytmusic-player-queue-item-wrapper');
+      if (wrapper) {
+        if (seenWrappers.has(wrapper)) continue;
+        seenWrappers.add(wrapper);
+      }
+      const st = getComputedStyle(el);
+      if (st.display === 'none' || st.visibility === 'hidden') continue;
+      const data = el.data || el.__data?.data || el.__dataHost?.data || null;
+      const title = el.querySelector('.song-title')?.textContent?.trim()
+        || (data?.title?.runs ?? []).map((r) => r.text).join('').trim() || '';
+      if (!title) continue;
+      const artist = el.querySelector('.byline')?.textContent?.trim()
+        || (data?.shortBylineText?.runs ?? []).map((r) => r.text).join('').trim() || '';
+      const durationText = el.querySelector('.duration')?.textContent?.trim()
+        || (data?.lengthText?.runs ?? []).map((r) => r.text).join('').trim() || '';
+      const videoId = data?.videoId || data?.navigationEndpoint?.watchEndpoint?.videoId || null;
+      const thumbs = data?.thumbnail?.thumbnails || data?.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+      const bestThumb = thumbs.length ? thumbs[thumbs.length - 1]?.url : null;
+      const imgSrc = el.querySelector('img')?.src || '';
+      const art = bestThumb || (/^https?:\/\//.test(imgSrc) ? imgSrc : null);
       const selected = el.hasAttribute('selected') || el.getAttribute('play-button-state') === 'playing' || el.getAttribute('play-button-state') === 'paused';
-      return { index, title, artist, durationText, art, selected };
-    }).filter((x) => x.title);
+      const dedupeKey = videoId || `${title.toLowerCase()}|${artist.toLowerCase()}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      out.push({ index: domIndex, videoId, title, artist, durationText, art, selected });
+    }
+    return out;
   }
 
   // A song loading ahead of the tonearm: prepare() starts it through the router, silently, and as soon
