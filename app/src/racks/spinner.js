@@ -24,7 +24,7 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(1, 1, 1), _p = new THREE.Vector3(), _u = new THREE.Vector3();
 
 export function createSpinnerRack({ onPick }) {
-  const core = createRackCore({ onPick, sign: { w: 0.9, h: 0.115 } });
+  const core = createRackCore({ onPick, sign: { w: 0.92, h: 0.36, multiline: true } });
   const car = new THREE.Group();       // the turning part
   const rest = new THREE.Matrix4();
   let vel = 0;
@@ -93,7 +93,7 @@ export function createSpinnerRack({ onPick }) {
         addBox(board, [0.045, 0.45, 0.03], WOOD.dark, [sx, 0.3, -0.12], [-0.48, 0, 0]);
       }
       board.add(c.sign.mesh);
-      c.sign.mesh.position.set(0, 0.64, 0.028);
+      c.sign.mesh.position.set(0, 0.635, 0.022);
       c.sign.mesh.rotation.x = -0.22;
       root.add(board);
       c.tag.mesh.position.set(0.02, -SLEEVE / 2 - 0.03, 0.012);

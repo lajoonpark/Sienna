@@ -509,7 +509,7 @@ export function addBox(parent, [w, h, d], mat, [x, y, z] = [0, 0, 0], [rx, ry, r
 // ---- sign and tag -----------------------------------------------------------------------------
 
 // The shelf title, painted like the buttons: paper letters left in an indigo brush stroke.
-export function createSign({ w = 1.2, h = 0.15, color = INK, res = 1024 } = {}) {
+export function createSign({ w = 1.2, h = 0.15, color = INK, res = 1024, multiline = false } = {}) {
   const CW = res, CH = Math.round(res * h / w);
   const [c, g] = canvas(CW, CH);
   const tex = new THREE.CanvasTexture(c);
@@ -523,25 +523,75 @@ export function createSign({ w = 1.2, h = 0.15, color = INK, res = 1024 } = {}) 
     const my = ++seq;
     sign.ready = fontReady.then(() => new Promise((res) => {
       if (my !== seq) return res();
-      const fs = CH * 0.62;
-      g.font = `${fs}px ${FONT}`;
-      const pw = Math.min(CW * 0.9, g.measureText(title).width + CH * 1.3);
+      const wrap = multiline || h / w > 0.25;
+      let lines = [title];
+      let fs = CH * 0.62;
+      let pw, ph, padX;
+      if (wrap) {
+        const maxTextW = CW * 0.80;
+        const words = String(title ?? '').trim().split(/\s+/).filter(Boolean);
+        const fits = (ls, size) => { g.font = `${size}px ${FONT}`; return ls.every((l) => g.measureText(l).width <= maxTextW); };
+        const split2 = () => {
+          if (words.length < 2) return null;
+          let best = null, bestW = Infinity;
+          g.font = `${CH * 0.40}px ${FONT}`;
+          for (let k = 1; k < words.length; k++) {
+            const a = words.slice(0, k).join(' '), b = words.slice(k).join(' ');
+            const mw = Math.max(g.measureText(a).width, g.measureText(b).width);
+            if (mw < bestW) { bestW = mw; best = [a, b]; }
+          }
+          return best;
+        };
+        let picked = false;
+        for (const frac of [0.58, 0.52, 0.46]) {
+          if (fits([title], CH * frac)) { fs = CH * frac; lines = [title]; picked = true; break; }
+        }
+        if (!picked) {
+          const two = split2();
+          if (two) {
+            lines = two;
+            fs = CH * 0.40;
+            for (const frac of [0.42, 0.37, 0.33, 0.29]) {
+              if (fits(two, CH * frac)) { fs = CH * frac; break; }
+            }
+          } else {
+            fs = CH * 0.42;
+          }
+        }
+        g.font = `${fs}px ${FONT}`;
+        const maxLineW = Math.max(...lines.map((l) => g.measureText(l).width));
+        padX = Math.min(CW * 0.14, fs * 0.85);
+        pw = Math.min(CW * 0.96, Math.max(CW * 0.56, maxLineW + padX * 2));
+        ph = CH * (lines.length > 1 ? 0.94 : 0.86);
+      } else {
+        g.font = `${fs}px ${FONT}`;
+        pw = Math.min(CW * 0.9, g.measureText(title).width + CH * 1.3);
+        ph = CH * 0.94;
+        padX = CH * 0.55;
+      }
       const plate = new Image();
       plate.onload = () => {
         if (my === seq) {
           g.clearRect(0, 0, CW, CH);
-          g.drawImage(plate, CW / 2 - pw / 2, CH * 0.03, pw, CH * 0.94);
+          g.drawImage(plate, CW / 2 - pw / 2, (CH - ph) / 2, pw, ph);
           g.textAlign = 'center';
           g.textBaseline = 'middle';
           g.fillStyle = PAPER;
           g.font = `${fs}px ${FONT}`;
-          g.fillText(title, CW / 2, CH * 0.52, pw - CH * 1.1);
+          const maxLineDrawW = Math.max(40, pw - padX * 2);
+          if (lines.length === 1) {
+            g.fillText(lines[0], CW / 2, CH * 0.52, maxLineDrawW);
+          } else {
+            const lh = fs * 1.02;
+            const y0 = CH * 0.51 - ((lines.length - 1) * lh) / 2;
+            lines.forEach((l, idx) => g.fillText(l, CW / 2, y0 + idx * lh, maxLineDrawW));
+          }
           tex.needsUpdate = true;
         }
         res();
       };
       plate.onerror = res;
-      plate.src = brushStroke(Math.round(pw / 2), Math.round(CH * 0.47), color, 5 + title.length);
+      plate.src = brushStroke(Math.round(pw / 2), Math.round(ph / 2), color, 5 + title.length);
     }));
   };
   onLettering(sign, () => { if (sign.title) sign.setTitle(sign.title); }); // Settings > Lettering: paint it again
