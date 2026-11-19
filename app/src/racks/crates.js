@@ -162,7 +162,7 @@ export function createCratesRack({ onPick }) {
       if (fan.cr) {
         let best = -1, bestD = Infinity;
         c.sleeves.forEach((s, i) => {
-          if (s.cr !== fan.cr || !s.floatM || s.empty) return;
+          if (s.cr !== fan.cr || !s.floatM || s.picking || !c.play.canPick(s.item)) return;
           const d = hitBox(_lr, s.floatM, s.floatHalf);
           if (d < bestD) { bestD = d; best = i; }
         });

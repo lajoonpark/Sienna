@@ -52,8 +52,9 @@ import { toon, crisp, unpinned } from '../materials.js';
 import { rng } from '../rand.js';
 import { brushStroke, INK, PAPER } from '../controls.js';
 import { FONT, fontReady, onLettering } from '../style.js';
+import { createPlayTracker } from './play.js';
 
-export { fontReady }; // live: a Lettering change swaps it (style.js)
+export { fontReady, createPlayTracker }; // live: a Lettering change swaps it (style.js)
 
 export const MAX_ITEMS = 24;
 export const SLEEVE = 0.31;
@@ -371,8 +372,10 @@ export class Sleeve {
   }
 
   // Click: the vinyl slides fully out, then is hidden and `done(discInfo)` is called.
-  startPick(done) {
-    if (this.picking || this.empty) return false;
+  // `force` re-picks an empty sleeve (e.g. restarting the song paused on the suitcase).
+  startPick(done, { force = false } = {}) {
+    if (this.picking || (this.empty && !force)) return false;
+    if (this.empty) this.discY = 0;
     this.picking = true;
     this.onGone = done;
     this.disc.visible = true;
@@ -632,22 +635,7 @@ export function createTag({ w = 0.34, h = 0.1, wrap = true } = {}) {
 }
 
 // ---- playing state ----------------------------------------------------------------------------
-
-// Which sleeves are empty: the playing one, plus the one just picked until the player confirms
-// (the player's state lags a moment behind the click).
-function createPlayTracker() {
-  let playing = null, pendingId = null, pendingUntil = 0;
-  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-  return {
-    set(id) { playing = id; if (id && id === pendingId) pendingId = null; },
-    picked(item) { pendingId = item.play?.videoId ?? null; pendingUntil = now() + 4000; },
-    isEmpty(item) {
-      const id = item.play?.videoId;
-      if (!id) return false;
-      return id === playing || (id === pendingId && now() < pendingUntil);
-    },
-  };
-}
+// Logic lives in ./play.js (createPlayTracker).
 
 // ---- rack core ----------------------------------------------------------------------------------
 
@@ -904,13 +892,13 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
       click() {
         if (core.control >= 0) { def.control?.(core, core.control); return true; }
         const s = core.sleeves[core.hovered];
-        if (!s || s.empty || s.picking) return false;
+        if (!s || s.picking || !core.play.canPick(s.item)) return false;
         const i = core.hovered;
         s.bump = 1;
         // which way is clear, in the pose it is in now (only when not already sliding back in)
-        if (s.discY < 0.005) { s.discDir.copy(chooseDiscDir(core, s)); s.discDirNow.copy(s.discDir); }
+        if (s.discY < 0.005 || s.empty) { s.discDir.copy(chooseDiscDir(core, s)); s.discDirNow.copy(s.discDir); }
         core.play.picked(s.item);
-        s.startPick((disc) => onPick?.(s.item, i, disc));
+        s.startPick((disc) => onPick?.(s.item, i, disc), { force: s.empty });
         return true;
       },
       // optional, for racks you can move by hand (the spinner): a sideways scroll in px (true = used),
@@ -934,7 +922,7 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
       get core() { return core; }, // debug / checks (scripts/cover-check.mjs)
       // make this rack's hover covers now (in idle time); upload(tex) puts each on the GPU early
       prewarm(upload) { prewarmCovers(core.sleeves.map((s) => s.art), upload); },
-      setPlaying(videoId) { core.play.set(videoId); },
+      setPlaying(videoId, paused = false) { core.play.set(videoId, paused); },
       setShelfCount() {}, // old main.js hook (the sign no longer shows tab hints)
       ready: () => Promise.all([fontReady, core.sign?.ready, ...core.waitFor.map((x) => x.ready), core.tag.ready, ...core.sleeves.map((s) => s.small.loaded), ...core.sleeves.map((s) => s.hot && s.big?.loaded)]),
     };

@@ -159,6 +159,7 @@ let curT = 0;
 const music = createMusic();
 let player = {};
 let playingId = null;
+let playingPaused = false;
 const racks = STATIONS.map(() => null); // created when a station first gets a shelf
 const placed = new Map();               // station index -> { key, title }: what each rack shows
 let hoverArg = params.has('hover') ? Number(params.get('hover')) : null;
@@ -176,7 +177,7 @@ function ensureRack(i) {
   const rack = createRack(st.style, { onPick: pick });
   rack.root.position.copy(st.pos);
   rack.root.rotation.y = st.rotY;
-  rack.setPlaying(playingId);
+  rack.setPlaying(playingId, playingPaused);
   rack.root.visible = false; // shown by buildRack once its shaders are ready
   scene.add(rack.root);
   racks[i] = rack;
@@ -221,7 +222,8 @@ music.onState((s) => {
   player = s;
   tour.setState(s);
   playingId = s.adPlaying ? null : s.videoId;
-  racks.forEach((r) => r?.setPlaying(playingId));
+  playingPaused = !s.adPlaying && !!s.videoId && s.playerState !== 1 && s.playerState !== 3;
+  racks.forEach((r) => r?.setPlaying(playingId, playingPaused));
 });
 
 // Which shelf is on which rack. Shelves arrive in pages: later pages only fill racks that are still
