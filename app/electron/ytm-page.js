@@ -66,6 +66,25 @@
     return el?.getAttribute('like-status') ?? null; // LIKE | DISLIKE | INDIFFERENT
   }
 
+  function repeatMode() {
+    const b = bar();
+    const mode = b?.getAttribute('repeat-mode_') || b?.getAttribute('repeat-mode');
+    if (mode === 'ALL' || mode === 'ONE' || mode === 'NONE') return mode === 'NONE' ? 'OFF' : mode;
+    const btn = b?.querySelector('.repeat');
+    const lbl = (btn?.getAttribute('aria-label') || btn?.getAttribute('title') || '').toLowerCase();
+    if (/one|1/.test(lbl)) return 'ONE';
+    if (/all|on/.test(lbl) && !/off/.test(lbl)) return 'ALL';
+    return 'OFF';
+  }
+
+  function shuffleOn() {
+    const btn = bar()?.querySelector('.shuffle');
+    if (!btn) return false;
+    const pressed = btn.getAttribute('aria-pressed');
+    if (pressed === 'true') return true;
+    return btn.classList.contains('active') || btn.hasAttribute('active');
+  }
+
   const commands = {
     toggle() { const p = player(); if (!p) return; p.getPlayerState() === 1 ? p.pauseVideo() : p.playVideo(); },
     play() { player()?.playVideo(); },
@@ -74,36 +93,57 @@
     previous() { click(['ytmusic-player-bar .previous-button']) || player()?.previousVideo(); },
     seek(seconds) { player()?.seekTo(Math.max(0, seconds), true); },
     volume(v) { const p = player(); if (!p) return; if (!hold) p.unMute?.(); p.setVolume(Math.round(Math.min(100, Math.max(0, v)))); },
+    mute() { const p = player(); if (!p) return; p.isMuted?.() ? p.unMute?.() : p.mute?.(); },
+    shuffle() { click(['ytmusic-player-bar .shuffle', 'ytmusic-player-bar tp-yt-paper-icon-button.shuffle']); },
+    repeat() { click(['ytmusic-player-bar .repeat', 'ytmusic-player-bar tp-yt-paper-icon-button.repeat']); },
     like() {
       const r = bar()?.querySelector('ytmusic-like-button-renderer');
       if (!r) return;
       const btn = r.querySelector('#button-shape-like button, #button-shape-like, .like');
       btn?.click();
     },
+    queueIndex(i) {
+      const items = document.querySelectorAll('ytmusic-player-queue #contents ytmusic-player-queue-item');
+      const el = items[i];
+      if (!el) return false;
+      const playBtn = el.querySelector('ytmusic-play-button-renderer, .play-button, .song-title');
+      (playBtn || el).click();
+      return true;
+    },
   };
 
+  // Read live queue entries from YouTube Music's queue DOM panel (if populated).
+  function queue() {
+    const items = [...document.querySelectorAll('ytmusic-player-queue #contents ytmusic-player-queue-item')];
+    return items.slice(0, 50).map((el, index) => {
+      const title = el.querySelector('.song-title')?.textContent?.trim() || '';
+      const artist = el.querySelector('.byline')?.textContent?.trim() || '';
+      const durationText = el.querySelector('.duration')?.textContent?.trim() || '';
+      const art = el.querySelector('img')?.src || null;
+      const selected = el.hasAttribute('selected') || el.getAttribute('play-button-state') === 'playing' || el.getAttribute('play-button-state') === 'paused';
+      return { index, title, artist, durationText, art, selected };
+    }).filter((x) => x.title);
+  }
+
   // A song loading ahead of the tonearm: prepare() starts it through the router, silently, and as soon
-  // as it really plays it is stopped at 0:00. release() then plays it. YouTube Music has no "load but
-  // do not play", hence the catch. Until release, state() goes on describing the old song, so the
-  // suitcase sees no change before the new record has landed.
-  // hold = { prev: id before the load, frozen: state to report, ready, done: resolves prepare(), timer }
+  // as it really plays it is stopped at 0:00. release() then plays it.
   let hold = null;
-  const HOLD_MAX_MS = 30000;                                  // nobody released it (window hidden, ...): play
-  const IGNORED_IN_HOLD = new Set(['toggle', 'play', 'next', 'previous', 'seek', 'like']);   // they would act on a song the suitcase does not show yet
-  const MUTE_FLAG = 'siennaHoldMuted';                       // survives a crash mid-hold; YouTube remembers mute
+  const HOLD_MAX_MS = 30000;
+  const IGNORED_IN_HOLD = new Set(['toggle', 'play', 'next', 'previous', 'seek', 'like']);
+  const MUTE_FLAG = 'siennaHoldMuted';
   const isAd = () => !!document.querySelector('#movie_player.ad-showing, .ytp-ad-player-overlay');
 
   function checkHold() {
     const p = player();
     if (!hold || !p) return;
-    if (isAd()) {                                             // an ad cannot be rewound; it waits where it is
-      const v = p.querySelector('video');                     // the player's own state says little during an ad
+    if (isAd()) {
+      const v = p.querySelector('video');
       if (v && !v.paused) { p.pauseVideo?.(); if (!v.paused) v.pause(); }
       if (v && v.readyState >= 2 && !hold.ready) { hold.ready = true; hold.done(true); }
       return;
     }
     const id = p.getVideoData?.()?.video_id;
-    if (!hold.ready && !(id && id !== hold.prev)) return;     // still the old song
+    if (!hold.ready && !(id && id !== hold.prev)) return;
     const st = p.getPlayerState?.();
     if (st === 1 || (!hold.ready && st === 2)) {
       p.seekTo?.(0, true);
@@ -111,30 +151,28 @@
       if (!hold.ready) { hold.ready = true; hold.done(true); }
     }
   }
-  // Media events do not bubble but can be captured, and unlike timers they are not throttled in this hidden window.
   for (const ev of ['playing', 'timeupdate', 'pause']) document.addEventListener(ev, checkHold, true);
 
   function endHold() {
     clearTimeout(hold.timer);
     clearInterval(hold.poll);
-    hold.done(false);                                         // no effect if it was already ready
+    hold.done(false);
     hold = null;
     try { localStorage.removeItem(MUTE_FLAG); } catch { /* storage blocked: harmless */ }
   }
 
-  // -> true once the song is loaded and stopped at 0:00, false if that did not happen (nothing to release).
   function prepare(play) {
     const p = player();
-    const frozen = hold?.frozen ?? { ...state(), playerState: 2 };   // a second pick while one loads keeps the first picture
+    const frozen = hold?.frozen ?? { ...state(), playerState: 2 };
     if (hold) endHold();
     const prev = p?.getVideoData?.()?.video_id ?? null;
     return new Promise((done) => {
       hold = { prev, frozen, ready: false, done };
       hold.timer = setTimeout(release, HOLD_MAX_MS);
-      hold.poll = setInterval(checkHold, 200);                // backup for the events above
+      hold.poll = setInterval(checkHold, 200);
       try { localStorage.setItem(MUTE_FLAG, '1'); } catch { /* see endHold */ }
       p?.mute?.();
-      if (play.videoId && play.videoId === prev && !isAd()) { // the same song again: it is already loaded
+      if (play.videoId && play.videoId === prev && !isAd()) {
         p.seekTo?.(0, true);
         p.pauseVideo?.();
         hold.ready = true;
@@ -146,7 +184,6 @@
     });
   }
 
-  // Lets the held song play. -> false if nothing was held (the caller has to start the song itself).
   function release() {
     if (!hold) return false;
     endHold();
@@ -154,12 +191,10 @@
     p?.unMute?.();
     p?.playVideo?.();
     const v = p?.querySelector('video');
-    if (v?.paused && isAd()) v.play().catch(() => {});        // held by hand above
+    if (v?.paused && isAd()) v.play().catch(() => {});
     return true;
   }
 
-  // Nobody sees this page's video, so ask for the smallest stream once per song (less decoding;
-  // the audio quality does not depend on it).
   let lowFor = null;
   function lowVideo(p, id) {
     if (!id || id === lowFor) return;
@@ -174,17 +209,16 @@
     if (p) lowVideo(p, data.video_id);
     if (p && !hold) {
       let stuck = false;
-      try { stuck = !!(localStorage.getItem(MUTE_FLAG) || localStorage.getItem('cadenceHoldMuted')); if (stuck) { localStorage.removeItem(MUTE_FLAG); localStorage.removeItem('cadenceHoldMuted'); } } catch { /* see endHold */ }   // cadenceHoldMuted: the flag's name before the Sienna rename
-      if (stuck) p.unMute?.();                                // the app died during a hold
+      try { stuck = !!(localStorage.getItem(MUTE_FLAG) || localStorage.getItem('cadenceHoldMuted')); if (stuck) { localStorage.removeItem(MUTE_FLAG); localStorage.removeItem('cadenceHoldMuted'); } } catch { /* see endHold */ }
+      if (stuck) p.unMute?.();
     }
     if (hold) return { ...hold.frozen, volume: p?.getVolume?.() ?? hold.frozen.volume };
-    // During an ad, media session metadata describes the ad, so leave the song fields empty.
     const ad = isAd();
     const song = ad ? null : meta;
     const art = song?.artwork?.length ? song.artwork[song.artwork.length - 1].src : null;
     return {
       signedIn: !!cfg('LOGGED_IN'),
-      who: cfg('LOGGED_IN') ? `${cfg('DATASYNC_ID') ?? ''}|${cfg('SESSION_INDEX') ?? ''}` : null,   // which account: ytm.cjs notices a switch (never leaves main)
+      who: cfg('LOGGED_IN') ? `${cfg('DATASYNC_ID') ?? ''}|${cfg('SESSION_INDEX') ?? ''}` : null,
       ready: !!p,
       videoId: data.video_id || null,
       title: ad ? null : song?.title || data.title || null,
@@ -198,12 +232,14 @@
       volume: p?.getVolume?.() ?? 100,
       muted: p?.isMuted?.() ?? false,
       like: likeStatus(),
+      repeat: repeatMode(),
+      shuffle: shuffleOn(),
       adPlaying: ad,
     };
   }
 
   window.__sienna = {
-    api, navigate, state, prepare, release,
+    api, navigate, state, prepare, release, queue,
     command: (name, arg) => { if (!(hold && IGNORED_IN_HOLD.has(name))) return commands[name]?.(arg); },
   };
 })();

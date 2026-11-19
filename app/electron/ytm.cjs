@@ -1,36 +1,65 @@
 // YouTube Music, played by a hidden music.youtube.com window. That page does the real work
 // (audio, ads, queue, radio, history, likes); Sienna drives it through ytm-page.js and reads
 // shelves from the same internal API the page uses.
-const { BrowserWindow, app } = require('electron');
+const { BrowserWindow, app, dialog } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseShelves, parseSearch, parsePlaylistSongs, continuation, artDebug, cleanUrl, parseAccount, parseAccounts } = require('./ytm-parse.cjs');
+const {
+  parseShelves, parseLibraryShelf, parseSearch, parseArtistPage,
+  parsePlaylistSongs, parseLyricsTab, parseLyrics,
+  continuation, artDebug, cleanUrl, parseAccount, parseAccounts,
+} = require('./ytm-parse.cjs');
 const { createSystemVolume } = require('./sysvolume.cjs');
-const { YTM_PARTITION, isGoogleUrl, lockNavigation } = require('./security.cjs');
+const { YTM_PARTITION, YTM_ORIGIN, devEnv, isGoogleUrl, isHttpsHostAllowed, lockNavigation } = require('./security.cjs');
 
 const PARTITION = YTM_PARTITION; // cookies survive restarts, so you sign in once
-// What the shop may ask of the player page (window.__sienna.command in ytm-page.js).
-const COMMANDS = new Set(['toggle', 'play', 'pause', 'next', 'previous', 'seek', 'volume', 'like']);
+const COMMANDS = new Set(['toggle', 'play', 'pause', 'next', 'previous', 'seek', 'volume', 'mute', 'like', 'shuffle', 'repeat', 'queueIndex']);
 const HOME = 'https://music.youtube.com/';
-// The "songs" filter of YouTube Music search (the same params ytmusicapi uses; checked live).
-const SONGS_FILTER = 'EgWKAQIIAWoMEA4QChADEAQQCRAF';
+
+// YouTube Music search filter params (matching ytmusicapi).
+const SEARCH_FILTERS = {
+  songs: 'EgWKAQIIAWoMEA4QChADEAQQCRAF',
+  albums: 'EgWKAQIYAWoMEA4QChADEAQQCRAF',
+  playlists: 'EgeKAQQoAEABagwQDhAKEAMQBBAJEAU%3D',
+  artists: 'EgWKAQIgAWoMEA4QChADEAQQCRAF',
+  all: null,
+};
+
 const PAGE_JS = fs.readFileSync(path.join(__dirname, 'ytm-page.js'), 'utf8');
 
-// Google refuses to sign in "embedded browsers"; a plain Chrome user agent (Electron's minus the
-// Electron and app tokens) avoids that and makes YouTube Music serve its normal desktop site.
 function chromeUserAgent() {
   return app.userAgentFallback.replace(/\s(Electron|sienna-app|Sienna)\/\S+/gi, '');
 }
 
 // Google blocks sign-in from embedded Chromium ("This browser or app may not be secure") but still
 // accepts Firefox, so the sign-in window (only) presents itself as Firefox: Firefox user agent, no
-// Client Hints headers, no navigator.userAgentData. Lajoon chose this on 2026-11-02, knowing it
-// works around Google's embedded-browser check; the official alternative is OAuth in the system
-// browser, which cannot give the web player a signed-in session.
+// Client Hints headers, no navigator.userAgentData.
 const FIREFOX_UA = {
   darwin: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:140.0) Gecko/20100101 Firefox/140.0',
   win32: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0',
 }[process.platform] ?? 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0';
+
+// Validate/sanitize an endpoint object coming over IPC from the renderer.
+function cleanEndpoint(ep) {
+  if (!ep || typeof ep !== 'object') return null;
+  const out = {};
+  if (typeof ep.videoId === 'string' && /^[\w-]{4,64}$/.test(ep.videoId)) out.videoId = ep.videoId;
+  if (typeof ep.playlistId === 'string' && /^[\w-]{2,128}$/.test(ep.playlistId)) out.playlistId = ep.playlistId;
+  if (typeof ep.params === 'string' && ep.params.length <= 256) out.params = ep.params;
+  return (out.videoId || out.playlistId) ? out : null;
+}
+
+function cleanId(id, max = 128) {
+  return typeof id === 'string' && /^[\w-]{2,}$/.test(id) && id.length <= max ? id : null;
+}
+
+function originOfUrl(u) {
+  try { return new URL(u).origin; } catch { return null; }
+}
+
+function hostOfUrl(u) {
+  try { return new URL(u).hostname.toLowerCase(); } catch { return null; }
+}
 
 // Identifiers that tie a response to you or your session, not needed to test parsing: dropped from dumps.
 const REDACT_KEYS = new Set(['responseContext', 'trackingParams', 'clickTrackingParams', 'visitorData', 'serviceTrackingParams', 'loggingContext', 'adSignalsInfo', 'clientScreenNonce', 'loggingDirectives', 'mainAppWebResponseContext', 'webResponseContextExtensionData']);
@@ -52,46 +81,113 @@ function pruneDumps(dir) {
   files.forEach(({ p, t }, i) => { if (i >= DUMP_KEEP || now - t > DUMP_MAX_AGE_MS) fs.rmSync(p, { force: true }); });
 }
 
-function createYtm({ onState, onAccount }) {
+function createYtm({ onState, onAccount, onStatus }) {
   const ua = chromeUserAgent();
-  const win = new BrowserWindow({
-    show: false,
-    width: 1200,
-    height: 800,
-    title: 'YouTube Music (Sienna player)',
-    // Throttled like a background tab: audio plays on, but the hidden page stops painting and
-    // Chromium drops the video track of what plays in it (no unseen video decoding, less heat).
-    webPreferences: {
-      partition: PARTITION, backgroundThrottling: true, autoplayPolicy: 'no-user-gesture-required',
-      sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false,
-    },
-  });
-  // The player stays on Google's sites (YouTube Music, consent, sign-in refresh); popups are refused (security.cjs).
-  lockNavigation(win.webContents, isGoogleUrl);
-  win.webContents.setUserAgent(ua);
-  win.webContents.setAudioMuted(false);
-  // YouTube Music asks "leave site?" while playing; Sienna decides when to navigate.
-  win.webContents.on('will-prevent-unload', (e) => e.preventDefault());
-  win.webContents.on('dom-ready', () => { win.webContents.executeJavaScript(PAGE_JS).catch(() => {}); });
-  // A cookie consent page (EU) needs the user once: show the window until it is accepted.
-  win.webContents.on('did-navigate', (_e, url) => {
-    if (/consent\.(youtube|google)\.com/.test(url)) win.show();
-    else if (win.isVisible() && url.startsWith(HOME)) win.hide();
-  });
+  let win = null;
   let quitting = false;
-  app.on('before-quit', () => { quitting = true; });
-  win.on('close', (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
-  win.loadURL(HOME);
+  let status = { ok: true, offline: false, error: null, crashed: false };
+  let lastSnapshot = null;
+  let retryTimer = null;
+  let retryAttempt = 0;
 
-  const js = (code) => win.webContents.executeJavaScript(code, true);
+  function setStatus(next) {
+    const merged = { ...status, ...next };
+    if (merged.ok === status.ok && merged.offline === status.offline && merged.error === status.error && merged.crashed === status.crashed) return;
+    status = merged;
+    onStatus?.(status);
+  }
 
-  // Resolves once the page has YouTube Music's app and config, and our helpers are in.
+  function scheduleReload(reason, offline = false) {
+    if (quitting || retryTimer) return;
+    setStatus({ ok: false, offline, error: reason });
+    const delay = Math.min(30000, 3000 * Math.pow(1.6, retryAttempt++));
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      if (!quitting) reloadPlayer();
+    }, delay);
+  }
+
+  function bindPlayerWindow(w) {
+    lockNavigation(w.webContents, isGoogleUrl);
+    w.webContents.setUserAgent(ua);
+    w.webContents.setAudioMuted(false);
+    w.webContents.on('will-prevent-unload', (e) => e.preventDefault());
+    // Only inject window.__sienna on music.youtube.com itself, never on accounts/consent hops.
+    w.webContents.on('dom-ready', () => {
+      if (originOfUrl(w.webContents.getURL()) === YTM_ORIGIN) {
+        w.webContents.executeJavaScript(PAGE_JS).catch(() => {});
+      }
+    });
+    // A cookie consent page (EU) needs the user once: show the window until it is accepted.
+    w.webContents.on('did-navigate', (_e, url) => {
+      const host = hostOfUrl(url) || '';
+      if (/^consent\.(youtube|google)\./.test(host)) w.show();
+      else if (w.isVisible() && url.startsWith(HOME)) w.hide();
+      if (url.startsWith(HOME)) {
+        retryAttempt = 0;
+        clearTimeout(retryTimer); retryTimer = null;
+        setStatus({ ok: true, offline: false, error: null, crashed: false });
+      }
+    });
+    w.webContents.on('did-fail-load', (_e, code, desc, _url, isMainFrame) => {
+      if (!isMainFrame || code === -3) return; // -3 = ERR_ABORTED (normal redirect/reload)
+      const offline = code === -106 || code === -105 || code === -109 || /INTERNET_DISCONNECTED|NAME_NOT_RESOLVED/i.test(desc || '');
+      console.warn('[sienna] player failed to load:', code, desc);
+      scheduleReload(offline ? 'You appear to be offline.' : `Could not load YouTube Music (${desc || code}).`, offline);
+    });
+    w.webContents.on('render-process-gone', (_e, details) => {
+      if (quitting) return;
+      console.warn('[sienna] player process crashed:', details?.reason);
+      setStatus({ ok: false, offline: false, crashed: true, error: 'The YouTube Music player stopped unexpectedly. Restarting…' });
+      try { if (!w.isDestroyed()) w.destroy(); } catch { /* ignore */ }
+      win = createPlayerWindow();
+      win.loadURL(HOME).catch((err) => scheduleReload(err?.message || 'Could not reload YouTube Music.'));
+    });
+    w.on('close', (e) => { if (!quitting) { e.preventDefault(); w.hide(); } });
+  }
+
+  function createPlayerWindow() {
+    const w = new BrowserWindow({
+      show: false,
+      width: 1200,
+      height: 800,
+      title: 'YouTube Music (Sienna player)',
+      webPreferences: {
+        partition: PARTITION, backgroundThrottling: true, autoplayPolicy: 'no-user-gesture-required',
+        sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false,
+      },
+    });
+    bindPlayerWindow(w);
+    return w;
+  }
+
+  win = createPlayerWindow();
+  app.on('before-quit', () => { quitting = true; clearTimeout(retryTimer); });
+  win.loadURL(HOME).catch((err) => {
+    if (!quitting) scheduleReload(err?.message || 'Could not reach YouTube Music.', true);
+  });
+
+  function reloadPlayer() {
+    clearTimeout(retryTimer); retryTimer = null;
+    if (!win || win.isDestroyed()) win = createPlayerWindow();
+    setStatus({ ok: true, offline: false, error: null, crashed: false });
+    return win.loadURL(HOME).catch((err) => {
+      scheduleReload(err?.message || 'Could not reach YouTube Music.', true);
+      return false;
+    });
+  }
+
+  const js = (code) => {
+    if (!win || win.isDestroyed()) return Promise.reject(new Error('player unavailable'));
+    return win.webContents.executeJavaScript(code, true);
+  };
+
   async function ready(timeoutMs = 30000) {
     const t0 = Date.now();
     for (;;) {
       const ok = await js(`!!(window.ytcfg && document.querySelector('ytmusic-app'))`).catch(() => false);
       if (ok) {
-        if (!(await js('!!window.__sienna'))) await js(PAGE_JS);
+        if (!(await js('!!window.__sienna').catch(() => false))) await js(PAGE_JS);
         return;
       }
       if (Date.now() - t0 > timeoutMs) throw new Error('YouTube Music did not load');
@@ -99,12 +195,9 @@ function createYtm({ onState, onAccount }) {
     }
   }
 
-  // SIENNA_DUMP=1 (unpackaged runs only) saves raw responses to <userData>/dumps/<endpoint>-<time>-<n>.json,
-  // so a signed-in response can be copied into test/fixtures when something parses wrong. They describe
-  // your library and listening, so: tracking/session identifiers are stripped, the files are readable by
-  // you only, and only the newest DUMP_KEEP are kept (older ones, and any older than a day, are deleted).
+  // SIENNA_DUMP=1 (unpackaged runs only) saves raw responses to <userData>/dumps/<endpoint>-<time>-<n>.json
   let dumped = 0;
-  const dumping = !!process.env.SIENNA_DUMP && !app.isPackaged;
+  const dumping = !!devEnv('SIENNA_DUMP');
   if (process.env.SIENNA_DUMP && app.isPackaged) console.warn('[sienna] SIENNA_DUMP is ignored in a packaged app');
   if (dumping) console.warn('[sienna] SIENNA_DUMP is on: responses from your account are saved under', path.join(app.getPath('userData'), 'dumps'));
   function dump(endpoint, body, res) {
@@ -112,7 +205,7 @@ function createYtm({ onState, onAccount }) {
     try {
       const dir = path.join(app.getPath('userData'), 'dumps');
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-      const file = path.join(dir, `${endpoint}-${new Date().toISOString().replace(/[:.]/g, '-')}-${dumped++}.json`);
+      const file = path.join(dir, `${endpoint.replace(/[^\w-]/g, '_')}-${new Date().toISOString().replace(/[:.]/g, '-')}-${dumped++}.json`);
       fs.writeFileSync(file, JSON.stringify({ request: redact(body), response: redact(res) }), { mode: 0o600, flag: 'wx' });
       console.warn('[sienna] dumped', file);
       pruneDumps(dir);
@@ -126,32 +219,60 @@ function createYtm({ onState, onAccount }) {
     return res;
   };
 
-  // An item with no cover is a bug somewhere in parsing: say which renderer it came from.
   const onNoArt = (item, renderer) => console.warn(`[sienna] no art for ${item.kind} "${item.title}"; renderer keys: ${Object.keys(renderer).join(',')}; image-ish paths: ${artDebug(renderer).join(' ') || 'none'}`);
 
-  // Home shelves ("Listen again", "Quick picks", mixes...), one page at a time: call again with
-  // `next` for more (later pages come from continuations).
   async function home(next) {
+    if (next !== undefined && next !== null && (typeof next !== 'string' || next.length > 4096)) {
+      throw new Error('invalid continuation');
+    }
     const res = await api('browse', next ? { continuation: next } : { browseId: 'FEmusic_home' });
     return { shelves: parseShelves(res, { onNoArt }), next: continuation(res) };
   }
 
-  // Songs only: [{ kind: 'song', title, subtitle (artist), album, duration (s), art, play: { videoId } }]
-  async function search(query) {
-    const q = String(query ?? '').trim();
-    if (!q) return [];
-    return parseSearch(await api('search', { query: q, params: SONGS_FILTER }), { onNoArt });
+  // User's YouTube Music Library: Liked Songs, Playlists, and Saved Albums.
+  async function library() {
+    const queries = [
+      ['FEmusic_liked_videos', 'Liked songs'],
+      ['FEmusic_liked_playlists', 'Your playlists'],
+      ['FEmusic_liked_albums', 'Saved albums'],
+      ['FEmusic_library_corpus_track_artists', 'Your artists'],
+    ];
+    const results = await Promise.all(queries.map(async ([browseId, title]) => {
+      try {
+        const res = await api('browse', { browseId });
+        return parseLibraryShelf(res, title, { onNoArt });
+      } catch (e) {
+        console.warn('[sienna] library', browseId, e.message);
+        return null;
+      }
+    }));
+    return { shelves: results.filter((s) => s && s.items.length), next: null };
   }
 
-  // Cover urls (up to 4, 256 px) of the first songs of a playlist, album, mix or radio: the renderer
-  // paints a collage from them when the item has no cover of its own or its cover fails to load.
-  // Playlists and albums come from browse VL<id>; mixes/radios (RD...) from the `next` queue.
+  // Search songs, albums, playlists, artists, or all.
+  async function search(query, filter = 'songs') {
+    const q = String(query ?? '').trim().slice(0, 200);
+    if (!q) return [];
+    const kind = Object.hasOwn(SEARCH_FILTERS, filter) ? filter : 'songs';
+    const params = SEARCH_FILTERS[kind];
+    const body = params ? { query: q, params } : { query: q };
+    return parseSearch(await api('search', body), { onNoArt, filter: kind });
+  }
+
+  async function artistSongs(browseId) {
+    const id = cleanId(browseId, 128);
+    if (!id) return { name: '', items: [] };
+    return parseArtistPage(await api('browse', { browseId: id }), { onNoArt });
+  }
+
+  // Cover urls (up to 4, 256 px) of the first songs of a playlist, album, mix or radio.
   const songArts = new Map();
   async function playlistArt(play) {
-    const id = play?.playlistId;
+    const ep = cleanEndpoint(play);
+    const id = ep?.playlistId;
     if (!id) return [];
     if (!songArts.has(id)) {
-      const viaNext = () => api('next', { playlistId: id, videoId: play.videoId, params: play.params, isAudioOnly: true });
+      const viaNext = () => api('next', { playlistId: id, videoId: ep.videoId, params: ep.params, isAudioOnly: true });
       const viaBrowse = () => api('browse', { browseId: id.startsWith('VL') ? id : `VL${id}` });
       const mix = /^RD/.test(id) && !/^RDCLAK/.test(id);
       const attempt = (async () => {
@@ -164,22 +285,28 @@ function createYtm({ onState, onAccount }) {
         return [];
       })();
       songArts.set(id, attempt);
-      attempt.then((a) => { if (!a.length) songArts.delete(id); }); // do not cache failures
+      attempt.then((a) => { if (!a.length) songArts.delete(id); });
     }
     return songArts.get(id);
   }
 
-  // Every song of an album, in album order, for the album spread (src/spread.js): pressing an album
-  // record fans out one vinyl per song. [{ videoId, title, subtitle, duration?, art }]; [] if it fails.
-  // The `next` queue of the album's playlist is the album in order (browse VL<id> as a fallback).
-  // Cached per album; failures are not cached.
+  // Songs of an album, playlist, or mix in order, for the 3D record spread (src/spread.js).
   const albumCache = new Map();
   async function albumSongs(play) {
-    const id = play?.playlistId;
+    const ep = cleanEndpoint(play);
+    const browseId = cleanId(play?.browseId, 128);
+    const id = ep?.playlistId ?? browseId;
     if (!id) return [];
     if (!albumCache.has(id)) {
       const attempt = (async () => {
-        const ways = [() => api('next', { playlistId: id, isAudioOnly: true }), () => api('browse', { browseId: id.startsWith('VL') ? id : `VL${id}` })];
+        const ways = [];
+        if (ep?.playlistId) {
+          const mix = /^RD/.test(ep.playlistId) && !/^RDCLAK/.test(ep.playlistId);
+          const viaNext = () => api('next', { playlistId: ep.playlistId, videoId: ep.videoId, params: ep.params, isAudioOnly: true });
+          const viaBrowse = () => api('browse', { browseId: ep.playlistId.startsWith('VL') ? ep.playlistId : `VL${ep.playlistId}` });
+          ways.push(...(mix ? [viaNext, viaBrowse] : [viaNext, viaBrowse]));
+        }
+        if (browseId) ways.push(() => api('browse', { browseId }));
         for (const get of ways) {
           try {
             const seen = new Set();
@@ -195,77 +322,132 @@ function createYtm({ onState, onAccount }) {
     return albumCache.get(id);
   }
 
-  async function play(endpoint) {
+  // Lyrics for a track via `next` -> Lyrics tab browseId -> `browse`.
+  const lyricsCache = new Map();
+  async function lyrics(videoId) {
+    const id = cleanId(videoId, 64);
+    if (!id) return null;
+    if (lyricsCache.has(id)) return lyricsCache.get(id);
+    const attempt = (async () => {
+      try {
+        const nextRes = await api('next', { videoId: id, isAudioOnly: true });
+        const tabId = parseLyricsTab(nextRes);
+        if (!tabId) return null;
+        return parseLyrics(await api('browse', { browseId: tabId }));
+      } catch (e) {
+        console.warn('[sienna] lyrics', id, e.message);
+        return null;
+      }
+    })();
+    lyricsCache.set(id, attempt);
+    if (lyricsCache.size > 40) lyricsCache.delete(lyricsCache.keys().next().value);
+    return attempt;
+  }
+
+  // Up Next queue from the player's live DOM queue, falling back to `next` API if DOM queue is empty.
+  async function queue() {
+    await ready();
+    const domQueue = await js('window.__sienna?.queue?.()').catch(() => []);
+    if (Array.isArray(domQueue) && domQueue.length) {
+      return domQueue.map((item) => ({ ...item, art: cleanUrl(item.art) }));
+    }
+    const vid = lastSnapshot?.videoId;
+    if (!vid) return [];
+    try {
+      const songs = parsePlaylistSongs(await api('next', { videoId: vid, isAudioOnly: true }));
+      return songs.slice(0, 40).map((s, index) => ({
+        index,
+        videoId: s.videoId,
+        title: s.title,
+        artist: s.subtitle || '',
+        duration: s.duration || 0,
+        art: cleanUrl(s.art),
+        selected: !!s.selected || s.videoId === vid,
+      }));
+    } catch { return []; }
+  }
+
+  async function play(rawEndpoint) {
+    const endpoint = cleanEndpoint(rawEndpoint);
+    if (!endpoint) return false;
     stir();
     await ready();
     const routed = await js(`window.__sienna.navigate(${JSON.stringify(endpoint)})`).catch(() => false);
-    if (routed) return;
-    // Fallback: a full page load of the watch URL.
+    if (routed) return true;
     const q = new URLSearchParams();
     if (endpoint.videoId) q.set('v', endpoint.videoId);
     if (endpoint.playlistId) q.set('list', endpoint.playlistId);
     await win.loadURL(`${HOME}watch?${q}`);
+    return true;
   }
 
-  // Loads a song ahead of the tonearm, silent and stopped at 0:00 (see ytm-page.js). Resolves when it is
-  // ready to start; false if it could not be held, which startPrepared copes with.
-  async function prepare(endpoint) {
+  async function prepare(rawEndpoint) {
+    const endpoint = cleanEndpoint(rawEndpoint);
+    if (!endpoint) return false;
     stir();
     await ready();
     return js(`window.__sienna.prepare(${JSON.stringify(endpoint)})`).catch(() => false);
   }
-  async function startPrepared(endpoint) {
+  async function startPrepared(rawEndpoint) {
+    const endpoint = cleanEndpoint(rawEndpoint);
+    if (!endpoint) return false;
     stir();
     await ready();
     const held = await js('window.__sienna.release()').catch(() => false);
     if (!held) await play(endpoint);
+    return true;
   }
 
-  // On macOS the volume knob is the system volume; the player itself stays at full volume.
-  // It is read (one osascript run, a whole process each time) only while a Sienna window is on screen, to
-  // catch the volume keys: every 3 s while one of them has the keyboard, every 12 s while you are in
-  // another app (the knob still follows, just not as promptly), and at once when you come back.
+  // Volume mode on macOS: 'system' (Mac output volume) or 'app' (YouTube player volume).
+  // Lighter polling: only polls osascript every 5s while Sienna is focused (never while unfocused).
   const sysVol = createSystemVolume();
-  sysVol?.refresh();
-  const VOLUME_MS = { focused: 3000, unfocused: 12000 };
+  let volumeMode = sysVol ? 'system' : 'app';
+  const useSysVol = () => !!sysVol && volumeMode === 'system';
+  if (useSysVol()) sysVol.refresh();
+
+  const VOLUME_MS = 5000;
   let focused = true, volumeReadAt = Date.now();
-  function readVolume() { volumeReadAt = Date.now(); sysVol?.refresh(); }
+  function readVolume() { if (useSysVol()) { volumeReadAt = Date.now(); sysVol.refresh(); } }
   setInterval(() => {
-    if (active && Date.now() - volumeReadAt >= (focused ? VOLUME_MS.focused : VOLUME_MS.unfocused) - 50) readVolume();
-  }, VOLUME_MS.focused);
+    if (active && focused && useSysVol() && Date.now() - volumeReadAt >= VOLUME_MS - 50) readVolume();
+  }, VOLUME_MS);
   function setFocused(on) {
     if (on === focused) return;
     focused = on;
     if (on && active) readVolume();
   }
+  function setVolumeMode(mode) {
+    if (!sysVol) return 'app';
+    volumeMode = mode === 'app' ? 'app' : 'system';
+    if (volumeMode === 'system') readVolume();
+    stir();
+    return volumeMode;
+  }
 
   async function command(name, arg) {
     if (!COMMANDS.has(name)) return false;
     if (arg !== null && arg !== undefined && typeof arg !== 'number') return false;
-    if (name === 'volume' && sysVol) { sysVol.set(arg); return true; }
+    if (name === 'volume' && useSysVol()) { sysVol.set(arg); return true; }
+    if (name === 'mute' && useSysVol()) { sysVol.toggleMute(); stir(); return true; }
+    if (name === 'queueIndex' && (!Number.isInteger(arg) || arg < 0 || arg > 200)) return false;
     stir();
     await ready();
     return js(`window.__sienna.command(${JSON.stringify(name)}, ${JSON.stringify(arg ?? null)})`);
   }
 
-  // Poll the page and pass state on. While a Sienna window is on screen: 4x a second while a song plays
-  // or loads and for a few seconds after anything was asked of the player (a press shows at once), twice
-  // a second while it just sits paused or empty (little changes by itself then, and each poll wakes this
-  // process, the player's and the window's). Every 3 s while only the menu-bar icon is left (keeps
-  // sign-in and volume in step).
+  // Poll the page and pass state on.
   let active = true;
-  let lastWho;                       // undefined until the first state; then null (signed out) or an account id
+  let lastWho;
   let pollTimer = null;
-  let lively = true;                 // the last state read was playing or buffering (or none was read yet)
-  let stirredUntil = Date.now() + 15000;   // something was asked of the player: poll fast until then (start-up counts)
+  let lively = true;
+  let stirredUntil = Date.now() + 15000;
   const POLL_MS = { active: 250, resting: 500, idle: 3000 };
   const STIR_MS = 6000;
   const pollGap = () => (!active ? POLL_MS.idle : lively || Date.now() < stirredUntil ? POLL_MS.active : POLL_MS.resting);
   const schedule = () => { clearTimeout(pollTimer); pollTimer = setTimeout(poll, pollGap()); };
   async function poll() {
-    try { await pollOnce(); } finally { if (!win.isDestroyed()) schedule(); }
+    try { await pollOnce(); } finally { if (!quitting) schedule(); }
   }
-  // a command, a pick, a sign-in: the state is about to change, so look often for a while (and soon, if a slow wait is on)
   function stir() {
     const resting = pollGap() !== POLL_MS.active;
     stirredUntil = Math.max(stirredUntil, Date.now() + STIR_MS);
@@ -278,76 +460,105 @@ function createYtm({ onState, onAccount }) {
   }
   schedule();
   async function pollOnce() {
-    if (win.isDestroyed()) return;
+    if (!win || win.isDestroyed()) return;
     const s = await js('window.__sienna?.state()').catch(() => null);
     lively = !s || s.playerState === 1 || s.playerState === 3;
     if (!s) return;
-    s.art = cleanUrl(s.art);   // the page's now-playing cover: only Google's image hosts, like the shelves' covers
-    if (sysVol) {
+    s.art = cleanUrl(s.art);
+    if (useSysVol()) {
       if (s.volume !== 100 && s.videoId) js('window.__sienna.command("volume", 100)').catch(() => {});
       if (sysVol.get() !== null) s.volume = sysVol.get();
+      s.muted = sysVol.isMuted();
     }
     const who = s.who ?? null;
     delete s.who;
+    lastSnapshot = s;
     onState(s);
-    // signed in, out, or switched to another account: the shelves and the Settings > Account page refresh
     if (lastWho !== undefined && who !== lastWho && s.ready) onAccount?.(!!s.signedIn);
     if (s.ready) lastWho = who;
   }
 
-  // Player diet (other-optimizations branch, C2): the hidden page is never seen, so it loads no pictures and
-  // no fonts (thumbnails, avatars, its UI's icon font). Covers in the shop come from the shop's own session and
-  // the artwork url is read from the player, not the picture. Not while the page is shown (cookie consent),
-  // nor in the sign-in window that shares this session. SIENNA_PLAYER_DIET=0 turns it off.
-  if (process.env.SIENNA_PLAYER_DIET !== '0') {
-    const playerId = win.webContents.id;
+  // Player diet: hidden page skips images and fonts (unless visible for consent or SIENNA_PLAYER_DIET=0 in dev).
+  if (devEnv('SIENNA_PLAYER_DIET') !== '0') {
     win.webContents.session.webRequest.onBeforeRequest((d, cb) => {
+      const playerId = win && !win.isDestroyed() ? win.webContents.id : -1;
       cb({ cancel: d.webContentsId === playerId && !win.isDestroyed() && !win.isVisible() && (d.resourceType === 'image' || d.resourceType === 'font') });
     });
   }
 
-  // Google sign-in in a visible window that shares the player's cookies.
+  // Google sign-in in a singleton visible window that shares the player's cookies.
   const signInIds = new Set();
+  let signInWin = null;
   win.webContents.session.webRequest.onBeforeSendHeaders((d, cb) => {
     if (signInIds.has(d.webContentsId)) {
       for (const k of Object.keys(d.requestHeaders)) if (/^sec-ch-ua/i.test(k)) delete d.requestHeaders[k];
     }
     cb({ requestHeaders: d.requestHeaders });
   });
+
   function signIn(parent, start = `https://accounts.google.com/ServiceLogin?service=youtube&continue=${encodeURIComponent(HOME)}`) {
     stir();
+    if (signInWin && !signInWin.isDestroyed()) {
+      signInWin.show();
+      signInWin.focus();
+      return;
+    }
+    const allowedSsoHosts = new Set();
+    let promptingHost = null;
     const w = new BrowserWindow({
-      width: 480, height: 720, parent, modal: false, title: 'Sign in to YouTube Music',
+      width: 480, height: 720, parent: parent && !parent.isDestroyed() ? parent : undefined,
+      modal: false, title: 'Sign in to YouTube Music',
       webPreferences: {
         partition: PARTITION, preload: path.join(__dirname, 'signin-preload.cjs'),
         sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false,
       },
     });
-    // Sign-in stays on Google's sites; popups are refused (security.cjs).
-    lockNavigation(w.webContents, isGoogleUrl);
+    signInWin = w;
+    // Allow Google hosts by default; if an institutional/work SSO redirects elsewhere, ask the user explicitly.
+    lockNavigation(w.webContents, (u) => isHttpsHostAllowed(u, allowedSsoHosts), async (blockedUrl) => {
+      const host = hostOfUrl(blockedUrl);
+      if (!host || promptingHost === host || w.isDestroyed()) return;
+      if (!String(blockedUrl).startsWith('https://')) return;
+      promptingHost = host;
+      try {
+        const { response } = await dialog.showMessageBox(w, {
+          type: 'question',
+          buttons: ['Keep blocked', `Allow ${host} for sign-in`],
+          defaultId: 0,
+          cancelId: 0,
+          title: 'External Sign-In Provider',
+          message: `Google sign-in redirected to ${host}`,
+          detail: 'Sienna normally restricts sign-in to Google domains. If your work or school account uses this Single Sign-On provider, you can allow it for this sign-in session only.',
+        });
+        if (response === 1 && !w.isDestroyed()) {
+          allowedSsoHosts.add(host);
+          w.loadURL(blockedUrl).catch(() => {});
+        }
+      } finally {
+        promptingHost = null;
+      }
+    });
     const id = w.webContents.id;
     signInIds.add(id);
-    w.on('closed', () => signInIds.delete(id));
+    w.on('closed', () => { signInIds.delete(id); if (signInWin === w) signInWin = null; });
     w.webContents.setUserAgent(FIREFOX_UA);
-    w.loadURL(start);
+    w.loadURL(start).catch(() => {});
     w.webContents.on('did-navigate', (_e, url) => {
       if (url.startsWith(HOME)) {
         w.close();
-        stirredUntil = Date.now() + 30000; // the shop should hear of the sign-in promptly
+        stirredUntil = Date.now() + 30000;
         stir();
-        win.loadURL(HOME); // reload the player as the signed-in user
+        win.loadURL(HOME).catch(() => {});
       }
     });
   }
 
-  // Settings > Account. Who is signed in -> { name, handle, photo } or null when signed out.
+  // Settings > Account.
   async function account() {
     await ready();
     if (!(await js('!!window.ytcfg?.get?.("LOGGED_IN")'))) return null;
     return parseAccount(await api('account/account_menu', {}));
   }
-  // The Google accounts signed in to this player (YouTube Music's own "Switch account" list), each
-  // { name, byline, photo, selected }. The sign-in links stay in here; switchAccount(i) follows one.
   let switchUrls = [];
   async function accounts() {
     await ready();
@@ -357,35 +568,55 @@ function createYtm({ onState, onAccount }) {
     return list.map(({ signinUrl, ...a }) => a);
   }
   async function switchAccount(i) {
+    if (!Number.isInteger(i) || i < 0 || i >= switchUrls.length) return false;
     const raw = switchUrls[i];
-    if (!raw) return false;
+    if (typeof raw !== 'string' || !raw) return false;
     let url;
     try { url = new URL(raw, HOME).href; } catch { return false; }
     if (!isGoogleUrl(url)) return false;
-    stirredUntil = Date.now() + 30000; // hear of the new account promptly
+    stirredUntil = Date.now() + 30000;
     stir();
-    win.loadURL(url);                   // YouTube's own sign-in hop, then back to the home page as that account
+    win.loadURL(url).catch(() => {});
     return true;
   }
-  // "Use another account": Google's add-account page in the sign-in window; the old accounts stay.
   function addAccount(parent) {
     return signIn(parent, `https://accounts.google.com/AddSession?service=youtube&continue=${encodeURIComponent(HOME)}`);
   }
-  // Sign out of every Google account in the player: its cookies and storage go (the partition is the
-  // player's alone), and it reloads as a guest.
   async function signOut() {
     stirredUntil = Date.now() + 30000;
     stir();
     switchUrls = [];
     await win.webContents.session.clearStorageData();
     await win.webContents.session.clearCache();
-    win.loadURL(HOME);
+    win.loadURL(HOME).catch(() => {});
     return true;
   }
 
-  // Request handlers main.cjs registers as ipc channels ytm:<name> (renderer: window.sienna.<name>).
-  const ipc = { search, playlistArt, albumSongs, prepare, startPrepared, account, accounts, switchAccount, signOut };
-  return { home, play, command, signIn, addAccount, ipc, search, playlistArt, albumSongs, setActive, setFocused, window: win };
+  function getDiagnostics() {
+    return {
+      status,
+      ready: !!lastSnapshot?.ready,
+      signedIn: !!lastSnapshot?.signedIn,
+      adPlaying: !!lastSnapshot?.adPlaying,
+      playerState: lastSnapshot?.playerState ?? -1,
+      volumeMode,
+      supportsSystemVolume: !!sysVol,
+    };
+  }
+
+  const ipc = {
+    library, search, artistSongs, playlistArt, albumSongs, lyrics, queue,
+    prepare, startPrepared, account, accounts, switchAccount, signOut,
+    retry: reloadPlayer,
+    status: () => status,
+    volumeMode: (mode) => (mode ? setVolumeMode(mode) : volumeMode),
+  };
+  return {
+    home, library, play, command, signIn, addAccount, ipc,
+    search, playlistArt, albumSongs, lyrics, queue,
+    setActive, setFocused, setVolumeMode, reloadPlayer, getDiagnostics,
+    get window() { return win; },
+  };
 }
 
-module.exports = { createYtm };
+module.exports = { createYtm, cleanEndpoint };
