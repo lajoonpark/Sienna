@@ -2,8 +2,9 @@
 // before any page loads. Two are global (they work from any app): `mini` opens/closes the mini player,
 // `app` brings the full shop window forward. `search` is not global: each window (shop and mini) listens for
 // it while it has focus (src/shortcuts.js). Settings > Shortcuts changes them (src/settings-panel.js).
+// Also registers hardware media keys (Play/Pause, Next, Previous, Stop) so keyboard/headphone controls work.
 // Values are Electron accelerators ('Control+Alt+K'); on macOS Alt is Option.
-const { globalShortcut, ipcMain, app, BrowserWindow } = require('electron');
+const { globalShortcut, ipcMain, app } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -15,25 +16,44 @@ const DEFAULTS = {
 const GLOBAL = ['mini', 'app'];
 
 // trusted(event): did the ipc message come from one of Sienna's own pages? (security.cjs)
-function createShortcuts(actions, { trusted = () => false } = {}) {   // actions: { mini: fn, app: fn }
+// windows(): returns Sienna's own webContents list (never broadcasts to third-party YTM/Google windows).
+// media: optional { toggle, next, previous, pause } handlers for hardware media keys.
+function createShortcuts(actions, { trusted = () => false, windows = () => [], media = null } = {}) {
   const file = path.join(app.getPath('userData'), 'shortcuts.json');
   let keys = { ...DEFAULTS };
   try {
     const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
     for (const k of Object.keys(DEFAULTS)) if (typeof saved?.[k] === 'string' && saved[k]) keys[k] = saved[k];
   } catch { /* first run, or unreadable: defaults */ }
-  // each one also tells every window it was used (the first-run tour ticks it off: src/tour.js)
+
+  function sendToApp(channel, ...args) {
+    for (const wc of windows()) if (wc && !wc.isDestroyed()) wc.send(channel, ...args);
+  }
+
+  // each one also tells Sienna's windows it was used (the first-run tour ticks it off: src/tour.js)
   const fired = Object.fromEntries(GLOBAL.map((name) => [name, () => {
     actions[name]();
-    for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('keys:used', name);
+    sendToApp('keys:used', name);
   }]));
   const failed = new Set();   // global shortcuts the system refused (another app owns them)
   let paused = false;
+
+  const MEDIA_BINDINGS = media ? [
+    ['MediaPlayPause', () => media.toggle?.()],
+    ['MediaNextTrack', () => media.next?.()],
+    ['MediaPreviousTrack', () => media.previous?.()],
+    ['MediaStop', () => media.pause?.()],
+  ] : [];
 
   function save() {
     try { fs.writeFileSync(file, JSON.stringify(keys, null, 2)); } catch (e) { console.warn('Sienna: could not save shortcuts', e.message); }
   }
   function unregisterAll() { globalShortcut.unregisterAll(); }
+  function registerMediaKeys() {
+    for (const [accel, fn] of MEDIA_BINDINGS) {
+      try { globalShortcut.register(accel, fn); } catch { /* unsupported or claimed by OS */ }
+    }
+  }
   function registerOne(name) {
     let ok = false;
     try { ok = globalShortcut.register(keys[name], fired[name]); } catch { ok = false; }   // throws on a malformed accelerator
@@ -43,12 +63,11 @@ function createShortcuts(actions, { trusted = () => false } = {}) {   // actions
   }
   function registerAll() {
     unregisterAll();
+    registerMediaKeys();
     for (const name of GLOBAL) registerOne(name);
   }
   const state = () => ({ ...keys, failed: [...failed], defaults: DEFAULTS });
-  function broadcast() {
-    for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('keys:changed', state());
-  }
+  function broadcast() { sendToApp('keys:changed', state()); }
 
   // Change one shortcut. A global one must register; if the system refuses it, the old one is kept.
   function set(name, accel) {
@@ -59,6 +78,7 @@ function createShortcuts(actions, { trusted = () => false } = {}) {   // actions
     keys[name] = accel;
     paused = false;
     unregisterAll();
+    registerMediaKeys();
     let ok = true;
     for (const n of GLOBAL) if (!registerOne(n) && n === name) ok = false;
     if (!ok) { keys[name] = old; registerAll(); broadcast(); return { ok: false, error: 'taken' }; }

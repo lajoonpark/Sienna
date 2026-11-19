@@ -1,23 +1,27 @@
-// Electron shell: the shop window, a hidden YouTube Music player (ytm.cjs) and a menu-bar (tray)
-// icon with an "Open Sienna" button.
+// Electron shell: the shop window, a hidden YouTube Music player (ytm.cjs), a menu-bar/tray icon,
+// custom application menu, media keys, optional Discord Rich Presence, and privacy-first update check.
 const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
 const { createYtm } = require('./ytm.cjs');
 const { createMini } = require('./mini.cjs');
 const { createShortcuts } = require('./shortcuts.cjs');
 const { createPower } = require('./power.cjs');
-const { lockSessions, lockAllContents, lockNavigation, isAppUrl, makeTrusted, UntrustedSender } = require('./security.cjs');
-const fs = require('node:fs');
+const { createDiscordRpc } = require('./discord.cjs');
+const { checkForUpdates, openReleaseUrl } = require('./updater.cjs');
+const {
+  lockSessions, lockAllContents, lockNavigation,
+  isAppUrl, devServerUrl, devEnv, isPackaged,
+  makeTrusted, UntrustedSender,
+} = require('./security.cjs');
 
-// The app was called Cadence until 2026-11-08 (package name cadence-app). Its data folder holds the
-// YouTube Music sign-in, settings and caches; move it to the new name once so nothing is lost.
-// Must run before anything touches userData (the single-instance lock lives there).
+// The app was called Cadence until 2026-11-08 (package name cadence-app). Move its userData once.
 function moveOldData() {
   try {
     const dir = app.getPath('userData');
     const old = path.join(path.dirname(dir), 'cadence-app');
     if (old === dir || !fs.existsSync(old)) return;
-    // Electron makes an empty userData folder at startup, so "new" means nothing worth keeping in it.
     const kept = ['Partitions', 'Local Storage', 'Cookies', 'Preferences'];
     if (fs.existsSync(dir) && fs.readdirSync(dir).some((f) => kept.includes(f))) return;
     fs.rmSync(dir, { recursive: true, force: true });
@@ -26,9 +30,7 @@ function moveOldData() {
 }
 moveOldData();
 
-// Every renderer runs in Chromium's sandbox (the shop, the mini window, the YouTube Music player, sign-in;
-// each window also asks for it itself). Not when the sandbox was switched off on the command line (only
-// for root in CI containers, see scripts/safe.mjs): enableSandbox would make every renderer crash there.
+// Every renderer runs in Chromium's sandbox (except explicit --no-sandbox in CI containers).
 if (!app.commandLine.hasSwitch('no-sandbox')) app.enableSandbox();
 lockAllContents();   // no popups, no <webview>, anywhere
 
@@ -38,107 +40,303 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 let win = null;
 let tray = null;
 let ytm = null;
-let mini = null;   // the small window (Control+Option+K by default), see mini.cjs
+let mini = null;
+let discord = null;
+let quitting = false;
+let lastTrayKey = '';
+let lastTrack = null;
 
-// Only Sienna's own pages, in the shop or the mini window, may use the music bridge (preload.cjs).
-const trusted = makeTrusted(() => [win?.webContents, mini?.window?.webContents]);
+const appWebContents = () => [win?.webContents, mini?.window?.webContents];
+const trusted = makeTrusted(appWebContents);
 const guarded = (fn) => (e, ...args) => {
   if (!trusted(e)) throw new UntrustedSender();
   return fn(...args);
 };
 
+function sendShop(channel, ...args) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
+}
+
+function sendBoth(channel, ...args) {
+  sendShop(channel, ...args);
+  mini?.send(channel, ...args);
+}
+
 function startPlayer() {
+  discord = createDiscordRpc();
   ytm = createYtm({
-    onState: (s) => { win?.webContents.send('ytm:state', s); mini?.state(s); },   // both windows show the player
-    onAccount: (signedIn) => { win?.webContents.send('ytm:account', signedIn); mini?.send('ytm:account', signedIn); },   // signed in, out or switched
+    onState: (s) => {
+      sendShop('ytm:state', s);
+      mini?.state(s);
+      discord?.update(s);
+      updateTrayMenu(s);
+    },
+    onAccount: (signedIn) => { sendBoth('ytm:account', signedIn); },
+    onStatus: (st) => { sendBoth('ytm:status', st); },
   });
   ipcMain.handle('ytm:home', guarded((next) => ytm.home(next)));
   ipcMain.handle('ytm:play', guarded((endpoint) => ytm.play(endpoint)));
   ipcMain.handle('ytm:command', guarded((name, arg) => ytm.command(name, arg)));
   ipcMain.handle('ytm:signIn', guarded(() => ytm.signIn(win)));
   ipcMain.handle('ytm:addAccount', guarded(() => ytm.addAccount(win)));
-  for (const [name, fn] of Object.entries(ytm.ipc)) ipcMain.handle(`ytm:${name}`, guarded((...args) => fn(...args))); // ytm:search, ytm:playlistArt, ytm:albumSongs, ytm:account(s), ytm:switchAccount, ytm:signOut
+  for (const [name, fn] of Object.entries(ytm.ipc)) ipcMain.handle(`ytm:${name}`, guarded((...args) => fn(...args)));
 }
 
 function createWindow() {
+  const extraArgs = isPackaged() ? [] : ['--sienna-dev'];
   win = new BrowserWindow({
-    icon: path.join(__dirname, 'icon.png'),   // taskbar/window icon on Windows and Linux
+    icon: path.join(__dirname, 'icon.png'),
     width: 1280,
     height: 800,
+    minWidth: 720,
+    minHeight: 520,
     backgroundColor: '#1b1410',
     title: 'Sienna',
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false, spellcheck: false, preload: path.join(__dirname, 'preload.cjs') },
+    webPreferences: {
+      contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false, spellcheck: false,
+      preload: path.join(__dirname, 'preload.cjs'),
+      additionalArguments: extraArgs,
+    },
   });
-  // The shop never leaves its own page (a link or a script cannot take it, and the bridge, elsewhere).
   lockNavigation(win.webContents, isAppUrl);
-  const dev = process.env.SIENNA_DEV_URL;
-  // SIENNA_QUERY='wc=0&hour=17' passes page options (paint off, time of day...) to the window
-  const query = process.env.SIENNA_QUERY || '';
-  if (dev) win.loadURL(query ? `${dev}${dev.includes('?') ? '&' : '?'}${query}` : dev);
-  else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), query ? { search: query } : {});
-  // The player polls fast only while a window is on screen (see ytm.setActive).
+  const dev = devServerUrl();
+  const query = devEnv('SIENNA_QUERY');
+  if (dev) {
+    const base = dev.href;
+    win.loadURL(query ? `${base}${base.includes('?') ? '&' : '?'}${query}` : base);
+  } else {
+    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), query ? { search: query } : {});
+  }
   for (const ev of ['show', 'hide', 'minimize', 'restore', 'focus', 'blur']) win.on(ev, updateActive);
+  win.webContents.on('render-process-gone', (_e, details) => {
+    if (quitting) return;
+    console.warn('[sienna] shop renderer crashed:', details?.reason);
+    const old = win;
+    win = null;
+    if (old && !old.isDestroyed()) old.destroy();
+    createWindow();
+  });
+  // Closing the shop window frees GPU memory while Sienna stays alive in the tray/menu bar
+  // so music keeps playing across macOS, Windows, and Linux. Quit from the tray or app menu exits.
   win.on('closed', () => {
     win = null;
     updateActive();
-    // The hidden player keeps the app alive, so quit explicitly where closing the window means quit.
-    if (process.platform !== 'darwin') app.quit();
   });
 }
 
-// Is any Sienna window on screen? Then the hidden player is polled 4x a second, else rarely.
-// And does one of them have the keyboard? Then the Mac's volume is read often (see ytm.setFocused).
 function updateActive() {
   const shop = !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized();
   ytm?.setActive(shop || !!mini?.isOpen());
   ytm?.setFocused((shop && win.isFocused()) || !!mini?.isOpen());
 }
 
-// Show the window, creating it again if it was closed.
 function openSienna() {
-  if (!win) { createWindow(); return; }
+  if (!win || win.isDestroyed()) { createWindow(); return; }
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
 }
 
-function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, 'trayTemplate.png'));
-  icon.setTemplateImage(true);
-  tray = new Tray(icon);
-  tray.setToolTip('Sienna');
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open Sienna', click: openSienna },
-    { type: 'separator' },
-    { label: 'Quit Sienna', role: 'quit' },
-  ]));
-  // Windows/Linux: a plain click opens the app too (macOS shows the menu on click).
-  tray.on('click', openSienna);
+function buildAppMenu() {
+  const mac = process.platform === 'darwin';
+  const dev = !isPackaged();
+  const sendAction = (action) => {
+    openSienna();
+    setTimeout(() => sendShop('app:menu', action), 50);
+  };
+  const template = [
+    ...(mac ? [{
+      label: 'Sienna',
+      submenu: [
+        { role: 'about', label: 'About Sienna' },
+        { type: 'separator' },
+        { label: 'Settings…', accelerator: 'Cmd+,', click: () => sendAction('settings') },
+        { label: 'Check for Updates…', click: () => sendAction('about') },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide', label: 'Hide Sienna' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit', label: 'Quit Sienna' },
+      ],
+    }] : []),
+    {
+      label: 'File',
+      submenu: [
+        { label: 'Open Sienna', click: openSienna },
+        { label: 'Mini Player', click: () => mini?.toggle() },
+        { type: 'separator' },
+        { label: 'Restock Shelves', accelerator: 'CmdOrCtrl+Shift+R', click: () => sendAction('restock') },
+        ...(!mac ? [
+          { label: 'Settings…', accelerator: 'Ctrl+,', click: () => sendAction('settings') },
+          { type: 'separator' },
+          { label: 'Quit Sienna', accelerator: 'Ctrl+Q', click: () => { quitting = true; app.quit(); } },
+        ] : [{ role: 'close' }]),
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'Playback',
+      submenu: [
+        { label: 'Play / Pause', click: () => ytm?.command('toggle') },
+        { label: 'Next Track', click: () => ytm?.command('next') },
+        { label: 'Previous Track', click: () => ytm?.command('previous') },
+        { type: 'separator' },
+        { label: 'Like Track', click: () => ytm?.command('like') },
+        { label: 'Mute / Unmute', click: () => ytm?.command('mute') },
+        { label: 'Toggle Shuffle', click: () => ytm?.command('shuffle') },
+        { label: 'Cycle Repeat', click: () => ytm?.command('repeat') },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { label: 'Home Shelves', click: () => sendAction('home') },
+        { label: 'Your Library', click: () => sendAction('library') },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+        ...(dev ? [
+          { type: 'separator' },
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+        ] : []),
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(mac ? [{ type: 'separator' }, { role: 'front' }] : [{ role: 'close' }]),
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// A second launch just brings the existing window forward.
+function updateTrayMenu(s = lastTrack) {
+  if (!tray) return;
+  lastTrack = s;
+  const title = s?.adPlaying ? 'Playing an ad…' : s?.title ? `${s.title}${s.artist ? ` — ${s.artist}` : ''}` : 'Nothing playing';
+  const playing = s?.playerState === 1 || s?.playerState === 3;
+  const liked = s?.like === 'LIKE';
+  const key = `${title}|${playing}|${liked}`;
+  if (key === lastTrayKey) return;
+  lastTrayKey = key;
+  const short = title.length > 48 ? `${title.slice(0, 47)}…` : title;
+  tray.setToolTip(s?.title ? `Sienna — ${short}` : 'Sienna');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: short, enabled: false },
+    { type: 'separator' },
+    { label: playing ? 'Pause' : 'Play', enabled: !!s?.videoId, click: () => ytm?.command('toggle') },
+    { label: 'Next', enabled: !!s?.videoId, click: () => ytm?.command('next') },
+    { label: 'Previous', enabled: !!s?.videoId, click: () => ytm?.command('previous') },
+    { label: liked ? 'Unlike' : 'Like', enabled: !!s?.videoId && !s?.adPlaying, click: () => ytm?.command('like') },
+    { type: 'separator' },
+    { label: 'Open Mini Player', click: () => mini?.toggle() },
+    { label: 'Open Sienna', click: openSienna },
+    { type: 'separator' },
+    { label: 'Quit Sienna', click: () => { quitting = true; app.quit(); } },
+  ]));
+}
+
+function createTray() {
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'trayTemplate.png'));
+  if (process.platform === 'darwin') icon.setTemplateImage(true);
+  tray = new Tray(icon);
+  tray.setToolTip('Sienna');
+  updateTrayMenu(null);
+  if (process.platform !== 'darwin') tray.on('click', openSienna);
+}
+
+function registerAppIpc() {
+  ipcMain.handle('app:info', guarded(() => ({
+    version: app.getVersion(),
+    packaged: isPackaged(),
+    platform: process.platform,
+    arch: process.arch,
+    electron: process.versions.electron,
+    chromium: process.versions.chrome,
+    loginItem: app.getLoginItemSettings().openAtLogin,
+    discordRpc: discord?.isEnabled() ?? false,
+    volumeMode: ytm?.ipc?.volumeMode() ?? 'app',
+    supportsSystemVolume: process.platform === 'darwin',
+  })));
+
+  ipcMain.handle('app:loginItem', guarded((on) => {
+    if (typeof on === 'boolean') {
+      try { app.setLoginItemSettings({ openAtLogin: on, openAsHidden: false }); }
+      catch (e) { console.warn('[sienna] setLoginItemSettings failed', e.message); }
+    }
+    return app.getLoginItemSettings().openAtLogin;
+  }));
+
+  ipcMain.handle('app:discordRpc', guarded((on) => {
+    if (typeof on === 'boolean') discord?.setEnabled(on);
+    return discord?.isEnabled() ?? false;
+  }));
+
+  ipcMain.handle('app:checkUpdates', guarded(() => checkForUpdates()));
+  ipcMain.handle('app:openRelease', guarded((url) => openReleaseUrl(url)));
+
+  ipcMain.handle('app:diagnostics', guarded(async () => {
+    let gpu = null;
+    try {
+      const info = await app.getGPUInfo('basic');
+      gpu = (info?.gpuDevice || []).map((d) => ({ vendorId: d.vendorId, deviceId: d.deviceId, active: !!d.active }));
+    } catch { /* ignore */ }
+    return {
+      app: { version: app.getVersion(), packaged: isPackaged() },
+      runtime: { electron: process.versions.electron, chromium: process.versions.chrome, node: process.versions.node },
+      os: { platform: process.platform, arch: process.arch, release: os.release() },
+      gpu,
+      player: ytm?.getDiagnostics?.() ?? null,
+    };
+  }));
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', openSienna);
+  app.on('before-quit', () => { quitting = true; discord?.close(); });
   app.whenReady().then(() => {
-    // Unpackaged runs show Electron's own Dock icon; swap in Sienna's (icons/app-icon.svg, see scripts/make-icons.mjs).
     if (process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, 'icon.png'));
-    lockSessions();   // permission requests: refused, except what YouTube Music needs
+    lockSessions();
+    buildAppMenu();
     startPlayer();
-    createWindow();   // open on start
+    registerAppIpc();
+    createWindow();
     createTray();
     mini = createMini({ onVisible: updateActive, trusted });
-    // how warm the Mac is and whether it runs on battery: the shop draws lighter when it heats up (src/quality.js)
-    createPower({ send: (s) => win?.webContents.send('power:state', s), guarded });
-    // the brush strokes baked at build time (scripts/bake-strokes.mjs), read by the shop's stroke cache
+    createPower({ send: (s) => sendShop('power:state', s), guarded });
     ipcMain.handle('strokes:shipped', guarded(() => fs.promises.readFile(path.join(__dirname, '..', 'strokes', 'shop.bin.gz')).then((b) => new Uint8Array(b)).catch(() => null)));
-    // global shortcuts (Settings > Shortcuts): mini player, and the full app (also closes the mini player)
-    createShortcuts({ mini: () => mini.toggle(), app: () => { mini.close(); openSienna(); } }, { trusted }).register();
+    createShortcuts(
+      { mini: () => mini.toggle(), app: () => { mini.close(); openSienna(); } },
+      {
+        trusted,
+        windows: appWebContents,
+        media: {
+          toggle: () => ytm?.command('toggle'),
+          next: () => ytm?.command('next'),
+          previous: () => ytm?.command('previous'),
+          pause: () => ytm?.command('pause'),
+        },
+      },
+    ).register();
     setTimeout(() => mini.prewarm(), 4000);
-    if (process.env.SIENNA_TEST) global.__siennaMini = mini;   // lets scripts/e2e drive it without pressing keys
+    if (devEnv('SIENNA_TEST')) global.__siennaMini = mini;
     app.on('activate', openSienna);
   });
-  // Stay alive in the menu bar after the window is closed on macOS (the music keeps playing).
-  app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  // Keep Sienna alive in the menu bar / system tray on all platforms until the user explicitly quits.
+  app.on('window-all-closed', () => { if (quitting) app.quit(); });
 }

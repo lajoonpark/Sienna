@@ -4,47 +4,69 @@
 // pages in Sienna's own windows (security.cjs), whatever a page does with this.
 const { contextBridge, ipcRenderer } = require('electron');
 
+const isDev = process.argv.includes('--sienna-dev');
+
 contextBridge.exposeInMainWorld('sienna', {
+  isDev,
+  platform: process.platform,
   home: (next) => ipcRenderer.invoke('ytm:home', next),
-  search: (q) => ipcRenderer.invoke('ytm:search', q),
+  library: () => ipcRenderer.invoke('ytm:library'),
+  search: (q, filter) => ipcRenderer.invoke('ytm:search', q, filter),
+  artistSongs: (browseId) => ipcRenderer.invoke('ytm:artistSongs', browseId),
   playlistArt: (play) => ipcRenderer.invoke('ytm:playlistArt', play),
   albumSongs: (play) => ipcRenderer.invoke('ytm:albumSongs', play),
+  lyrics: (videoId) => ipcRenderer.invoke('ytm:lyrics', videoId),
+  queue: () => ipcRenderer.invoke('ytm:queue'),
   play: (endpoint) => ipcRenderer.invoke('ytm:play', endpoint),
   prepare: (endpoint) => ipcRenderer.invoke('ytm:prepare', endpoint),
   startPrepared: (endpoint) => ipcRenderer.invoke('ytm:startPrepared', endpoint),
   command: (name, arg) => ipcRenderer.invoke('ytm:command', name, arg),
   signIn: () => ipcRenderer.invoke('ytm:signIn'),
+  retry: () => ipcRenderer.invoke('ytm:retry'),
+  status: () => ipcRenderer.invoke('ytm:status'),
+  volumeMode: (mode) => ipcRenderer.invoke('ytm:volumeMode', mode),
   // Settings > Account
-  account: () => ipcRenderer.invoke('ytm:account'),                 // -> { name, handle, photo } | null
-  accounts: () => ipcRenderer.invoke('ytm:accounts'),               // -> [{ name, byline, photo, selected }]
-  switchAccount: (i) => ipcRenderer.invoke('ytm:switchAccount', i),  // i: index into accounts()
+  account: () => ipcRenderer.invoke('ytm:account'),
+  accounts: () => ipcRenderer.invoke('ytm:accounts'),
+  switchAccount: (i) => ipcRenderer.invoke('ytm:switchAccount', i),
   addAccount: () => ipcRenderer.invoke('ytm:addAccount'),
   signOut: () => ipcRenderer.invoke('ytm:signOut'),
   onState: (cb) => ipcRenderer.on('ytm:state', (_e, s) => cb(s)),
-  onAccount: (cb) => ipcRenderer.on('ytm:account', (_e, signedIn) => cb(signedIn)),   // signed in, out or switched
-  // the brush strokes baked at build time (app/strokes/shop.bin.gz, scripts/bake-strokes.mjs): bytes or null
+  onAccount: (cb) => ipcRenderer.on('ytm:account', (_e, signedIn) => cb(signedIn)),
+  onStatus: (cb) => ipcRenderer.on('ytm:status', (_e, st) => cb(st)),
+  // the brush strokes baked at build time (app/strokes/shop.bin.gz)
   shippedStrokes: () => ipcRenderer.invoke('strokes:shipped'),
-  // how warm the computer is, and battery (electron/power.cjs): { thermal: 'nominal'|'fair'|'serious'|'critical'|'unknown', battery }
+  // how warm the computer is, and battery (electron/power.cjs)
   power: {
     get: () => ipcRenderer.invoke('power:get'),
     onChange: (cb) => ipcRenderer.on('power:state', (_e, s) => cb(s)),
   },
-  // keyboard shortcuts (electron/shortcuts.cjs): { search, mini, app, failed, defaults }
+  // keyboard shortcuts (electron/shortcuts.cjs)
   keys: {
     get: () => ipcRenderer.invoke('keys:get'),
-    set: (name, accel) => ipcRenderer.invoke('keys:set', name, accel),   // -> { ok, error?: 'taken' | 'clash' | 'bad' }
+    set: (name, accel) => ipcRenderer.invoke('keys:set', name, accel),
     reset: () => ipcRenderer.invoke('keys:reset'),
-    pause: (on) => ipcRenderer.send('keys:pause', on),                   // let go of the global ones while recording
+    pause: (on) => ipcRenderer.send('keys:pause', on),
     onChange: (cb) => ipcRenderer.on('keys:changed', (_e, k) => cb(k)),
-    onUsed: (cb) => ipcRenderer.on('keys:used', (_e, name) => cb(name)),  // a global one fired (the tour ticks it off)
+    onUsed: (cb) => ipcRenderer.on('keys:used', (_e, name) => cb(name)),
+  },
+  // app-level controls (login item, Discord RPC, manual update check, diagnostics, app menu actions)
+  app: {
+    info: () => ipcRenderer.invoke('app:info'),
+    loginItem: (on) => ipcRenderer.invoke('app:loginItem', on),
+    discordRpc: (on) => ipcRenderer.invoke('app:discordRpc', on),
+    checkUpdates: () => ipcRenderer.invoke('app:checkUpdates'),
+    openRelease: (url) => ipcRenderer.invoke('app:openRelease', url),
+    diagnostics: () => ipcRenderer.invoke('app:diagnostics'),
+    onMenu: (cb) => ipcRenderer.on('app:menu', (_e, action) => cb(action)),
   },
 });
 
 if (process.argv.includes('--sienna-mini')) {
   contextBridge.exposeInMainWorld('siennaMini', {
-    onOpen: (cb) => ipcRenderer.on('mini:open', () => cb()),     // flick the lid open
-    onClose: (cb) => ipcRenderer.on('mini:close', () => cb()),   // shut it (Esc, blur and the shortcut come through here)
-    closing: () => ipcRenderer.send('mini:closing'),              // the page started shutting the lid itself (Esc, a click on the margin)
-    closed: () => ipcRenderer.send('mini:closed'),                // the lid has landed and faded: hide the window
+    onOpen: (cb) => ipcRenderer.on('mini:open', () => cb()),
+    onClose: (cb) => ipcRenderer.on('mini:close', () => cb()),
+    closing: () => ipcRenderer.send('mini:closing'),
+    closed: () => ipcRenderer.send('mini:closed'),
   });
 }
