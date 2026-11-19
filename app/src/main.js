@@ -193,7 +193,26 @@ function ensureRack(i) {
 }
 
 // the torn-paper overlays for Lyrics (liner notes), Up Next Queue, and offline/error status banner
-const liner = createLiner({ music });
+const liner = createLiner({
+  music,
+  onQueueOpen: (items) => {
+    pacer?.kick();
+    suitcase.wake(4);
+    const covers = (items ?? []).slice(0, 4).map((it) => getCover(it.art, 256).tex);
+    return suitcase.openDrawer(covers);
+  },
+  onQueueClose: () => {
+    pacer?.kick();
+    suitcase.closeDrawer();
+  },
+  getDrawerPos: () => suitcase.drawerScreenPos(),
+  onPickQueue: (it, idx) => {
+    pacer?.kick();
+    if (it.videoId) startSong(music, suitcase.suitcase, { play: { videoId: it.videoId } });
+    else music.command('queueIndex', it.index ?? idx);
+    suitcase.dispense(getCover(it.art, 512).tex);
+  },
+});
 // the suitcase record player in the bottom-left corner (drawn in an overlay pass, subscribes to the player state itself)
 const suitcase = createPlayer({
   renderer, painter, music, camera,
@@ -1075,7 +1094,7 @@ if (shotMode) {
     pacer = createPacer({
       renderer,
       step: (now) => { tickFps(); frame((now - start) / 1000); watchCamera(); },
-      busy: () => nav.intro || !nav.settled || spread.busy || suitcase.flying || suitcase.tray.active || suitcase.over || suitcase.suitcase.lidMoving,
+      busy: () => nav.intro || !nav.settled || spread.busy || suitcase.flying || suitcase.tray.moving || suitcase.over || suitcase.suitcase.lidMoving,
       // a spinning record on screen wants a smooth turn; otherwise only lanterns and the boil move (Brush strokes: only the ragged border boils; the older looks: all of it)
       idleFps: () => (player?.playerState === 1 && suitcase.tucked < 0.5 ? 30 : 12),
       quality,

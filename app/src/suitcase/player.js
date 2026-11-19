@@ -38,9 +38,9 @@ const GAP = 14;        // between the case and its caption
 // from the bottom edge (sink = share of the open case's height on screen). It wakes when the cursor
 // touches it (the strip, or the whole case while it is up) and whenever a record is on its way in.
 const TUCK = { delay: 0.35, shutFirst: 0.3, sink: 0.62, rate: 8, hold: 0.9 };
-// While the drawer is out (search pick) the case rises by this share of its height on screen, so the drawer
-// and its record clear the bottom edge of the picture.
-const DRAWER_RISE = 0.3;
+// While the drawer is out (search pick or queue) the case rises by this share of its height on screen, so the full drawer
+// and its records clear the bottom edge of the picture.
+const DRAWER_RISE = 0.36;
 
 export function createPlayer({ renderer, painter, music, camera, onQueue = null, onLyrics = null }) {
   const scene = new THREE.Scene();
@@ -193,12 +193,26 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
     caption.setScrub(suitcase.scrubbing ? suitcase.progress : null);
   }
 
+  const _drawerPt = new THREE.Vector3();
+  function drawerScreenPos() {
+    const W = renderer.domElement.clientWidth || innerWidth;
+    const H = renderer.domElement.clientHeight || innerHeight;
+    tray.centerPoint(_drawerPt).project(ocam);
+    return {
+      x: ((_drawerPt.x + 1) / 2) * W,
+      y: ((1 - _drawerPt.y) / 2) * H,
+    };
+  }
+
   return {
     overlay,
     suitcase,
     update,
     receive: (disc) => flights.receive(disc),
     dispense(cover) { hold = Math.max(hold, TUCK.hold); tray.run(cover); },
+    openDrawer(covers = []) { hold = Math.max(hold, 4); return tray.openHold(covers); },
+    closeDrawer() { tray.closeHold(); },
+    drawerScreenPos,
     tray,
     // The caption and case appear together; the lid flicks open the first time (instant for screenshots).
     show(on, instant = false) {

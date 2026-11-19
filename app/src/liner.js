@@ -1,12 +1,14 @@
 // Torn-paper overlay sheets matching Sienna's Settings & Tour aesthetic:
-//   - Folded liner-note Lyrics sheet (pulled from YouTube Music's `next` -> Lyrics tab)
-//   - Up Next Queue sheet (clickable upcoming tracks)
+//   - Lyrics sheet with 3D paper-unfold animation (pulled from YouTube Music's `next` -> Lyrics tab)
+//   - Up Next Queue list that emerges directly from the open suitcase bottom drawer
 //   - Offline / load-error status banner with Retry button
 //   - WebGL initialization fallback screen
 import { INK, HOT, PAPER } from './controls.js';
 import { torn, word } from './settings-panel.js';
 import { onCursorTilt, tiltCSS } from './cursortilt.js';
 import { onLettering } from './style.js';
+import { paintedCoverURL } from './coverpaint.js';
+import { rng } from './rand.js';
 
 const CSS = `
 .ln-veil { position: fixed; inset: 0; z-index: 65; display: flex; align-items: center; justify-content: center;
@@ -50,7 +52,8 @@ const CSS = `
 }
 @media (prefers-reduced-motion: reduce) {
   .ln-veil.show .ln-card.unfold, .ln-veil.closing .ln-card.unfold,
-  .ln-veil.show .ln-card.unfold .ln-flap, .ln-veil.closing .ln-card.unfold .ln-flap { animation: none !important; }
+  .ln-veil.show .ln-card.unfold .ln-flap, .ln-veil.closing .ln-card.unfold .ln-flap,
+  .ln-qveil.show .ln-qslip, .ln-qveil.closing .ln-qslip { animation: none !important; transition: none !important; }
   .ln-flap { display: none; }
 }
 .ln-head { position: relative; flex: none; margin: 0 0 4px; font-size: 36px; line-height: 1.05; color: ${INK}; }
@@ -66,17 +69,63 @@ const CSS = `
 .ln-src { position: relative; flex: none; margin-top: 10px; font-size: 16px; color: #8c6c50; }
 .ln-foot { position: relative; flex: none; display: flex; justify-content: flex-end; gap: 10px; padding-top: 10px; font-size: 26px; }
 .ln-empty { font-size: 23px; color: #7a5a40; padding: 18px 0; }
-.ln-q { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.ln-qi { display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-radius: 6px; cursor: pointer;
-  transition: background .15s, transform .15s; }
-.ln-qi:hover { background: rgba(45,49,88,.08); transform: translateX(3px); }
-.ln-qi.now { background: rgba(180,80,58,.14); }
-.ln-qi.now .ln-qt { color: ${HOT}; }
-.ln-qn { flex: none; width: 24px; text-align: right; font-size: 18px; color: #8c6c50; }
+
+/* ---- Queue overlay: songs emerge physically from the open suitcase bottom drawer ---- */
+.ln-qveil { position: fixed; inset: 0; z-index: 64; pointer-events: none; visibility: hidden; opacity: 0;
+  transition: opacity .22s ease, visibility 0s .28s; font-family: var(--sienna-font); user-select: none; }
+.ln-qveil.show { pointer-events: auto; visibility: visible; opacity: 1; transition: opacity .22s ease; }
+.ln-qveil.closing { pointer-events: none; visibility: visible; opacity: 0; transition: opacity .24s ease .08s; }
+.ln-qbackdrop { position: absolute; inset: 0; background: rgba(40,28,20,.14); }
+.ln-qbox { position: fixed; left: 50%; top: 7vh; transform: translateX(-50%); width: min(560px, 90vw);
+  max-height: min(68vh, 620px); display: flex; flex-direction: column; pointer-events: auto; }
+.ln-qtop { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 8px 8px;
+  opacity: 0; transform: translateY(18px) scale(.94); transition: opacity .32s ease, transform .38s cubic-bezier(.22,.85,.3,1); }
+.ln-qveil.show .ln-qtop { opacity: 1; transform: none; }
+.ln-qveil.closing .ln-qtop { opacity: 0; transform: translateY(14px) scale(.94); transition: opacity .18s ease, transform .18s ease; }
+.ln-qtitle { position: relative; padding: 8px 24px 7px 18px; font-size: 32px; line-height: 1; color: ${INK};
+  background: #f4ead6; transform: rotate(-1.1deg); filter: drop-shadow(0 4px 8px rgba(35,24,18,.24)); }
+.ln-qclose { font-size: 26px; }
+.ln-qscroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: visible; padding: 8px 14px 20px;
+  scrollbar-width: thin; scrollbar-color: rgba(45,49,88,.45) transparent; }
+.ln-qscroll::-webkit-scrollbar { width: 6px; }
+.ln-qscroll::-webkit-scrollbar-thumb { background: rgba(45,49,88,.45); border-radius: 3px; }
+.ln-qlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ln-qslip { position: relative; display: flex; align-items: center; gap: 12px; padding: 10px 20px 10px 14px;
+  background: #f6eedc; color: #2b2436; cursor: pointer; filter: drop-shadow(0 4px 7px rgba(32,22,18,.22));
+  transform: rotate(var(--r, 0deg)); transition: background .16s ease, color .16s ease, transform .18s cubic-bezier(.25,1.4,.4,1);
+  will-change: transform, opacity; }
+.ln-qslip.emerging {
+  animation: ln-q-out .56s cubic-bezier(.2,.88,.28,1) var(--delay, 0ms) both;
+}
+.ln-qslip.tucking {
+  animation: ln-q-in .24s cubic-bezier(.55,.06,.78,.32) var(--cdelay, 0ms) both;
+}
+@keyframes ln-q-out {
+  0%   { opacity: 0; transform: translate(var(--fx, -220px), var(--fy, 320px)) scale(.24) rotate(-14deg); }
+  22%  { opacity: 1; }
+  72%  { opacity: 1; transform: translate(calc(var(--fx, -220px) * -.03), -7px) scale(1.025) rotate(calc(var(--r, 0deg) + 1.2deg)); }
+  100% { opacity: 1; transform: translate(0, 0) scale(1) rotate(var(--r, 0deg)); }
+}
+@keyframes ln-q-in {
+  0%   { opacity: 1; transform: translate(0, 0) scale(1) rotate(var(--r, 0deg)); }
+  100% { opacity: 0; transform: translate(var(--fx, -220px), var(--fy, 320px)) scale(.24) rotate(-12deg); }
+}
+.ln-qslip:hover { background: ${HOT}; color: ${PAPER}; transform: translateX(6px) scale(1.015) rotate(0deg); z-index: 2; }
+.ln-qslip.now { background: ${INK}; color: ${PAPER}; }
+.ln-qslip.now:hover { background: ${HOT}; color: ${PAPER}; }
+.ln-qslip:hover .ln-qa, .ln-qslip:hover .ln-qd, .ln-qslip:hover .ln-qn,
+.ln-qslip.now .ln-qa, .ln-qslip.now .ln-qd, .ln-qslip.now .ln-qn { color: rgba(251,245,232,.84); }
+.ln-qcov { flex: none; width: 42px; height: 42px; background: #d9cbb2; transform: rotate(-2.5deg); overflow: hidden;
+  box-shadow: 0 1px 3px rgba(30,20,14,.25); }
+.ln-qcov img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ln-qn { flex: none; width: 22px; text-align: right; font-size: 18px; color: #8c6c50; }
 .ln-qtxt { flex: 1; min-width: 0; }
-.ln-qt { font-size: 24px; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ln-qa { font-size: 17px; color: #7a5a40; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ln-qt { font-size: 25px; line-height: 1.04; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ln-qa { font-size: 17px; color: #7a5a40; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 .ln-qd { flex: none; font-size: 18px; color: #8c6c50; }
+.ln-qempty { padding: 18px 24px; background: #f4ead6; color: #7a5a40; font-size: 24px; text-align: center;
+  filter: drop-shadow(0 4px 8px rgba(32,22,18,.2)); transform: rotate(-.6deg); }
+
 /* offline / error banner at top centre */
 .ln-banner { position: fixed; top: 3vh; left: 50%; z-index: 55; transform: translateX(-50%) rotate(-.5deg);
   display: none; align-items: center; gap: 16px; padding: 12px 24px; font-family: var(--sienna-font);
@@ -113,12 +162,12 @@ export function showWebGLError(err) {
   document.body.appendChild(wrap);
 }
 
-export function createLiner({ music } = {}) {
+export function createLiner({ music, onQueueOpen = null, onQueueClose = null, getDrawerPos = null, onPickQueue = null } = {}) {
   if (!document.getElementById('ln-css')) {
     const st = document.createElement('style'); st.id = 'ln-css'; st.textContent = CSS; document.head.appendChild(st);
   }
 
-  // ---- modal sheet (lyrics or queue) ----
+  // ---- lyrics sheet (3D paper unfold) ----
   const veil = document.createElement('div');
   veil.className = 'ln-veil';
   veil.innerHTML = `<div class="ln-lean"><div class="ln-card unfold"><div class="ln-paper"></div><div class="ln-flap"></div>
@@ -138,21 +187,42 @@ export function createLiner({ music } = {}) {
   paper.style.clipPath = torn(43);
   flap.style.clipPath = torn(43, 4, 8);
 
+  // ---- queue drawer-to-list overlay ----
+  const qveil = document.createElement('div');
+  qveil.className = 'ln-qveil';
+  qveil.innerHTML = `<div class="ln-qbackdrop"></div><div class="ln-qbox">
+    <div class="ln-qtop"><div class="ln-qtitle">Up next</div><div class="ln-qclose"></div></div>
+    <div class="ln-qscroll"><ul class="ln-qlist"></ul></div>
+  </div>`;
+  document.body.appendChild(qveil);
+  const qBackdrop = qveil.querySelector('.ln-qbackdrop');
+  const qBox = qveil.querySelector('.ln-qbox');
+  const qTitle = qveil.querySelector('.ln-qtitle');
+  const qCloseWrap = qveil.querySelector('.ln-qclose');
+  const qScroll = qveil.querySelector('.ln-qscroll');
+  const qList = qveil.querySelector('.ln-qlist');
+  qTitle.style.clipPath = torn(61, 3, 6);
+
   let mode = null; // null | 'lyrics' | 'queue'
   let unlean = null;
   let closeTimer = 0;
+  let qCloseTimer = 0;
   let seq = 0;
 
   const closeBtn = word('Close', 73, () => close());
   foot.appendChild(closeBtn);
+  const qCloseBtn = word('Close', 79, () => close());
+  qCloseWrap.appendChild(qCloseBtn);
+
   card.addEventListener('click', (e) => e.stopPropagation());
   veil.addEventListener('click', () => close());
+  qBox.addEventListener('click', (e) => e.stopPropagation());
+  qBackdrop.addEventListener('click', () => close());
 
-  function openSheet(nextMode) {
+  function openLyricsSheet() {
     clearTimeout(closeTimer);
-    mode = nextMode;
+    mode = 'lyrics';
     veil.classList.remove('closing');
-    // restart the CSS unfold animation cleanly even when switching modes
     veil.classList.remove('show');
     void card.offsetWidth;
     veil.classList.add('show');
@@ -161,10 +231,7 @@ export function createLiner({ music } = {}) {
     unlean ??= onCursorTilt((x, y) => { leaner.style.transform = tiltCSS(x, y, 5); });
   }
 
-  function close() {
-    if (!mode) return;
-    mode = null;
-    seq++;
+  function closeLyricsSheet() {
     clearTimeout(closeTimer);
     veil.classList.remove('show');
     veil.classList.add('closing');
@@ -172,14 +239,55 @@ export function createLiner({ music } = {}) {
     unlean?.(); unlean = null;
   }
 
+  function drawerOrigin() {
+    const pos = getDrawerPos?.();
+    if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) return pos;
+    return { x: innerWidth * 0.16, y: innerHeight * 0.80 };
+  }
+
+  function closeQueueOverlay({ keepDrawer = false } = {}) {
+    clearTimeout(qCloseTimer);
+    const origin = drawerOrigin();
+    const slips = [...qList.querySelectorAll('.ln-qslip')];
+    const scrollBox = qScroll.getBoundingClientRect();
+    const visible = slips.filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.bottom >= scrollBox.top - 20 && r.top <= scrollBox.bottom + 20;
+    });
+    visible.forEach((el, k) => {
+      const r = el.getBoundingClientRect();
+      el.style.setProperty('--fx', `${Math.round(origin.x - (r.left + r.width / 2))}px`);
+      el.style.setProperty('--fy', `${Math.round(origin.y - (r.top + r.height / 2))}px`);
+      el.style.setProperty('--cdelay', `${Math.min(110, (visible.length - 1 - k) * 18)}ms`);
+      el.classList.remove('emerging');
+      el.classList.add('tucking');
+    });
+    qveil.classList.remove('show');
+    qveil.classList.add('closing');
+    qCloseTimer = setTimeout(() => {
+      qveil.classList.remove('closing');
+      if (!keepDrawer) onQueueClose?.();
+    }, keepDrawer ? 220 : 210);
+  }
+
+  function close({ keepDrawer = false } = {}) {
+    if (!mode) return;
+    const prev = mode;
+    mode = null;
+    seq++;
+    if (prev === 'lyrics') closeLyricsSheet();
+    else if (prev === 'queue') closeQueueOverlay({ keepDrawer });
+  }
+
   async function openLyrics(track) {
     if (mode === 'lyrics') { close(); return; }
+    if (mode === 'queue') close();
     const my = ++seq;
     head.textContent = track?.title || 'Liner notes';
     sub.textContent = [track?.artist, track?.album].filter(Boolean).join(' · ') || 'Lyrics';
     srcEl.textContent = '';
     scroll.replaceChildren(Object.assign(document.createElement('div'), { className: 'ln-empty', textContent: 'Looking up the liner notes…' }));
-    openSheet('lyrics');
+    openLyricsSheet();
     if (!track?.videoId) {
       scroll.replaceChildren(Object.assign(document.createElement('div'), { className: 'ln-empty', textContent: 'Play a record first to read its lyrics.' }));
       return;
@@ -199,45 +307,105 @@ export function createLiner({ music } = {}) {
 
   async function openQueue() {
     if (mode === 'queue') { close(); return; }
+    if (mode === 'lyrics') close();
     const my = ++seq;
-    head.textContent = 'Up next';
-    sub.textContent = 'Records stacked on the turntable';
-    srcEl.textContent = '';
-    scroll.replaceChildren(Object.assign(document.createElement('div'), { className: 'ln-empty', textContent: 'Checking the stack…' }));
-    openSheet('queue');
-    const items = await music.queue?.().catch(() => []);
+    clearTimeout(qCloseTimer);
+    mode = 'queue';
+
+    // Step 1: fetch the queue tracks while sliding the entire bottom drawer of the suitcase open
+    const itemsPromise = music.queue?.().catch(() => []) ?? Promise.resolve([]);
+    const items = await itemsPromise;
     if (my !== seq || mode !== 'queue') return;
+
+    // Open the full bottom drawer (showing the top queue covers inside it) and wait for it to slide out
+    const drawerReady = onQueueOpen ? Promise.resolve(onQueueOpen(items)) : Promise.resolve();
+    await drawerReady;
+    if (my !== seq || mode !== 'queue') return;
+
+    // Step 2: populate the Queue slips and launch them straight out of the open suitcase drawer
+    qList.innerHTML = '';
+    qScroll.scrollTop = 0;
+    qveil.classList.remove('closing');
+
     if (!items?.length) {
-      scroll.replaceChildren(Object.assign(document.createElement('div'), { className: 'ln-empty', textContent: 'Nothing in the queue yet — pick a record to start one.' }));
+      const empty = document.createElement('li');
+      empty.className = 'ln-qempty';
+      empty.style.clipPath = torn(55, 3, 6);
+      empty.textContent = 'Nothing in the queue yet — pick a record to start one.';
+      qList.appendChild(empty);
+      qveil.classList.add('show');
+      requestAnimationFrame(() => qCloseBtn.paint());
       return;
     }
-    const ul = document.createElement('ul');
-    ul.className = 'ln-q';
+
+    const slips = [];
     items.forEach((it, idx) => {
+      const r = rng(301 + idx * 19);
       const li = document.createElement('li');
-      li.className = `ln-qi${it.selected ? ' now' : ''}`;
+      li.className = `ln-qslip${it.selected ? ' now' : ''}`;
+      li.style.clipPath = torn(110 + (idx % 7) * 13, 3, 6);
+      li.style.setProperty('--r', `${((r() - 0.5) * 1.4).toFixed(2)}deg`);
+
       const num = document.createElement('span');
       num.className = 'ln-qn';
       num.textContent = it.selected ? '♪' : String(idx + 1);
+
+      const cov = document.createElement('div');
+      cov.className = 'ln-qcov';
+      if (it.art) {
+        const img = new Image();
+        img.alt = '';
+        img.decoding = 'async';
+        paintedCoverURL(it.art).then((src) => { if (src) { img.src = src; cov.replaceChildren(img); } });
+      }
+
       const txt = document.createElement('div');
       txt.className = 'ln-qtxt';
       const t = document.createElement('div'); t.className = 'ln-qt'; t.textContent = it.title || 'Untitled';
       const a = document.createElement('div'); a.className = 'ln-qa'; a.textContent = it.artist || '';
       txt.append(t, a);
+
       const d = document.createElement('span');
       d.className = 'ln-qd';
       d.textContent = it.durationText || mmss(it.duration);
-      li.append(num, txt, d);
+
+      li.append(num, cov, txt, d);
       li.addEventListener('click', () => {
-        if (it.videoId) music.play({ videoId: it.videoId });
-        else music.command('queueIndex', it.index ?? idx);
-        close();
+        if (onPickQueue) {
+          close({ keepDrawer: true });
+          onPickQueue(it, idx);
+        } else {
+          if (it.videoId) music.play({ videoId: it.videoId });
+          else music.command('queueIndex', it.index ?? idx);
+          close();
+        }
       });
-      ul.appendChild(li);
+      qList.appendChild(li);
+      slips.push(li);
     });
-    scroll.replaceChildren(ul);
-    const activeEl = ul.querySelector('.now');
+
+    // Reveal the container first (still invisible for 1 frame) so we can measure each slip's exact final rect
+    qveil.classList.add('show');
+    requestAnimationFrame(() => qCloseBtn.paint());
+
+    const activeEl = qList.querySelector('.now');
     if (activeEl) activeEl.scrollIntoView({ block: 'center' });
+
+    const origin = drawerOrigin();
+    const boxRect = qScroll.getBoundingClientRect();
+    let order = 0;
+    slips.forEach((li) => {
+      const rect = li.getBoundingClientRect();
+      const visible = rect.bottom >= boxRect.top - 40 && rect.top <= boxRect.bottom + 40;
+      const fx = Math.round(origin.x - (rect.left + rect.width / 2));
+      const fy = Math.round(origin.y - (rect.top + rect.height / 2));
+      li.style.setProperty('--fx', `${fx}px`);
+      li.style.setProperty('--fy', `${fy}px`);
+      if (visible) {
+        li.style.setProperty('--delay', `${Math.min(480, (order++) * 38)}ms`);
+        li.classList.add('emerging');
+      }
+    });
   }
 
   // ---- offline / error status banner ----
@@ -265,7 +433,7 @@ export function createLiner({ music } = {}) {
     requestAnimationFrame(() => retryBtn.paint());
   }
 
-  onLettering(veil, () => { closeBtn.paint(); retryBtn.paint(); });
+  onLettering(veil, () => { closeBtn.paint(); qCloseBtn.paint(); retryBtn.paint(); });
 
   addEventListener('keydown', (e) => {
     if (!mode) return;

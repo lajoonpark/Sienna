@@ -1,80 +1,54 @@
-// The record drawer. A song picked in search has no rack and no sleeve, so the bottom
-// of the suitcase slides out like a tray with the record lying in it; the record lifts up out of the tray,
-// tips towards you and flies onto the platter (flight.js, the same handoff as from a rack), and the
-// drawer slides home again. At rest only its front shows: a slim leather strip with a brass pull along
-// the foot of the case. Used by both the shop's case (suitcase/player.js) and the mini window.
+// The full-bottom record drawer. The entire lower half of the suitcase (model.js `parts.drawer`)
+// slides forward out from underneath the turntable deck:
+//   - On a search/list pick (`tray.run(cover)`): the drawer slides out with the record lying inside
+//     the lined bed, the record lifts up, tips towards you and flies onto the platter (flight.js),
+//     and the drawer slides home again.
+//   - On opening the Up Next Queue (`tray.openHold(covers)` / `tray.closeHold()`): the entire bottom
+//     drawer slides out and stays open with a stack of records peeking up inside while the Queue
+//     slips emerge from it; closing the Queue tucks the slips back in and slides the drawer shut.
 //
-//   const tray = createRecordTray({ suitcase, kit, onDisc, camera })
-//     suitcase: createSuitcase(...) (the drawer is added to its case, so it leans with it)
-//     camera:   only when the case lives in camera space (the shop's overlay scene): the world camera,
-//               so the record is handed over as a world pose like a rack's
-//     kit:      suitcase.recordKit (to build the record in the tray)
-//     onDisc({ matrixWorld, cover }): the record left the tray; pass it to flights.receive
-//   tray.run(cover)     slide out with this cover's record in it
-//   tray.update(dt)     every frame
-//   tray.finish()       jump to the end: returns the record if it never left the tray (null otherwise)
-//   tray.seek(at)       screenshots: freeze at time `at` of the current run
-//   tray.active
+// Used by both the shop's case (suitcase/player.js) and the mini window (mini.js).
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { LAYOUT as L } from '../tonearm.js';
-import { COL } from './paint.js';
-import { painted } from './model.js';
 
 const SHOP_RADIUS = 0.145;   // the size flight.js assumes for a disc handed over (a rack's vinyl)
 const Q_DISC_TO_FLAT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
 
-// the drawer, in case units (see model.js: case 4.6 x 3.2, base 0.95 high, front at z = +1.6)
-const TRAY_W = 2.7;                       // between the brass corners
-const TRAY_D = 2.5;                       // front to back, room for the record (2.24 across)
-const TRAY_H = 0.13;                      // the front strip, under the speakers, over the foot welt
-const TRAY_Y = 0.025;                     // its bottom edge
-const OUT = 2.45;                         // how far it slides out
-const REST_Y = TRAY_Y + 0.05;             // the record lying in the tray
-const LIFT_Y = 1.05;                      // how high it rises before it flies
-const TIP = 0.75;                         // and how far it tips its face towards you
+// Full-bottom drawer travel & record pose in case units (case 4.6 x 3.2, drawer height 0.44).
+const OUT = 2.68;                         // how far the entire bottom slides out along +z
+const REST_Y = 0.125;                     // the record lying on the lined drawer floor
+const LIFT_Y = 1.25;                      // how high it rises before it flies to the platter
+const TIP = 0.72;                         // and how far it tips its face towards you
 
 // the beats, in seconds
-const T_OPEN = 0.42, T_RISE = 0.36, T_HOLD = 0.15, T_SHUT = 0.34;
+const T_OPEN = 0.44, T_RISE = 0.36, T_HOLD = 0.15, T_SHUT = 0.36;
 const T_HAND = T_OPEN + T_RISE;           // the record leaves here
 const T_END = T_HAND + T_HOLD + T_SHUT;
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
-const easeOutBack = (t) => { const c = 1.4; t = clamp01(t) - 1; return 1 + (c + 1) * t * t * t + c * t * t; };
+const easeOutBack = (t) => { const c = 1.35; t = clamp01(t) - 1; return 1 + (c + 1) * t * t * t + c * t * t; };
 const easeOut = (t) => 1 - Math.pow(1 - clamp01(t), 3);
 const easeInOut = (t) => { t = clamp01(t); return t * t * (3 - 2 * t); };
 
-function build(mats, { sharp = false } = {}) {
-  const g = new THREE.Group();
-  if (sharp) g.userData.noStrokes = true;
-  const rbox = (w, h, d, r) => new RoundedBoxGeometry(w, h, d, 2, r);
-  const add = (geo, mat, x, y, z) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    if (sharp) { m.castShadow = true; m.receiveShadow = true; }
-    g.add(m);
-    return m;
-  };
-  const leather = mats.leather, lining = painted(COL.lining, { sharp }), brass = painted(COL.brass, { sharp }), welt = painted(COL.leatherDark, { sharp });
-  // z = 0 is the drawer's front face; the tray reaches back to -TRAY_D
-  add(rbox(TRAY_W, TRAY_H, 0.08, 0.03), leather, 0, TRAY_Y + TRAY_H / 2, -0.03);              // the front
-  add(rbox(TRAY_W - 0.06, 0.025, 0.04, 0.01), welt, 0, TRAY_Y + TRAY_H - 0.02, 0.012);       // a dark seam along its top
-  add(rbox(0.5, 0.05, 0.06, 0.02), brass, 0, TRAY_Y + TRAY_H / 2, 0.02);                      // the pull
-  add(new THREE.BoxGeometry(TRAY_W - 0.1, 0.03, TRAY_D - 0.08), lining, 0, TRAY_Y + 0.015, -TRAY_D / 2);   // the floor
-  for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.06, 0.09, TRAY_D - 0.08), leather, sx * (TRAY_W / 2 - 0.08), TRAY_Y + 0.045, -TRAY_D / 2);
-  add(new THREE.BoxGeometry(TRAY_W - 0.1, 0.09, 0.06), leather, 0, TRAY_Y + 0.045, -TRAY_D + 0.07);   // the back lip
-  return g;
-}
-
 export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
-  const { caseRoot, mats } = suitcase.parts;
-  const drawer = build(mats, { sharp: !!suitcase.sharp });
-  const front = L.caseDepth / 2 + 0.035;   // the closed front sits just proud of the leather
-  drawer.position.z = front;
-  caseRoot.add(drawer);
+  const { drawer } = suitcase.parts;
+  drawer.position.z = 0;
 
-  let t = 0, running = false, handed = false, frozen = false;
+  // mode: 'idle' | 'dispense' | 'hold-open' | 'hold-close'
+  let mode = 'idle';
+  let t = 0, handed = false, frozen = false;
+  let openFrac = 0;         // current normalized extension 0..1 (tracks drawer.position.z / OUT)
+  let startFrac = 0;        // where a transition started from (smooth handoff between queue & dispense)
   let disc = null, cover = null;
+  let stackDiscs = [];      // visual stack of records peeking in the drawer when held open for Queue
+  let openResolvers = [];
+
+  function resolveOpened() {
+    if (!openResolvers.length) return;
+    const list = openResolvers;
+    openResolvers = [];
+    for (const fn of list) fn();
+  }
 
   function clearDisc() {
     if (!disc) return;
@@ -83,17 +57,63 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
     disc = null;
   }
 
+  function clearStack() {
+    for (const d of stackDiscs) {
+      drawer.remove(d.group);
+      d.labelMat.dispose();
+    }
+    stackDiscs = [];
+  }
+
+  function buildStack(covers = []) {
+    clearStack();
+    const list = covers.slice(0, 4);
+    list.forEach((tex, i) => {
+      const d = kit.build(tex);
+      d.group.position.set((i - (list.length - 1) / 2) * 0.12, REST_Y + i * 0.032, 0.05 - i * 0.04);
+      d.group.rotation.y = (i - 1.5) * 0.08;
+      drawer.add(d.group);
+      stackDiscs.push(d);
+    });
+  }
+
   function run(tex) {
     clearDisc();
+    clearStack();
+    resolveOpened();
     cover = tex;
     disc = kit.build(cover);
-    disc.group.position.set(0, REST_Y, -TRAY_D / 2);
+    disc.group.position.set(0, REST_Y, 0.12);
     drawer.add(disc.group);
-    t = 0;
+    startFrac = openFrac;
+    // if already open (e.g., picked directly from the open Queue drawer), skip waiting for open!
+    t = openFrac > 0.85 ? T_OPEN * 0.82 : 0;
     handed = false;
     frozen = false;
-    running = true;
+    mode = 'dispense';
     update(0);
+  }
+
+  function openHold(covers = []) {
+    clearDisc();
+    if (covers.length) buildStack(covers);
+    else clearStack();
+    frozen = false;
+    if (mode === 'hold-open' && openFrac >= 0.99) {
+      return Promise.resolve();
+    }
+    startFrac = openFrac;
+    t = 0;
+    mode = 'hold-open';
+    return new Promise((res) => { openResolvers.push(res); });
+  }
+
+  function closeHold() {
+    if (mode !== 'hold-open') return;
+    resolveOpened();
+    startFrac = openFrac;
+    t = 0;
+    mode = 'hold-close';
   }
 
   const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3();
@@ -112,35 +132,94 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null }) {
   }
 
   function update(dt) {
-    if (!running) return;
+    if (mode === 'idle') return;
     if (frozen) dt = 0;
     t += dt;
-    // slides out with a little overshoot, waits while the record leaves, slides home
-    const out = t < T_HAND + T_HOLD ? easeOutBack(t / T_OPEN) : 1 - easeInOut((t - T_HAND - T_HOLD) / T_SHUT);
-    drawer.position.z = front + OUT * out;
-    if (t < T_OPEN) suitcase.thump(0.015 * (1 - t / T_OPEN));
-    if (disc) {
-      const u = easeOut((t - T_OPEN) / T_RISE);
-      disc.group.position.y = REST_Y + (LIFT_Y - REST_Y) * u;
-      disc.group.rotation.x = TIP * u;
-      if (!handed && t >= T_HAND) handOff();
+
+    if (mode === 'dispense') {
+      let out;
+      if (t < T_HAND + T_HOLD) {
+        const u = clamp01(t / T_OPEN);
+        out = startFrac + (1 - startFrac) * easeOutBack(u);
+      } else {
+        out = 1 - easeInOut((t - T_HAND - T_HOLD) / T_SHUT);
+      }
+      openFrac = Math.max(0, out);
+      drawer.position.z = OUT * out;
+      if (t < T_OPEN && startFrac < 0.5) suitcase.thump(0.018 * (1 - t / T_OPEN));
+      if (disc) {
+        const u = easeOut((t - T_OPEN) / T_RISE);
+        disc.group.position.y = REST_Y + (LIFT_Y - REST_Y) * u;
+        disc.group.rotation.x = TIP * u;
+        if (!handed && t >= T_HAND) handOff();
+      }
+      if (t >= T_END) {
+        mode = 'idle';
+        openFrac = 0;
+        drawer.position.z = 0;
+        clearDisc();
+      }
+      return;
     }
-    if (t >= T_END) { running = false; drawer.position.z = front; clearDisc(); }
+
+    if (mode === 'hold-open') {
+      const u = clamp01(t / T_OPEN);
+      const out = startFrac + (1 - startFrac) * easeOutBack(u);
+      openFrac = Math.max(0, out);
+      drawer.position.z = OUT * out;
+      if (t < T_OPEN && startFrac < 0.5) suitcase.thump(0.016 * (1 - u));
+      // stack gently lifts and fans as the drawer reaches open
+      const fan = easeOut(clamp01((t - T_OPEN * 0.45) / 0.28));
+      stackDiscs.forEach((d, i) => {
+        d.group.position.y = REST_Y + i * 0.032 + fan * (0.14 + i * 0.06);
+        d.group.rotation.x = fan * (0.28 + i * 0.05);
+      });
+      if (u >= 1) resolveOpened();
+      return;
+    }
+
+    if (mode === 'hold-close') {
+      const u = clamp01(t / T_SHUT);
+      const out = startFrac * (1 - easeInOut(u));
+      openFrac = Math.max(0, out);
+      drawer.position.z = OUT * out;
+      const tuck = 1 - easeOut(clamp01(u * 1.8));
+      stackDiscs.forEach((d, i) => {
+        d.group.position.y = REST_Y + i * 0.032 + tuck * (0.14 + i * 0.06);
+        d.group.rotation.x = tuck * (0.28 + i * 0.05);
+      });
+      if (u >= 1) {
+        mode = 'idle';
+        openFrac = 0;
+        drawer.position.z = 0;
+        clearStack();
+      }
+    }
+  }
+
+  // World (or overlay-scene) center of the open drawer cavity, for launching Queue slips out of it.
+  function centerPoint(out = new THREE.Vector3()) {
+    drawer.updateWorldMatrix(true, false);
+    return out.set(0, 0.34, 0.3).applyMatrix4(drawer.matrixWorld);
   }
 
   return {
-    run, update,
+    run, openHold, closeHold, update, centerPoint,
     // jump to the end; a record that never left the tray is handed back (its cover) so it can go straight on
     finish() {
-      if (!running) return null;
-      const left = handed ? null : cover;
+      if (mode === 'idle') return null;
+      const left = mode === 'dispense' && !handed ? cover : null;
       clearDisc();
-      running = false; frozen = false;
-      drawer.position.z = front;
+      clearStack();
+      resolveOpened();
+      mode = 'idle'; frozen = false; openFrac = 0;
+      drawer.position.z = 0;
       return left;
     },
-    seek(at) { if (!running) return; frozen = true; t = at; update(0); },
-    get active() { return running; },
+    seek(at) { if (mode === 'idle') return; frozen = true; t = at; update(0); },
+    get active() { return mode !== 'idle'; },
+    get moving() { return mode === 'dispense' || mode === 'hold-close' || (mode === 'hold-open' && t < T_OPEN + 0.35); },
+    get isOpen() { return mode === 'hold-open' || openFrac > 0.25; },
     duration: T_END,
     handAt: T_HAND,
     drawer,

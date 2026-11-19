@@ -150,14 +150,40 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false, light
     return m;
   };
 
-  // ---- base ----
-  solids.push(add(caseRoot, rbox(w, bh, d, 0.07), mats.leather, 0, bh / 2, 0));
-  add(caseRoot, rbox(w + 0.03, 0.07, d + 0.03, 0.03), mats.welt, 0, bh - 0.07, 0);   // welt under the seam
-  add(caseRoot, rbox(w + 0.03, 0.07, d + 0.03, 0.03), mats.welt, 0, 0.09, 0);        // and above the foot
+  // ---- base: upper fixed chassis + full-bottom sliding drawer ----
+  const drawerH = 0.44;
+  const upperH = bh - drawerH;
+  const wt = 0.16;
+  // upper fixed chassis under the turntable deck
+  solids.push(add(caseRoot, rbox(w, upperH, d, 0.05), mats.leather, 0, drawerH + upperH / 2, 0));
+  add(caseRoot, rbox(w + 0.03, 0.07, d + 0.03, 0.03), mats.welt, 0, bh - 0.07, 0);        // welt under the lid seam
+  add(caseRoot, rbox(w + 0.025, 0.035, d + 0.025, 0.015), mats.welt, 0, drawerH + 0.02, 0); // subtle seam above the drawer
+  // dark underside plate under the upper chassis so the cavity reads solid when the drawer is pulled out
+  add(caseRoot, new THREE.BoxGeometry(w - 0.16, 0.03, d - 0.16), mats.dark, 0, drawerH + 0.015, 0);
   add(caseRoot, new THREE.BoxGeometry(2 * L.deckHalfWidth, 0.02, 2 * L.deckHalfDepth), mats.deck, 0, bh, 0);
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     add(caseRoot, cyl(0.045, 0.014, 10), mats.brass, sx * (L.deckHalfWidth - 0.1), deckTop + 0.004, sz * (L.deckHalfDepth - 0.1));
-    add(caseRoot, rbox(0.3, 0.3, 0.3, 0.05), mats.brass, sx * (w / 2 - 0.1), 0.15, sz * (d / 2 - 0.1));   // brass corners
+  }
+
+  // full-bottom drawer: the entire lower half of the suitcase slides out forward (controlled by tray.js)
+  const drawer = new THREE.Group();
+  drawer.name = 'suitcase-drawer';
+  caseRoot.add(drawer);
+  const innerW = w - wt * 2, innerD = d - wt * 2;
+  solids.push(add(drawer, rbox(w, 0.08, d, 0.03), mats.leather, 0, 0.04, 0));                                   // drawer floor
+  add(drawer, new THREE.BoxGeometry(innerW, 0.025, innerD), mats.lining, 0, 0.09, 0);                           // lined interior bed
+  solids.push(add(drawer, rbox(w, drawerH, wt, 0.05), mats.leather, 0, drawerH / 2, d / 2 - wt / 2));           // full-width front wall
+  add(drawer, rbox(w, drawerH - 0.02, wt, 0.04), mats.leather, 0, (drawerH - 0.02) / 2, -d / 2 + wt / 2);       // back wall
+  for (const sx of [-1, 1]) {
+    add(drawer, rbox(wt, drawerH - 0.02, d - wt * 1.4, 0.04), mats.leather, sx * (w / 2 - wt / 2), (drawerH - 0.02) / 2, 0); // side walls
+    add(drawer, new THREE.BoxGeometry(0.02, drawerH - 0.11, innerD), mats.lining, sx * (innerW / 2 - 0.01), 0.09 + (drawerH - 0.11) / 2, 0); // side lining
+    add(drawer, rbox(0.035, 0.055, d - 0.55, 0.012), mats.brass, sx * (w / 2 + 0.005), drawerH - 0.06, -0.05);  // brass slide glides
+  }
+  add(drawer, new THREE.BoxGeometry(innerW, drawerH - 0.11, 0.02), mats.lining, 0, 0.09 + (drawerH - 0.11) / 2, -innerD / 2 + 0.01); // back lining
+  add(drawer, new THREE.BoxGeometry(innerW, drawerH - 0.11, 0.02), mats.lining, 0, 0.09 + (drawerH - 0.11) / 2, innerD / 2 - 0.01);  // inner front lining
+  add(drawer, rbox(w + 0.03, 0.065, d + 0.03, 0.03), mats.welt, 0, 0.085, 0);                                   // foot welt around bottom
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    add(drawer, rbox(0.3, 0.28, 0.3, 0.05), mats.brass, sx * (w / 2 - 0.1), 0.14, sz * (d / 2 - 0.1));          // bottom brass corners
   }
 
   // ---- lid, hinged along the back top edge ----
@@ -180,17 +206,19 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false, light
   add(lidPivot, rbox(0.3, 0.2, 0.06, 0.012), mats.brass, 0, lh * 0.38, d + 0.025);
   add(lidPivot, rbox(0.7, 0.07, 0.1, 0.03), mats.welt, 0, lh - 0.02, 0.2);           // a strap loop on top
 
-  // ---- the front: speaker cloth in brass frames, a leather handle, clasps ----
+  // ---- the front: speakers & clasps on upper chassis, leather handle pull on the bottom drawer ----
   const z = d / 2;
+  const upperFrontY = drawerH + upperH * 0.50;
   for (const sx of [-1, 1]) {
-    add(caseRoot, rbox(0.9, 0.62, 0.03, 0.01), mats.brass, sx * 1.5, bh * 0.5, z + 0.006);
-    add(caseRoot, new THREE.PlaneGeometry(0.8, 0.52), mats.cloth, sx * 1.5, bh * 0.5, z + 0.03);
-    add(caseRoot, rbox(0.34, 0.26, 0.06, 0.012), mats.brass, sx * 0.8, bh * 0.66, z + 0.03);       // clasp, base half
-    add(caseRoot, rbox(0.2, 0.05, 0.07, 0.01), mats.dark, sx * 0.8, bh * 0.66, z + 0.045);
+    add(caseRoot, rbox(0.88, 0.36, 0.03, 0.01), mats.brass, sx * 1.5, upperFrontY, z + 0.006);
+    add(caseRoot, new THREE.PlaneGeometry(0.78, 0.28), mats.cloth, sx * 1.5, upperFrontY, z + 0.03);
+    add(caseRoot, rbox(0.34, 0.24, 0.06, 0.012), mats.brass, sx * 0.8, drawerH + upperH * 0.56, z + 0.03);       // clasp, base half
+    add(caseRoot, rbox(0.2, 0.05, 0.07, 0.01), mats.dark, sx * 0.8, drawerH + upperH * 0.56, z + 0.045);
   }
-  add(caseRoot, rbox(0.95, 0.2, 0.13, 0.05), mats.handle, 0, bh * 0.38, z + 0.065);                // handle
-  for (const sx of [-1, 1]) add(caseRoot, cyl(0.04, 0.03, 10).rotateX(Math.PI / 2), mats.brass, sx * 0.38, bh * 0.38, z + 0.135);
-  add(caseRoot, rbox(0.2, 0.22, 0.05, 0.01), mats.brass, 0, bh * 0.86, z + 0.03);                   // catch
+  // suitcase handle sits on the front of the full-bottom drawer so pulling it slides the drawer open
+  add(drawer, rbox(0.98, 0.19, 0.13, 0.05), mats.handle, 0, drawerH * 0.54, z + 0.065);
+  for (const sx of [-1, 1]) add(drawer, cyl(0.04, 0.03, 10).rotateX(Math.PI / 2), mats.brass, sx * 0.39, drawerH * 0.54, z + 0.135);
+  add(caseRoot, rbox(0.2, 0.2, 0.05, 0.01), mats.brass, 0, bh * 0.86, z + 0.03);                   // catch
 
   // ---- platter and the record seat ----
   add(caseRoot, cyl(L.platterRadius, 0.05, 64), mats.platter, L.record.x, deckTop + 0.025, L.record.z);
@@ -287,7 +315,7 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false, light
   }
 
   return {
-    ctl, root, tilt, caseRoot, lidPivot, seat, record: rec, recordHit, armPivot, armLift, knob,
+    ctl, root, tilt, caseRoot, drawer, lidPivot, seat, record: rec, recordHit, armPivot, armLift, knob,
     knobMat, knobTopMat, pointerMat, buttons, glyphs, rim, rimMat, shadow, solids, hits, mats,
   };
 }
