@@ -54,7 +54,7 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
   place.add(suitcase.root);
   scene.add(place);
   const flights = createFlights({ scene, suitcase, camera, view: ocam });
-  const tray = createRecordTray({ suitcase, kit: suitcase.recordKit, camera, onDisc: (d) => flights.receive(d) });
+  const tray = createRecordTray({ suitcase, kit: suitcase.recordKit, camera, overlayScene: scene, view: ocam, onDisc: (d) => flights.receive(d) });
   const points = suitcase.fitPoints();
 
   const caption = createCaption({
@@ -237,6 +237,7 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
     receive: (disc) => flights.receive(disc),
     dispense(cover) { hold = Math.max(hold, TUCK.hold); tray.run(cover); },
     openDrawer(covers = []) { hold = Math.max(hold, 4); return tray.openHold(covers); },
+    setDrawerCovers(covers = []) { tray.setStackCovers(covers); },
     closeDrawer() { tray.closeHold(); },
     drawerScreenPos,
     tray,

@@ -7,7 +7,7 @@ const path = require('node:path');
 const {
   parseShelves, parseLibraryShelf, parseSearch, parseArtistPage,
   parsePlaylistSongs, playlistContinuation, parseLyricsTab, parseLyrics,
-  continuation, artDebug, cleanUrl, parseAccount, parseAccounts,
+  normalizeQueue, continuation, artDebug, cleanUrl, parseAccount, parseAccounts,
 } = require('./ytm-parse.cjs');
 const { createSystemVolume } = require('./sysvolume.cjs');
 const { YTM_PARTITION, YTM_ORIGIN, devEnv, isGoogleUrl, isHttpsHostAllowed, lockNavigation } = require('./security.cjs');
@@ -46,7 +46,10 @@ function cleanEndpoint(ep) {
   if (typeof ep.videoId === 'string' && /^[\w-]{4,64}$/.test(ep.videoId)) out.videoId = ep.videoId;
   if (typeof ep.playlistId === 'string' && /^[\w-]{2,128}$/.test(ep.playlistId)) out.playlistId = ep.playlistId;
   if (typeof ep.params === 'string' && ep.params.length <= 256) out.params = ep.params;
-  return (out.videoId || out.playlistId) ? out : null;
+  if (ep.shuffle === true) out.shuffle = true;
+  if (ep.fromLive === true) out.fromLive = true;
+  if (Number.isInteger(ep.queueIndex) && ep.queueIndex >= 0 && ep.queueIndex <= 2000) out.queueIndex = ep.queueIndex;
+  return (out.videoId || out.playlistId || typeof out.queueIndex === 'number') ? out : null;
 }
 
 function cleanId(id, max = 128) {
@@ -87,6 +90,7 @@ function createYtm({ onState, onAccount, onStatus }) {
   let quitting = false;
   let status = { ok: true, offline: false, error: null, crashed: false };
   let lastSnapshot = null;
+  let activePlay = null;
   let retryTimer = null;
   let retryAttempt = 0;
 
@@ -385,32 +389,72 @@ function createYtm({ onState, onAccount, onStatus }) {
     return attempt;
   }
 
-  // Up Next queue from the player's live DOM queue, falling back to `next` API if DOM queue is empty.
+  // Up Next queue: reads YouTube Music's live Redux/Polymer store & DOM queue first, and whenever
+  // that has <= 1 track (e.g. player page never opened in the hidden window), fetches the real queue
+  // via InnerTube `next` WITH the active `playlistId` (or `RDAMVM<vid>` radio for standalone tracks),
+  // falling back to `albumSongs` for playlists that `next` doesn't expand.
   async function queue() {
     await ready();
-    const domQueue = await js('window.__sienna?.queue?.()').catch(() => []);
-    if (Array.isArray(domQueue) && domQueue.length) {
-      return domQueue.map((item) => ({ ...item, art: cleanUrl(item.art) }));
+    const live = await js('window.__sienna?.queue?.()').catch(() => null);
+    const liveItems = Array.isArray(live) ? live : (Array.isArray(live?.items) ? live.items : []);
+    const livePid = typeof live?.playlistId === 'string' && live.playlistId ? live.playlistId : null;
+    const playerOrder = Array.isArray(live?.playerOrder) && live.playerOrder.length >= 2 ? live.playerOrder : null;
+    const vid = lastSnapshot?.videoId || activePlay?.videoId || null;
+    const pid = livePid || lastSnapshot?.playlistId || activePlay?.playlistId || null;
+    const params = pid && activePlay?.playlistId === pid ? activePlay?.params : undefined;
+
+    if (liveItems.length >= 2) {
+      return normalizeQueue(liveItems, { currentVideoId: vid, playlistId: pid });
     }
-    const vid = lastSnapshot?.videoId;
-    if (!vid) return [];
-    try {
-      const songs = parsePlaylistSongs(await api('next', { videoId: vid, isAudioOnly: true }));
-      return songs.slice(0, 40).map((s, index) => ({
-        index,
-        videoId: s.videoId,
-        title: s.title,
-        artist: s.subtitle || '',
-        duration: s.duration || 0,
-        art: cleanUrl(s.art),
-        selected: !!s.selected || s.videoId === vid,
-      }));
-    } catch { return []; }
+
+    let best = liveItems;
+    const trySongs = (songs) => {
+      if (Array.isArray(songs) && songs.length > best.length) best = songs;
+    };
+
+    if (pid) {
+      try {
+        const body = {
+          playlistId: pid,
+          ...(vid ? { videoId: vid } : {}),
+          ...(params ? { params } : {}),
+          enablePersistentPlaylistPanel: true,
+          isAudioOnly: true,
+        };
+        trySongs(parsePlaylistSongs(await api('next', body)));
+      } catch { /* try playlist browse below */ }
+      if (best.length <= 1) {
+        try {
+          trySongs(await albumSongs({ playlistId: pid, ...(vid ? { videoId: vid } : {}) }));
+        } catch { /* ignore */ }
+      }
+    } else if (vid) {
+      try {
+        trySongs(parsePlaylistSongs(await api('next', {
+          videoId: vid,
+          playlistId: `RDAMVM${vid}`,
+          enablePersistentPlaylistPanel: true,
+          isAudioOnly: true,
+        })));
+      } catch { /* try plain next below */ }
+      if (best.length <= 1) {
+        try {
+          trySongs(parsePlaylistSongs(await api('next', {
+            videoId: vid,
+            enablePersistentPlaylistPanel: true,
+            isAudioOnly: true,
+          })));
+        } catch { /* ignore */ }
+      }
+    }
+
+    return normalizeQueue(best, { currentVideoId: vid, playlistId: pid, playerOrder });
   }
 
   async function play(rawEndpoint) {
     const endpoint = cleanEndpoint(rawEndpoint);
     if (!endpoint) return false;
+    activePlay = endpoint;
     stir();
     await ready();
     const routed = await js(`window.__sienna.navigate(${JSON.stringify(endpoint)})`).catch(() => false);
@@ -425,6 +469,7 @@ function createYtm({ onState, onAccount, onStatus }) {
   async function prepare(rawEndpoint) {
     const endpoint = cleanEndpoint(rawEndpoint);
     if (!endpoint) return false;
+    activePlay = endpoint;
     stir();
     await ready();
     return js(`window.__sienna.prepare(${JSON.stringify(endpoint)})`).catch(() => false);

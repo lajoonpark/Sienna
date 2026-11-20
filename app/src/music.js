@@ -60,16 +60,19 @@ function realMusic(c) {
 
 // Raw album/playlist songs ({ videoId, title, subtitle, album, duration, art }) -> playable song items.
 function collectionSongItems(collection, songs) {
-  return (songs ?? []).map((x, i) => ({
-    kind: 'song',
-    title: x.title,
-    subtitle: x.subtitle || collection.subtitle || '',
-    ...(x.album ? { album: x.album } : collection.kind === 'album' ? { album: collection.title } : {}),
-    ...(x.duration ? { duration: x.duration } : {}),
-    art: x.art || collection.art,
-    track: i + 1,
-    play: { videoId: x.videoId, ...(collection.play?.playlistId ? { playlistId: collection.play.playlistId } : {}) },
-  }));
+  return (songs ?? []).map((x, i) => {
+    const pid = collection.play?.playlistId || x.playlistId;
+    return {
+      kind: 'song',
+      title: x.title,
+      subtitle: x.subtitle || collection.subtitle || '',
+      ...(x.album ? { album: x.album } : collection.kind === 'album' ? { album: collection.title } : {}),
+      ...(x.duration ? { duration: x.duration } : {}),
+      art: x.art || collection.art,
+      track: i + 1,
+      play: { videoId: x.videoId, ...(pid ? { playlistId: pid } : {}), ...(x.params ? { params: x.params } : {}) },
+    };
+  });
 }
 
 // ---- fake store ------------------------------------------------------------
@@ -252,20 +255,40 @@ function fakeMusic() {
   let fakeLoginItem = false;
   let fakeDiscordRpc = false;
   const st = {
-    signedIn: !qs.has('guest'), ready: true, videoId: null, title: null, artist: null, art: null,
+    signedIn: !qs.has('guest'), ready: true, videoId: null, playlistId: null, title: null, artist: null, art: null,
     playerState: -1, position: 0, duration: 0, volume: 70, muted: false, like: 'INDIFFERENT',
-    repeat: 'OFF', shuffle: false, adPlaying: false,
+    repeat: 'OFF', shuffle: false, queueSig: '', adPlaying: false,
   };
   let queue = [];
   let at = 0;
+  let fakeQRev = 0;
+  const updateSig = () => {
+    st.queueSig = `${fakeQRev}:${queue.length}:${queue[0]?.play?.videoId || ''}:${queue[1]?.play?.videoId || ''}:${at}`;
+  };
+  const shuffleQueueInPlace = () => {
+    if (queue.length < 2) return;
+    const current = queue[at];
+    const rest = queue.filter((_, i) => i !== at);
+    for (let i = rest.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rest[i], rest[j]] = [rest[j], rest[i]];
+    }
+    queue = [current, ...rest];
+    at = 0;
+    st.shuffle = true;
+    fakeQRev++;
+    updateSig();
+  };
   const load = (i) => {
     if (!queue.length) return;
     at = (i + queue.length) % queue.length;
     const it = queue[at];
     Object.assign(st, {
-      videoId: it.play.videoId, title: it.title, artist: it.subtitle, art: it.art,
+      videoId: it.play.videoId, playlistId: it.play.playlistId ?? st.playlistId ?? null,
+      title: it.title, artist: it.subtitle, art: it.art,
       duration: it.duration || 180, position: 0, playerState: 1, like: 'INDIFFERENT',
     });
+    updateSig();
   };
   setInterval(() => {
     if (st.playerState === 1) {
@@ -285,7 +308,7 @@ function fakeMusic() {
     seek: (s) => { st.position = Math.max(0, Math.min(st.duration, s)); },
     volume: (v) => { st.volume = Math.max(0, Math.min(100, v)); if (v > 0) st.muted = false; },
     mute: () => { st.muted = !st.muted; },
-    shuffle: () => { st.shuffle = !st.shuffle; },
+    shuffle: () => { shuffleQueueInPlace(); },
     repeat: () => { st.repeat = st.repeat === 'OFF' ? 'ALL' : st.repeat === 'ALL' ? 'ONE' : 'OFF'; },
     like: () => { st.like = st.like === 'LIKE' ? 'INDIFFERENT' : 'LIKE'; },
     queueIndex: (i) => { if (i >= 0 && i < queue.length) load(i); },
@@ -336,19 +359,36 @@ function fakeMusic() {
       source: 'Sample liner notes (browser preview)',
     } : null,
     queue: async () => queue.map((it, index) => ({
-      index, videoId: it.play?.videoId, title: it.title, artist: it.subtitle, duration: it.duration, art: it.art, selected: index === at,
+      index, displayIndex: index + 1, fromLive: true, videoId: it.play?.videoId, ...(it.play?.playlistId ? { playlistId: it.play.playlistId } : {}),
+      title: it.title, artist: it.subtitle, duration: it.duration, art: it.art, selected: index === at,
     })),
     play: async (item) => {
-      const col = collections.get(item.play?.playlistId);
-      if (col) {
-        queue = collectionSongItems(col, col.songs);
-        load(Math.max(0, queue.findIndex((x) => x.play.videoId === item.play?.videoId)));
+      const ep = item?.play ?? item ?? {};
+      if (ep.fromLive && typeof ep.queueIndex === 'number' && ep.queueIndex >= 0 && ep.queueIndex < queue.length) {
+        load(ep.queueIndex);
         return;
       }
-      const shelf = shelves.find((s) => s.items.includes(item));
+      const col = ep.playlistId ? collections.get(ep.playlistId) : null;
+      if (col) {
+        queue = collectionSongItems(col, col.songs);
+        st.playlistId = col.play?.playlistId ?? null;
+        st.shuffle = false;
+        load(Math.max(0, queue.findIndex((x) => x.play.videoId === ep.videoId)));
+        if (ep.shuffle) shuffleQueueInPlace();
+        return;
+      }
+      if (ep.videoId && queue.length) {
+        const inQueue = queue.findIndex((x) => x.play?.videoId === ep.videoId);
+        if (inQueue >= 0) { load(inQueue); return; }
+      }
+      const shelf = shelves.find((s) => s.items.includes(item) || (ep.videoId && s.items.some((x) => x.play?.videoId === ep.videoId)));
       queue = shelf ? shelf.items : all;
+      st.playlistId = null;
+      st.shuffle = false;
       const idx = queue.indexOf(item);
-      load(idx >= 0 ? idx : 0);
+      const byId = idx >= 0 ? idx : (ep.videoId ? queue.findIndex((x) => x.play?.videoId === ep.videoId) : -1);
+      load(byId >= 0 ? byId : 0);
+      if (ep.shuffle) shuffleQueueInPlace();
     },
     prepare: () => new Promise((r) => setTimeout(r, Number(new URLSearchParams(location.search).get('loadms')) || 0)),
     startPrepared(item) { return this.play(item); },

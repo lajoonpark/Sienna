@@ -197,11 +197,18 @@ function ensureRack(i) {
 // the torn-paper overlays for Lyrics (liner notes), Up Next Queue, and offline/error status banner
 const liner = createLiner({
   music,
-  onQueueOpen: (items) => {
+  onQueueOpen: () => {
     pacer?.kick();
     suitcase.wake(4);
-    const covers = (items ?? []).slice(0, 4).map((it) => getCover(it.art, 256).tex);
-    return suitcase.openDrawer(covers);
+    const initialCovers = player?.art ? [getCover(player.art, 256).tex] : [];
+    return suitcase.openDrawer(initialCovers);
+  },
+  onQueueCovers: (items) => {
+    if (!items?.length) return;
+    const sel = items.findIndex((it) => it.selected);
+    const ordered = sel > 0 ? [...items.slice(sel), ...items.slice(0, sel)] : items;
+    const covers = ordered.slice(0, 5).map((it) => getCover(it.art, 256).tex);
+    if (covers.length) suitcase.setDrawerCovers(covers);
   },
   onQueueClose: () => {
     pacer?.kick();
@@ -210,8 +217,17 @@ const liner = createLiner({
   getDrawerPos: () => suitcase.drawerScreenPos(),
   onPickQueue: (it, idx) => {
     pacer?.kick();
-    if (it.videoId) startSong(music, suitcase.suitcase, { play: { videoId: it.videoId } });
-    else music.command('queueIndex', it.index ?? idx);
+    if (it.videoId) {
+      const play = {
+        videoId: it.videoId,
+        ...(it.playlistId ? { playlistId: it.playlistId } : {}),
+        ...(it.params ? { params: it.params } : {}),
+        ...(it.fromLive ? { fromLive: true, queueIndex: it.index ?? idx } : {}),
+      };
+      startSong(music, suitcase.suitcase, { play });
+    } else {
+      music.command('queueIndex', it.index ?? idx);
+    }
     suitcase.dispense(getCover(it.art, 512).tex);
   },
 });
@@ -244,8 +260,8 @@ const collectionList = createCollectionList({
     suitcase.dispense(getCover(item.art, 512).tex);
   },
   onShuffle: (item) => {
-    startSong(music, suitcase.suitcase, item);
-    if (!player.shuffle) music.command('shuffle');
+    const shuffledItem = { ...item, play: { ...(item.play ?? {}), shuffle: true } };
+    startSong(music, suitcase.suitcase, shuffledItem);
     suitcase.dispense(getCover(item.art, 512).tex);
   },
 });

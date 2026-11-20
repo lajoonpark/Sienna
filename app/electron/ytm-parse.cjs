@@ -315,6 +315,8 @@ function parsePlaylistSongs(response) {
     if (it.play?.videoId) {
       out.push({
         videoId: it.play.videoId,
+        ...(it.play.playlistId ? { playlistId: it.play.playlistId } : {}),
+        ...(it.play.params ? { params: it.play.params } : {}),
         title: it.title,
         subtitle: it.subtitle,
         ...(it.album ? { album: it.album } : {}),
@@ -331,8 +333,11 @@ function parsePlaylistSongs(response) {
       album: rs.some((x) => runType(x) === 'MUSIC_PAGE_TYPE_ALBUM'),
     }));
     const album = longSegs.find((x) => x.album)?.text;
+    const we = row.navigationEndpoint?.watchEndpoint;
     out.push({
       videoId: row.videoId,
+      ...(we?.playlistId ? { playlistId: we.playlistId } : {}),
+      ...(we?.params ? { params: we.params } : {}),
       title: text(row.title),
       subtitle: text(row.shortBylineText),
       ...(album ? { album } : {}),
@@ -342,6 +347,77 @@ function parsePlaylistSongs(response) {
     });
   }
   return out;
+}
+
+// Normalize, deduplicate, sanitize artwork URLs, attach playlistId, optionally reorder by a live
+// `playerOrder` videoId list (e.g. movie_player.getPlaylist() when shuffled), and ensure accurate
+// `selected` marker + windowing around the current track on Up Next queue items.
+function normalizeQueue(rawItems, { currentVideoId = null, playlistId = null, playerOrder = null, max = 80 } = {}) {
+  let ordered = Array.isArray(rawItems) ? rawItems : [];
+  if (Array.isArray(playerOrder) && playerOrder.length >= 2 && ordered.length >= 2) {
+    const byId = new Map();
+    for (const raw of ordered) {
+      if (raw?.videoId && !byId.has(raw.videoId)) byId.set(raw.videoId, raw);
+    }
+    const reordered = [];
+    const used = new Set();
+    for (const vid of playerOrder) {
+      const hit = byId.get(vid);
+      if (hit && !used.has(vid)) {
+        used.add(vid);
+        reordered.push(hit);
+      }
+    }
+    if (reordered.length >= 2) {
+      for (const raw of ordered) {
+        if (!raw?.videoId || !used.has(raw.videoId)) reordered.push(raw);
+      }
+      ordered = reordered;
+    }
+  }
+
+  const all = [];
+  const seen = new Set();
+  for (const raw of ordered) {
+    if (!raw) continue;
+    const title = String(raw.title || '').trim();
+    if (!title) continue;
+    const artist = String(raw.artist ?? raw.subtitle ?? '').trim();
+    const videoId = typeof raw.videoId === 'string' && raw.videoId ? raw.videoId : null;
+    const dedupeKey = videoId || `${title.toLowerCase()}|${artist.toLowerCase()}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    const pid = (typeof raw.playlistId === 'string' && raw.playlistId) ? raw.playlistId : (playlistId || null);
+    const entry = {
+      index: Number.isInteger(raw.index) ? raw.index : all.length,
+      displayIndex: all.length + 1,
+      ...(raw.fromLive ? { fromLive: true } : {}),
+      videoId,
+      ...(pid ? { playlistId: pid } : {}),
+      ...(typeof raw.params === 'string' && raw.params ? { params: raw.params } : {}),
+      title,
+      artist,
+      ...(raw.duration ? { duration: raw.duration } : {}),
+      ...(raw.durationText ? { durationText: raw.durationText } : {}),
+      art: cleanUrl(raw.art),
+      selected: !!raw.selected,
+    };
+    all.push(entry);
+  }
+
+  let selectedIdx = -1;
+  if (currentVideoId && all.length) {
+    selectedIdx = all.findIndex((it) => it.selected && it.videoId === currentVideoId);
+    if (selectedIdx < 0) selectedIdx = all.findIndex((it) => it.videoId === currentVideoId);
+    if (selectedIdx >= 0) {
+      for (let i = 0; i < all.length; i++) all[i].selected = i === selectedIdx;
+    }
+  }
+  if (selectedIdx < 0) selectedIdx = all.findIndex((it) => it.selected);
+
+  if (all.length <= max) return all;
+  const start = selectedIdx >= 0 ? Math.max(0, Math.min(all.length - max, selectedIdx - 15)) : 0;
+  return all.slice(start, start + max);
 }
 
 // Next-page continuation token for a playlist / liked-songs browse response.
@@ -409,5 +485,5 @@ function parseAccounts(res) {
 module.exports = {
   parseAccount, parseAccounts, parseShelves, parseLibraryShelf, shelfTitle,
   parseSearch, parseArtistPage, parsePlaylistSongs, playlistContinuation, parseLyricsTab, parseLyrics,
-  continuation, artOf, artDebug, text, findAll, cleanUrl,
+  normalizeQueue, continuation, artOf, artDebug, text, findAll, cleanUrl,
 };

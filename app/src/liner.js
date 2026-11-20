@@ -75,7 +75,7 @@ const CSS = `
   transition: opacity .22s ease, visibility 0s .28s; font-family: var(--sienna-font); user-select: none; }
 .ln-qveil.show { pointer-events: auto; visibility: visible; opacity: 1; transition: opacity .22s ease; }
 .ln-qveil.closing { pointer-events: none; visibility: visible; opacity: 0; transition: opacity .24s ease .08s; }
-.ln-qbackdrop { position: absolute; inset: 0; background: rgba(40,28,20,.14); }
+.ln-qbackdrop { position: absolute; inset: 0; background: rgba(40,28,20,.10); }
 .ln-qbox { position: fixed; left: 50%; top: 7vh; transform: translateX(-50%); width: min(560px, 90vw);
   max-height: min(68vh, 620px); display: flex; flex-direction: column; pointer-events: auto; }
 .ln-qtop { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 8px 8px;
@@ -162,7 +162,7 @@ export function showWebGLError(err) {
   document.body.appendChild(wrap);
 }
 
-export function createLiner({ music, onQueueOpen = null, onQueueClose = null, getDrawerPos = null, onPickQueue = null } = {}) {
+export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, onQueueClose = null, getDrawerPos = null, onPickQueue = null } = {}) {
   if (!document.getElementById('ln-css')) {
     const st = document.createElement('style'); st.id = 'ln-css'; st.textContent = CSS; document.head.appendChild(st);
   }
@@ -207,6 +207,9 @@ export function createLiner({ music, onQueueOpen = null, onQueueClose = null, ge
   let unlean = null;
   let closeTimer = 0;
   let qCloseTimer = 0;
+  let qRefreshTimer = 0;
+  let qRetryTimer = 0;
+  let renderedItems = [];
   let seq = 0;
 
   const closeBtn = word('Close', 73, () => close());
@@ -247,6 +250,8 @@ export function createLiner({ music, onQueueOpen = null, onQueueClose = null, ge
 
   function closeQueueOverlay({ keepDrawer = false } = {}) {
     clearTimeout(qCloseTimer);
+    clearTimeout(qRefreshTimer);
+    clearTimeout(qRetryTimer);
     const origin = drawerOrigin();
     const slips = [...qList.querySelectorAll('.ln-qslip')];
     const scrollBox = qScroll.getBoundingClientRect();
@@ -305,50 +310,64 @@ export function createLiner({ music, onQueueOpen = null, onQueueClose = null, ge
     srcEl.textContent = res.source || '';
   }
 
-  async function openQueue() {
-    if (mode === 'queue') { close(); return; }
-    if (mode === 'lyrics') close();
-    const my = ++seq;
-    clearTimeout(qCloseTimer);
-    mode = 'queue';
+  function sameQueueTracks(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if ((a[i]?.videoId || a[i]?.title) !== (b[i]?.videoId || b[i]?.title)) return false;
+    }
+    return true;
+  }
 
-    // Step 1: fetch the queue tracks while sliding the entire bottom drawer of the suitcase open
-    const itemsPromise = music.queue?.().catch(() => []) ?? Promise.resolve([]);
-    const items = await itemsPromise;
-    if (my !== seq || mode !== 'queue') return;
+  function applySelectedToDom(selectedIdx, { smoothScroll = false } = {}) {
+    const slips = [...qList.querySelectorAll('.ln-qslip')];
+    let activeEl = null;
+    slips.forEach((li, idx) => {
+      const isNow = idx === selectedIdx;
+      li.classList.toggle('now', isNow);
+      const num = li.querySelector('.ln-qn');
+      if (num) num.textContent = isNow ? '♪' : String(renderedItems[idx]?.displayIndex ?? (idx + 1));
+      if (isNow) activeEl = li;
+    });
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: smoothScroll ? 'nearest' : 'center', ...(smoothScroll ? { behavior: 'smooth' } : {}) });
+    }
+  }
 
-    // Open the full bottom drawer (showing the top queue covers inside it) and wait for it to slide out
-    const drawerReady = onQueueOpen ? Promise.resolve(onQueueOpen(items)) : Promise.resolve();
-    await drawerReady;
-    if (my !== seq || mode !== 'queue') return;
+  function syncQueueSelection(videoId) {
+    if (!videoId || !renderedItems.length) return false;
+    const idx = renderedItems.findIndex((it) => it.videoId === videoId);
+    if (idx < 0) return false;
+    renderedItems.forEach((it, i) => { it.selected = i === idx; });
+    applySelectedToDom(idx, { smoothScroll: true });
+    return true;
+  }
 
-    // Step 2: populate the Queue slips and launch them straight out of the open suitcase drawer
+  function renderQueueItems(items, { animate = false } = {}) {
+    const prevScroll = qScroll.scrollTop;
+    renderedItems = Array.isArray(items) ? items.map((it) => ({ ...it })) : [];
     qList.innerHTML = '';
-    qScroll.scrollTop = 0;
-    qveil.classList.remove('closing');
 
-    if (!items?.length) {
+    if (!renderedItems.length) {
       const empty = document.createElement('li');
       empty.className = 'ln-qempty';
       empty.style.clipPath = torn(55, 3, 6);
       empty.textContent = 'Nothing in the queue yet — pick a record to start one.';
       qList.appendChild(empty);
-      qveil.classList.add('show');
-      requestAnimationFrame(() => qCloseBtn.paint());
       return;
     }
 
     const slips = [];
-    items.forEach((it, idx) => {
+    renderedItems.forEach((it, idx) => {
       const r = rng(301 + idx * 19);
       const li = document.createElement('li');
       li.className = `ln-qslip${it.selected ? ' now' : ''}`;
+      if (it.videoId) li.dataset.videoId = it.videoId;
       li.style.clipPath = torn(110 + (idx % 7) * 13, 3, 6);
       li.style.setProperty('--r', `${((r() - 0.5) * 1.4).toFixed(2)}deg`);
 
       const num = document.createElement('span');
       num.className = 'ln-qn';
-      num.textContent = it.selected ? '♪' : String(idx + 1);
+      num.textContent = it.selected ? '♪' : String(it.displayIndex ?? (idx + 1));
 
       const cov = document.createElement('div');
       cov.className = 'ln-qcov';
@@ -375,8 +394,15 @@ export function createLiner({ music, onQueueOpen = null, onQueueClose = null, ge
           close({ keepDrawer: true });
           onPickQueue(it, idx);
         } else {
-          if (it.videoId) music.play({ videoId: it.videoId });
-          else music.command('queueIndex', it.index ?? idx);
+          if (it.videoId) {
+            music.play({
+              videoId: it.videoId,
+              ...(it.playlistId ? { playlistId: it.playlistId } : {}),
+              ...(it.params ? { params: it.params } : {}),
+            });
+          } else {
+            music.command('queueIndex', it.index ?? idx);
+          }
           close();
         }
       });
@@ -384,29 +410,121 @@ export function createLiner({ music, onQueueOpen = null, onQueueClose = null, ge
       slips.push(li);
     });
 
-    // Reveal the container first (still invisible for 1 frame) so we can measure each slip's exact final rect
+    const activeEl = qList.querySelector('.now');
+    if (animate) {
+      if (activeEl) activeEl.scrollIntoView({ block: 'center' });
+      const origin = drawerOrigin();
+      const boxRect = qScroll.getBoundingClientRect();
+      let order = 0;
+      slips.forEach((li) => {
+        const rect = li.getBoundingClientRect();
+        const visible = rect.bottom >= boxRect.top - 40 && rect.top <= boxRect.bottom + 40;
+        const fx = Math.round(origin.x - (rect.left + rect.width / 2));
+        const fy = Math.round(origin.y - (rect.top + rect.height / 2));
+        li.style.setProperty('--fx', `${fx}px`);
+        li.style.setProperty('--fy', `${fy}px`);
+        if (visible) {
+          li.style.setProperty('--delay', `${Math.min(480, (order++) * 38)}ms`);
+          li.classList.add('emerging');
+        }
+      });
+    } else {
+      qScroll.scrollTop = prevScroll;
+      if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  async function refreshQueue({ retryIfStale = true, expectedVideoId = null } = {}) {
+    if (mode !== 'queue') return;
+    const my = seq;
+    clearTimeout(qRetryTimer);
+    const items = await (music.queue?.().catch(() => null) ?? Promise.resolve(null));
+    if (my !== seq || mode !== 'queue' || !Array.isArray(items)) return;
+
+    if (items.length && sameQueueTracks(renderedItems, items)) {
+      let selectedIdx = items.findIndex((it) => it.selected);
+      if (expectedVideoId && (selectedIdx < 0 || items[selectedIdx]?.videoId !== expectedVideoId)) {
+        const byVid = items.findIndex((it) => it.videoId === expectedVideoId);
+        if (byVid >= 0) selectedIdx = byVid;
+      }
+      renderedItems = items.map((it, i) => ({ ...it, selected: i === selectedIdx }));
+      if (selectedIdx >= 0) applySelectedToDom(selectedIdx, { smoothScroll: true });
+    } else if (items.length || !renderedItems.length) {
+      renderQueueItems(items, { animate: false });
+    }
+
+    if (retryIfStale && expectedVideoId) {
+      const sel = items.find((it) => it.selected);
+      if (!sel || sel.videoId !== expectedVideoId || items.length <= 1) {
+        qRetryTimer = setTimeout(() => {
+          refreshQueue({ retryIfStale: false, expectedVideoId });
+        }, 550);
+      }
+    }
+  }
+
+  async function openQueue() {
+    if (mode === 'queue') { close(); return; }
+    if (mode === 'lyrics') close();
+    const my = ++seq;
+    clearTimeout(qCloseTimer);
+    clearTimeout(qRefreshTimer);
+    clearTimeout(qRetryTimer);
+    mode = 'queue';
+    renderedItems = [];
+
+    // Start fetching the queue AND opening the drawer + launching the sweeping vinyls immediately
+    // in parallel so the Queue menu loads right in front of the vinyls while the animation plays.
+    const itemsPromise = music.queue?.().catch(() => []) ?? Promise.resolve([]);
+    onQueueOpen?.();
+
+    qList.innerHTML = '';
+    qScroll.scrollTop = 0;
+    qveil.classList.remove('closing');
     qveil.classList.add('show');
     requestAnimationFrame(() => qCloseBtn.paint());
 
-    const activeEl = qList.querySelector('.now');
-    if (activeEl) activeEl.scrollIntoView({ block: 'center' });
+    let loaded = false;
+    const loadNoteTimer = setTimeout(() => {
+      if (loaded || my !== seq || mode !== 'queue') return;
+      const loading = document.createElement('li');
+      loading.className = 'ln-qempty';
+      loading.style.clipPath = torn(55, 3, 6);
+      loading.textContent = 'Loading queue…';
+      qList.replaceChildren(loading);
+    }, 110);
 
-    const origin = drawerOrigin();
-    const boxRect = qScroll.getBoundingClientRect();
-    let order = 0;
-    slips.forEach((li) => {
-      const rect = li.getBoundingClientRect();
-      const visible = rect.bottom >= boxRect.top - 40 && rect.top <= boxRect.bottom + 40;
-      const fx = Math.round(origin.x - (rect.left + rect.width / 2));
-      const fy = Math.round(origin.y - (rect.top + rect.height / 2));
-      li.style.setProperty('--fx', `${fx}px`);
-      li.style.setProperty('--fy', `${fy}px`);
-      if (visible) {
-        li.style.setProperty('--delay', `${Math.min(480, (order++) * 38)}ms`);
-        li.classList.add('emerging');
-      }
-    });
+    const items = await itemsPromise;
+    loaded = true;
+    clearTimeout(loadNoteTimer);
+    if (my !== seq || mode !== 'queue') return;
+
+    if (items?.length) onQueueCovers?.(items);
+    renderQueueItems(items, { animate: true });
   }
+
+  // Keep the Queue live-synced whenever the playing song, playlist, shuffle, or live queue order changes while open.
+  let lastTrackKey = null;
+  let lastShuffle = null;
+  let lastQueueSig = null;
+  music?.onState?.((s) => {
+    if (!s || s.adPlaying) return;
+    const trackKey = `${s.videoId || ''}|${s.playlistId || ''}`;
+    const trackChanged = lastTrackKey !== null && trackKey !== lastTrackKey;
+    const shuffleChanged = lastShuffle !== null && s.shuffle !== lastShuffle;
+    const sigChanged = lastQueueSig !== null && s.queueSig !== undefined && s.queueSig !== lastQueueSig;
+    lastTrackKey = trackKey;
+    lastShuffle = s.shuffle;
+    if (s.queueSig !== undefined) lastQueueSig = s.queueSig;
+    if (mode !== 'queue') return;
+    if (trackChanged || shuffleChanged || sigChanged) {
+      if (trackChanged && s.videoId) syncQueueSelection(s.videoId);
+      clearTimeout(qRefreshTimer);
+      qRefreshTimer = setTimeout(() => {
+        refreshQueue({ retryIfStale: true, expectedVideoId: s.videoId });
+      }, 180);
+    }
+  });
 
   // ---- offline / error status banner ----
   const banner = document.createElement('div');
