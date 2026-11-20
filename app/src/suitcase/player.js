@@ -22,6 +22,7 @@ import { renderOverlay } from '../watercolour.js';
 import { fitObject, ndcBounds } from './fit.js';
 import { createFlights } from './flight.js';
 import { createRecordTray } from './tray.js';
+import { isNearCaption } from './tuck.js';
 import { searchOpen } from '../search.js';
 
 // The case sits in the bottom-left corner, upright: the same three-quarter view as the small window
@@ -112,18 +113,23 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
   // ---- pointer: window-level and in the capture phase, so a press on the case never reaches the racks ----
   const ndc = new THREE.Vector2();
   let pointer = null;        // last pointer position in NDC
+  let pointerPx = null;      // last pointer position in CSS px
   let over = false;
   let swallowClick = false;
   const onCanvas = (e) => e.target === renderer.domElement;
+  const onCaption = (e) => e.target instanceof Node && caption.el.contains(e.target);
   const toNdc = (e) => {
     const r = renderer.domElement.getBoundingClientRect();
     return ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1));
   };
   const cursor = () => { if (onCanvasLast) renderer.domElement.style.cursor = suitcase.cursor(); };
   let onCanvasLast = false;
+  let onCaptionLast = false;
   addEventListener('pointermove', (e) => {
     onCanvasLast = onCanvas(e) || suitcase.dragging;
+    onCaptionLast = onCaption(e);
     pointer = toNdc(e).clone();
+    pointerPx = { x: e.clientX, y: e.clientY };
     if (!shown) return;
     if (suitcase.dragging) { suitcase.pointerDrag(ndc, ocam); cursor(); return; }
     if (!onCanvasLast || sunk > 0.3) { suitcase.hover(null); over = false; return; }
@@ -131,6 +137,10 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
     cursor();
   }, true);
   addEventListener('pointerdown', (e) => {
+    onCanvasLast = onCanvas(e) || suitcase.dragging;
+    onCaptionLast = onCaption(e);
+    pointer = toNdc(e).clone();
+    pointerPx = { x: e.clientX, y: e.clientY };
     swallowClick = false;      // a drag that ended elsewhere never produced a click
     if (!shown || !onCanvas(e) || sunk > 0.3) return;
     if (suitcase.pointerDown(toNdc(e), ocam)) { swallowClick = true; e.stopPropagation(); }
@@ -140,7 +150,14 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
   addEventListener('pointercancel', () => suitcase.pointerUp(), true);
   addEventListener('blur', () => suitcase.pointerUp());   // released outside the window: do not leave a drag stuck
   addEventListener('click', (e) => { if (swallowClick) { swallowClick = false; e.stopPropagation(); } }, true);
-  document.addEventListener('pointerleave', () => { pointer = null; over = false; suitcase.hover(null); });
+  document.addEventListener('pointerleave', () => {
+    pointer = null;
+    pointerPx = null;
+    onCanvasLast = false;
+    onCaptionLast = false;
+    over = false;
+    suitcase.hover(null);
+  });
   // scroll over the case = volume (the shop's own scroll-for-volume keeps working elsewhere)
   addEventListener('wheel', (e) => {
     if (!shown || !over || !onCanvas(e) || searchOpen()) return;
@@ -149,13 +166,21 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
   }, { capture: true, passive: true });
 
   // ---- tucking away ----
-  let tuckWanted = false, away = 0, hold = 0, sunk = 0, lidShut = false, risen = 0;
-  // Wakes only when the cursor is ON the case: the strip that peeks up while tucked, the whole case
-  // while it is up (a ray against its real shape, not a box round it), so records in the corner just
-  // above the strip stay reachable. Only on the canvas: menus and the caption do not count.
+  let tuckWanted = false, away = 0, hold = 0, sunk = 0, lidShut = false, risen = 0, captionTucked = false;
+  // Wakes when the cursor is ON the case (the strip that peeks up while tucked, or the whole case
+  // while it is up, a ray against its real shape so records in the corner stay reachable). Once open,
+  // hovering the visible paper caption beside it (or crossing the gap to it) keeps it awake.
   function near() {
-    if (!pointer || !onCanvasLast) return false;
-    return suitcase.touches(pointer, ocam);
+    if (!pointer) return false;
+    if (onCanvasLast && suitcase.touches(pointer, ocam)) return true;
+    return isNearCaption({
+      captionTucked,
+      onCaption: onCaptionLast,
+      onCanvas: onCanvasLast,
+      pointerPx,
+      captionRect: caption.rect(),
+      caseRect,
+    });
   }
   function tuckStep(dt) {
     if (flights.active || tray.active) hold = TUCK.hold; else hold = Math.max(0, hold - dt);
@@ -171,7 +196,8 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
     risen += ((tray.active ? 1 : 0) - risen) * (1 - Math.exp(-dt * TUCK.rate));
     const e = sunk * sunk * (3 - 2 * sunk);
     place.position.y = baseY - sinkWorld * e + riseWorld * risen * risen * (3 - 2 * risen);
-    caption.tuck(e > 0.05);
+    captionTucked = e > 0.05;
+    caption.tuck(captionTucked);
   }
 
   let lastWall = performance.now();

@@ -400,3 +400,78 @@ test('label: picking the song that is already playing keeps waiting, so the cove
   assert.deepStrictEqual(l.sync('SAME', 'ART'), { keep: true });
   assert.ok(l.pending);
 });
+
+// ---- tucking: hovering the visible paper caption (or crossing the gap to it) keeps the case awake ----
+test('tuck: hovering the visible caption or crossing the gap from the case keeps it awake', async () => {
+  const { isNearCaption } = await load('suitcase/tuck');
+  const caseRect = { left: 40, right: 320, top: 460, bottom: 720 };
+  const captionRect = { left: 334, right: 640, top: 580, bottom: 720 };
+
+  // Directly hovering a button or text inside the visible paper caption (off-canvas target)
+  assert.strictEqual(isNearCaption({
+    captionTucked: false,
+    onCaption: true,
+    onCanvas: false,
+    pointerPx: { x: 500, y: 690 },
+    captionRect,
+    caseRect,
+  }), true);
+
+  // Crossing the 14px gap between caseRect.right (320) and captionRect.left (334)
+  assert.strictEqual(isNearCaption({
+    captionTucked: false,
+    onCaption: false,
+    onCanvas: true,
+    pointerPx: { x: 327, y: 650 },
+    captionRect,
+    caseRect,
+  }), true);
+
+  // Moving away onto the shop canvas outside the caption + bridge lets it tuck
+  assert.strictEqual(isNearCaption({
+    captionTucked: false,
+    onCaption: false,
+    onCanvas: true,
+    pointerPx: { x: 660, y: 650 },
+    captionRect,
+    caseRect,
+  }), false);
+  assert.strictEqual(isNearCaption({
+    captionTucked: false,
+    onCaption: false,
+    onCanvas: true,
+    pointerPx: { x: 400, y: 540 },
+    captionRect,
+    caseRect,
+  }), false);
+
+  // Hovering an overlay/modal sitting over the caption does not keep the case awake
+  assert.strictEqual(isNearCaption({
+    captionTucked: false,
+    onCaption: false,
+    onCanvas: false,
+    pointerPx: { x: 500, y: 650 },
+    captionRect,
+    caseRect,
+  }), false);
+
+  // While tucked, hovering where the invisible caption would sit never wakes the case
+  assert.strictEqual(isNearCaption({
+    captionTucked: true,
+    onCaption: false,
+    onCanvas: true,
+    pointerPx: { x: 500, y: 650 },
+    captionRect,
+    caseRect,
+  }), false);
+
+  // With no visible caption rect, never keeps awake
+  assert.strictEqual(isNearCaption({
+    captionTucked: false,
+    onCaption: true,
+    onCanvas: false,
+    pointerPx: { x: 500, y: 650 },
+    captionRect: null,
+    caseRect,
+  }), false);
+});
