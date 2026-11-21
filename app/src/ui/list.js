@@ -200,6 +200,10 @@ const LIST_CSS = `
 .ui-list--lines .ui-list-row.is-now.is-hover .ui-list-title { color: var(--sienna-indigo); }
 .ui-list--lines .ui-list-foot { margin-top: auto; border-top: 1px solid var(--sienna-hairline); }
 .ui-list--lines .ui-list-scroll { flex: 1 1 auto; min-height: 0; }
+.ui-list--lines:has(.is-pinned) .ui-list-scroll { padding-top: 0;
+  scroll-padding-top: 62px; scroll-snap-type: y mandatory; }
+.ui-list--lines:has(.is-pinned) .ui-list-row { scroll-snap-align: start; }
+.ui-list--lines .ui-list-row.is-pinned { scroll-snap-align: none; }
 `;
 
 function injectListCss() {

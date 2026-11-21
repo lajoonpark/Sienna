@@ -206,6 +206,41 @@ try {
   assert.equal(await page.evaluate(() => fixture.collection.isOpen()), false);
   pass('collection loading/error notes: rejected songs promise, Retry re-fetches, Esc closes');
 
+  await page.evaluate(() => {
+    fixture.shortQueue = fixture.queue;
+    fixture.queue = fixture.songs.slice(0, 80).map((item, index) => ({ ...item, index, selected: index === 1 }));
+  });
+  await page.evaluate(() => fixture.liner.openQueue());
+  await page.waitForSelector('.ln-qveil .is-pinned', { state: 'visible' });
+  await wait(1000);
+  await page.evaluate(async () => {
+    const scroll = document.querySelector('.ln-qbox .ui-list-scroll');
+    for (let i = 0; i < 3; i++) {
+      scroll.scrollTop = scroll.scrollHeight;
+      scroll.dispatchEvent(new Event('scroll'));
+      await new Promise(resolve => setTimeout(resolve, 30));
+    }
+    scroll.scrollTop = 62 * 60 + 38;
+  });
+  await wait(300);
+  const pinGeometry = await page.evaluate(() => {
+    const scroll = document.querySelector('.ln-qbox .ui-list-scroll');
+    const pin = scroll.querySelector('.is-pinned').getBoundingClientRect();
+    const rows = [...scroll.querySelectorAll('.ui-list-row:not(.is-pinned)')].map(el => el.getBoundingClientRect());
+    const next = rows.find(rect => rect.bottom > pin.bottom + 0.5);
+    return { top: pin.top, scrollTop: scroll.getBoundingClientRect().top, height: pin.height,
+      bottom: pin.bottom, nextTop: next.top, nextHeight: next.height, offset: scroll.scrollTop };
+  });
+  assert.ok(pinGeometry.offset > 62 * 50, 'queue must actually be scrolled');
+  assert.ok(Math.abs(pinGeometry.top - pinGeometry.scrollTop) < 0.5, 'pin must be flush with scroll viewport');
+  assert.equal(pinGeometry.height, 62);
+  assert.equal(pinGeometry.nextHeight, pinGeometry.height);
+  assert.ok(pinGeometry.nextTop >= pinGeometry.bottom - 0.5, 'no partial row may peek below the pin after scrolling');
+  await page.screenshot({ path: `${out}/queue-pinned-fixed.png` });
+  await page.evaluate(() => { fixture.liner.close(); fixture.queue = fixture.shortQueue; });
+  await wait(500);
+  pass('queue pin: 62px opaque slot flush with viewport, settled rows snap below it without exposed tails');
+
   await page.mouse.move(0, 0);
   await page.evaluate(() => fixture.liner.openQueue());
   await page.waitForSelector('.ln-qveil .ui-list-row', { state: 'visible' });
