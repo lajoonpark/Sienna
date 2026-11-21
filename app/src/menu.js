@@ -3,8 +3,8 @@
 // edge of the screen and up to four on the right, vertically centred, each stack turned in toward the
 // middle and tilting after the cursor. The section you are in is painted terracotta, like a hover.
 // A HOME word sits top-left whenever you are not home.
-import { brushStroke } from './ui/brush.js';
-import { COLORS, injectTokens } from './ui/tokens.js';
+import { brushButton } from './ui/brush.js';
+import { SPACE, TYPE, injectTokens } from './ui/tokens.js';
 import { FONT, onLettering } from './style.js';
 
 const PER_SIDE = 5;
@@ -18,22 +18,12 @@ const CSS = `
 .mn .stack { transform-style: preserve-3d; will-change: transform; display: flex; flex-direction: column; gap: 2px; }
 .mn.l .stack, .mn.h .stack { align-items: flex-start; transform-origin: 0% 50%; }
 .mn.r .stack { align-items: flex-end; transform-origin: 100% 50%; }
-.mn button { pointer-events: auto; position: relative; border: 0; padding: 0; background: none; cursor: pointer;
-  font-family: var(--sienna-font); color: var(--sienna-paper); line-height: 1; letter-spacing: .02em;
-  transition: transform var(--sienna-dur-fast) var(--sienna-ease-pop); }
+.mn .ui-brush { pointer-events: auto; }
 .mn.h:not(.show) button { pointer-events: none; }
-.mn button .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity var(--sienna-dur-mid); filter: drop-shadow(var(--sienna-shadow-rest)); }
-.mn button .plate.hot { opacity: 0; }
-.mn button:hover .plate.hot, .mn button.on .plate.hot { opacity: 1; }
-.mn.l button:hover, .mn.h button:hover { transform: translateX(6px) translateZ(18px) rotate(var(--sienna-tilt-md)); }
-.mn.r button:hover { transform: translateX(-6px) translateZ(18px) rotate(calc(var(--sienna-tilt-md) * -1)); }
-.mn button:active { transform: translateZ(4px) scale(.97); }
+.mn.r .ui-brush-label { text-align: right; }
 /* at a station the columns step back (smaller, nearer the edge, half faded) and let the cursor reach the racks */
 .mn.l button, .mn.r button { opacity: var(--rec, 1); }
 .mn.faded button { pointer-events: none; }
-.mn button span { position: relative; display: block; padding: .16em 1.1em .1em .75em; text-shadow: 0 0 1px rgba(248,241,226,.7); }
-.mn.r button span { padding: .16em .75em .1em 1.1em; text-align: right; }
-.mn button span i { display: block; font-style: normal; white-space: nowrap; }
 `;
 
 // How the words of one title fit: one line if it fits (shrinking a little), else two balanced lines,
@@ -117,13 +107,13 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
   let over = 0;
   let receded = false, cursorX = null;
   const buttons = [];      // { el, side, seed, key }
-  const plateCache = new Map();
 
   function makeButton(parent, label, seed, onClick) {
-    const el = document.createElement('button');
-    el.tabIndex = -1; // keys belong to the shop, not to focus
-    el.innerHTML = '<div class="plate"></div><div class="plate hot"></div><span></span>';
-    el.addEventListener('click', (e) => { e.stopPropagation(); el.blur(); onClick(); });
+    const el = brushButton(label, { size: 'lg', seed, flipX: parent === R, onClick: (e) => {
+      e.stopPropagation();
+      if (e.detail) el.blur();
+      onClick();
+    } });
     el.addEventListener('pointerenter', () => { over++; });
     el.addEventListener('pointerleave', () => { over = Math.max(0, over - 1); });
     parent.stack.appendChild(el);
@@ -133,45 +123,27 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
   home.el.setAttribute('aria-label', 'Back to the entrance');
   home.indent = 0;
 
-  // ---- plates: painted once per size ----
-  function plate(w, h, color, seed, flipX) {
-    const key = `${w}x${h}-${color}-${seed}-${flipX ? 1 : 0}`;
-    let url = plateCache.get(key);
-    if (!url) { url = brushStroke(w, h, color, seed, { flipX }); plateCache.set(key, url); }
-    return `url(${url})`;
-  }
-  function paint(b) {
-    const w = b.el.offsetWidth, h = b.el.offsetHeight;
-    if (!w) return;
-    const flipX = b.side === R;
-    const [cold, hot] = b.el.querySelectorAll('.plate');
-    cold.style.backgroundImage = plate(w, h, COLORS.indigo, b.seed, flipX);
-    hot.style.backgroundImage = plate(w, h, COLORS.terracotta, b.seed, flipX);
-  }
-
   // ---- layout: fit the words, then place the stacks clear of the player on the left ----
-  const fontReady = (document.fonts?.load(`40px ${FONT}`) ?? Promise.resolve()).catch(() => {});
+  const fontReady = (document.fonts?.load(`${SPACE[8]}px ${FONT}`) ?? Promise.resolve()).catch(() => {});
   let fontsOk = false;
   fontReady.then(() => { fontsOk = true; layout(); });
   onLettering(L.el, () => layout()); // Settings > Lettering: fit the words again in the new face
 
   function setLabel(b, text, base, maxW) {
     const { size, lines } = fit(text, base, maxW);
-    const span = b.el.querySelector('span');
-    b.el.style.fontSize = `${size}px`;
-    span.replaceChildren(...lines.map((l) => Object.assign(document.createElement('i'), { textContent: l })));
-    b.el.setAttribute('aria-label', text);
+    b.el.setLabel(lines, { fontPx: size });
+    b.el.setAttribute('aria-label', b === home ? 'Back to the entrance' : text);
   }
 
   function layout() {
     if (!fontsOk) return;
     const vw = innerWidth, vh = innerHeight;
-    const base = Math.min(40, Math.max(26, vh * 0.052));
+    const base = Math.min(SPACE[8], Math.max(TYPE.lg, vh * 0.045));
     const maxW = Math.min(250, Math.max(140, vw * 0.17));
     for (const b of buttons) setLabel(b, b.label, base, maxW);
     setLabel(home, 'Home', base, maxW);
     // stagger like the player's words: a hand-set look, not a column
-    const nudge = [0, 0.5, 0.16, 0.7];
+    const nudge = [0, 0.3, 0.1, 0.4];
     for (const side of [L, R]) {
       side.stack.querySelectorAll('button').forEach((el, i) => {
         const px = Math.round(nudge[i % nudge.length] * base * 0.8);
@@ -179,7 +151,6 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
         el.style.marginRight = side === R ? `${px}px` : '';
       });
     }
-    [...buttons, home].forEach(paint);
 
     // the home word: top-left; the left stack must start below it
     const homeBottom = vh * 0.034 + home.el.offsetHeight + 8;
@@ -209,7 +180,7 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
   }
 
   function rebuild() {
-    for (const b of buttons) b.el.remove();
+    for (const b of buttons) { b.el.destroy(); b.el.remove(); }
     buttons.length = 0;
     over = 0;
     const list = sections.slice(0, PER_SIDE * 2);
@@ -225,7 +196,7 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
   }
 
   function syncCurrent() {
-    for (const b of buttons) b.el.classList.toggle('on', b.index === current);
+    for (const b of buttons) b.el.setCurrent(b.index === current);
     H.el.classList.toggle('show', shown && current !== -1);
   }
 

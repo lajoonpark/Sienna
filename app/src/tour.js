@@ -1,3 +1,4 @@
+import { setOverlayOpen } from './ui/sheet.js';
 // The first-run tour: torn paper notes in the shop, with brush-stroke words floating under them, the same
 // paper and words as the Settings card. It starts once the intro reaches home on a new install, and each
 // step ends when you have done the thing it is about (signed in, played a record, pressed a shortcut).
@@ -286,7 +287,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   // a timeout that is called off when the step changes
   const later = (fn, ms) => { const id = setTimeout(fn, ms); cleanup.push(() => clearTimeout(id)); };
 
-  function show(on) { root.classList.toggle('show', on); }
+  function show(on) { root.classList.toggle('show', on); setOverlayOpen(root, on); }
 
   // Write a step: where it sits, its words, its floating buttons
   function render() {

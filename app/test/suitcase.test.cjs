@@ -7,6 +7,36 @@ const assert = require('node:assert');
 const load = (name) => import(`../src/${name}.js`);
 const near = (a, b, eps = 1e-9, msg) => assert.ok(Math.abs(a - b) <= eps, msg ?? `${a} !~ ${b}`);
 
+test('tuck: a real strip hit stays awake beneath a stationary pointer', async () => {
+  const { createCaseHover } = await load('suitcase/tuck');
+  const hover = createCaseHover();
+  const point = { x: 200, y: 760 };
+  assert.strictEqual(hover.update(point, true, () => true), true);
+  for (let i = 0; i < 20; i++) assert.strictEqual(hover.update(point, true, () => false), true);
+  point.x++;
+  assert.strictEqual(hover.update(point, true, () => false), false);
+});
+
+test('tuck: an empty point or an overlay clears the parked case hit', async () => {
+  const { createCaseHover } = await load('suitcase/tuck');
+  const hover = createCaseHover();
+  const point = { x: 200, y: 785 };
+  const unexpected = () => { throw Error('must not raycast off the canvas'); };
+  assert.strictEqual(hover.update(null, true, unexpected), false);
+  assert.strictEqual(hover.update(point, true, () => true), true);
+  assert.strictEqual(hover.update(point, false, unexpected), false);
+  assert.strictEqual(hover.update(point, true, () => false), false);
+});
+
+test('tuck: an unhit stationary point keeps testing the real case, not its bounding box', async () => {
+  const { createCaseHover } = await load('suitcase/tuck');
+  const hover = createCaseHover();
+  const point = { x: 200, y: 730 };
+  assert.strictEqual(hover.update(point, true, () => false), false);
+  assert.strictEqual(hover.update(point, true, () => false), false);
+  assert.strictEqual(hover.update(point, true, () => true), true);
+});
+
 // ---- VolumeKnob ----
 test('knob: the angle sweeps 270 degrees around the top', async () => {
   const { VolumeKnob } = await load('knob');

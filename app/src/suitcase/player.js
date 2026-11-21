@@ -22,7 +22,7 @@ import { renderOverlay } from '../watercolour.js';
 import { fitObject, ndcBounds } from './fit.js';
 import { createFlights } from './flight.js';
 import { createRecordTray } from './tray.js';
-import { isNearCaption } from './tuck.js';
+import { createCaseHover, isNearCaption } from './tuck.js';
 import { searchOpen } from '../search.js';
 
 // The case sits in the bottom-left corner, upright: the same three-quarter view as the small window
@@ -167,12 +167,13 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
 
   // ---- tucking away ----
   let tuckWanted = false, away = 0, hold = 0, sunk = 0, lidShut = false, risen = 0, captionTucked = false;
+  const caseHover = createCaseHover();
   // Wakes when the cursor is ON the case (the strip that peeks up while tucked, or the whole case
   // while it is up, a ray against its real shape so records in the corner stay reachable). Once open,
   // hovering the visible paper caption beside it (or crossing the gap to it) keeps it awake.
   function near() {
+    if (caseHover.update(pointerPx, !!pointer && onCanvasLast, () => suitcase.touches(pointer, ocam))) return true;
     if (!pointer) return false;
-    if (onCanvasLast && suitcase.touches(pointer, ocam)) return true;
     return isNearCaption({
       captionTucked,
       onCaption: onCaptionLast,
