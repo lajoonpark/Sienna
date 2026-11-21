@@ -701,6 +701,21 @@ function heldUnder(core, pointer, camera) {
   _hb.setFromObject(s.mesh);
   return _hc.ray.intersectBox(_hb, _wp) ? core.hovered : -1;
 }
+// The same, but only over the cover itself (its square, as posed), not the empty space or disc around it
+const _hm = new THREE.Matrix4();
+function coverUnder(core, pointer, camera) {
+  if (core.hovered < 0) return -1;
+  const s = core.sleeves[core.hovered];
+  if (!s || !s.mesh.visible || (s.held ?? s.lift) < 0.5) return -1;
+  _hc.setFromCamera(pointer, camera);
+  s.mesh.updateWorldMatrix(true, false);
+  const r = _hc.ray.applyMatrix4(_hm.copy(s.mesh.matrixWorld).invert());
+  if (Math.abs(r.direction.z) < 1e-9) return -1;
+  const t = -r.origin.z / r.direction.z;
+  if (t < 0) return -1;
+  r.at(t, _wp);
+  return Math.abs(_wp.x) <= s.size / 2 && Math.abs(_wp.y) <= s.size / 2 ? core.hovered : -1;
+}
 
 // A hovered record's name tag must stay readable, and the record must stay under the cursor (you should
 // be able to press it without moving). A tag that would hang past the bottom of the window (the zoom
@@ -917,8 +932,8 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
           // grown over a neighbour never hides it. The lifted one only catches the cursor where no
           // other record is (the bit sticking out above the rack): you click the song, not the rack.
           // the camera has slid to frame the lifted record (main.js): the other records' rest spots moved
-          // under the cursor, so while it is over the lifted record that one keeps the hover
-          if (core.holdHover) want = heldUnder(core, pointer, camera);
+          // under the cursor, so while it is over the lifted record's cover that one keeps the hover
+          if (core.holdHover) want = coverUnder(core, pointer, camera);
           if (want < 0) want = base();
           if (want < 0) want = heldUnder(core, pointer, camera);
         }
