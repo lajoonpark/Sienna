@@ -690,7 +690,8 @@ const pointerPx = { x: 0, y: 0 };
 // the turn runs on a critically damped spring, so it starts gently, never overshoots, and a new record
 // mid-turn just bends the motion instead of restarting it. Pivoting on the
 // record keeps it on the same spot on screen, so it stays under the cursor; only the room around it
-// swings. The camera never slides left / right / up / down on its own.
+// swings. The camera never slides left / right / up / down on its own, except to bring the held-up record
+// clear of the window's edges and buttons (steerClear), and then never off the cursor.
 // Only the cursor changes what is hovered: whenever the camera starts a swing (toward a record, or back
 // when you leave the records), the hover is frozen until the cursor actually moves. Otherwise the swing
 // moves a neighbouring record under a still cursor, the camera swings to that one, and so on.
@@ -699,9 +700,17 @@ const pointerPx = { x: 0, y: 0 };
 // the cursor and just grows, its words readable), to about zoomTo metres from it, but never more than
 // zoomMax of the way (far racks like the tall bookshelf get the most; the close trough barely moves).
 // zoomRate: how quickly it gets there.
+// Clear of the edges and buttons (steerClear): once the record is up, the camera also slides sideways /
+// up / down (pan, in its own frame, panRate) so the record and its name tag sit inside the window (edge px
+// in from it, floor = NDC y of the tucked suitcase) and off the buttons (pad px round them), but only as
+// far as keeps the cursor keep of the cover's size inside its edges. What that cannot clear, the zoom gives
+// up (cut: 0 = full zoom, 1 = none, cutRate per second), and side words still in the way then step aside
+// (menu.update's hold).
 const FOCUS = { dwell: 0.03, share: 0.35, maxYaw: 0.14, maxPitch: 0.09, omega: 11, rate: 6, settle: 2, release: 0.35, unfreezePx: 4,
-  zoomTo: 1.6, zoomMax: 0.5, zoomRate: 4 };
+  zoomTo: 1.6, zoomMax: 0.5, zoomRate: 4,
+  edge: 18, floor: -0.82, pad: 10, keep: 0.2, panRate: 5, cutRate: 2.5 };
 const focus = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0, vyaw: 0, vpitch: 0, key: -1, aimed: -1, rack: -1, on: 0, off: 0, freeze: null,
+  pan: new THREE.Vector2(), cut: 0, stuck: false,
   pivot: new THREE.Vector3(), // rig-local point the camera orbits about
   // the camera's pose in the rig without the cursor tilt; each frame's step of the swing is applied to it
   // as a rotation about the pivot, so the pivot stays put on screen even when it changes mid-swing
@@ -742,6 +751,7 @@ function updateFocus(dt) {
     const ty = THREE.MathUtils.clamp(-yaw * FOCUS.share, -FOCUS.maxYaw, FOCUS.maxYaw);
     const tp = THREE.MathUtils.clamp(-pitch * FOCUS.share, -FOCUS.maxPitch, FOCUS.maxPitch);
     focus.pivot.copy(_fp); // swings go step by step about the pivot, so a new pivot never jumps
+    focus.cut = 0; focus.stuck = false;
     aimAt(ty, tp, hov);
   } else if (hov < 0 && focus.off > FOCUS.release && focus.aimed !== -1) {
     focus.aimed = -1;
@@ -754,8 +764,11 @@ function updateFocus(dt) {
     [focus.pitch, focus.vpitch] = spring(focus.pitch, focus.vpitch, 0, FOCUS.omega, dt);
     focus.offP.multiplyScalar(1 - k);
     focus.offQ.slerp(_qa.identity(), k);
+    focus.pan.multiplyScalar(1 - k);
+    focus.cut = 0; focus.stuck = false;
     return finishFocus(rack);
   }
+  steerClear(dt);
   // this frame's step of the swing, as a rotation about the pivot
   orbitQ(focus.yaw, focus.pitch, _qa).invert();
   [focus.yaw, focus.vyaw] = spring(focus.yaw, focus.vyaw, focus.tyaw, FOCUS.omega, dt);
@@ -771,7 +784,8 @@ function updateFocus(dt) {
   // Zoomed in, the settled pose is the same turn but nearer: p = pivot - R * pivot * near. The
   // distance to the pivot eases toward that (a new record mid-zoom bends it instead of jumping).
   const k2 = 1 - Math.exp(-dt * FOCUS.settle), kz = 1 - Math.exp(-dt * FOCUS.zoomRate);
-  const near = THREE.MathUtils.clamp(FOCUS.zoomTo / focus.pivot.length(), 1 - FOCUS.zoomMax, 1);
+  const near0 = THREE.MathUtils.clamp(FOCUS.zoomTo / focus.pivot.length(), 1 - FOCUS.zoomMax, 1);
+  const near = near0 + (1 - near0) * focus.cut;
   orbitQ(focus.yaw, focus.pitch, _qa);
   _fp.copy(focus.pivot).applyQuaternion(_qa).multiplyScalar(-near).add(focus.pivot);
   const dist = focus.offP.distanceTo(focus.pivot);
@@ -779,6 +793,56 @@ function updateFocus(dt) {
   focus.offQ.slerp(_qa, k2);
   focus.offP.sub(focus.pivot).setLength(dist + (focus.pivot.length() * near - dist) * kz).add(focus.pivot);
   finishFocus(rack);
+}
+// The held-up record's box on screen (rack.screenBox, measured after the racks' last update) and the boxes
+// it must keep clear of (NDC [left, right, bottom, top]). Pans the camera toward the smallest move that
+// puts the record and its tag inside the window and off the buttons with the cursor still on the cover;
+// with no such move the zoom gives up a little more each frame (focus.stuck).
+let held = null;
+// the camera as it would be without steerClear's slide: racks pick the lifted record's rest spot with it
+const pickCam = new THREE.PerspectiveCamera();
+pickCam.matrixAutoUpdate = pickCam.matrixWorldAutoUpdate = false;
+function updatePickCam() {
+  pickCam.projectionMatrix.copy(camera.projectionMatrix);
+  pickCam.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+  pickCam.matrix.compose(focus.offP, camera.quaternion, camera.scale);
+  pickCam.matrixWorld.multiplyMatrices(rig.matrixWorld, pickCam.matrix);
+  pickCam.matrixWorldInverse.copy(pickCam.matrixWorld).invert();
+}
+const clampTo = (v, [lo, hi]) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
+const within = (v, [lo, hi]) => lo > hi || (v >= lo - 1e-4 && v <= hi + 1e-4);
+function steerClear(dt) {
+  const h = held;
+  if (!h) return;
+  const p = camera.projectionMatrix.elements, ex = (2 * FOCUS.edge) / innerWidth, ey = (2 * FOCUS.edge) / innerHeight;
+  const [l, r, b, t] = h.all, [cl, cr, cb, ct] = h.rec, ix = FOCUS.keep * (cr - cl), iy = FOCUS.keep * (ct - cb);
+  // moves (NDC) that keep the cursor on the cover, and that keep cover + tag inside the window
+  const cur = [[h.anchor.x - cr + ix, h.anchor.x - cl - ix], [h.anchor.y - ct + iy, h.anchor.y - cb - iy]];
+  const fit = [[-1 + ex - l, 1 - ex - r], [FOCUS.floor - b, 1 - ey - t]];
+  // the move that would take the pan back out, where it is not needed
+  const back = [(focus.pan.x * p[0]) / h.z, (focus.pan.y * p[5]) / h.z];
+  const d = [0, 1].map((i) => clampTo(clampTo(back[i], fit[i]), cur[i]));
+  const px = (x) => (2 * x) / innerWidth - 1, py = (y) => 1 - (2 * y) / innerHeight;
+  const boxes = [...menu.blockers(), settingsPanel.buttonsBox()].filter(Boolean)
+    .map((o) => [px(o.l - FOCUS.pad), px(o.r + FOCUS.pad), py(o.b + FOCUS.pad), py(o.t - FOCUS.pad)]);
+  const hits = (o, [dx, dy]) => l + dx < o[1] && r + dx > o[0] && b + dy < o[3] && t + dy > o[2];
+  for (const o of boxes) {
+    if (!hits(o, d)) continue;
+    // step round it the shortest way still allowed (left, right, down, up)
+    let best = null, bestD = Infinity;
+    for (const c of [[o[0] - r, d[1]], [o[1] - l, d[1]], [d[0], o[2] - t], [d[0], o[3] - b]]) {
+      if (!within(c[0], cur[0]) || !within(c[1], cur[1]) || !within(c[0], fit[0]) || !within(c[1], fit[1])) continue;
+      const dd = Math.hypot(c[0] - d[0], c[1] - d[1]);
+      if (dd < bestD) { bestD = dd; best = c; }
+    }
+    if (best) [d[0], d[1]] = best;
+  }
+  focus.stuck = !within(d[0], fit[0]) || !within(d[1], fit[1]) || boxes.some((o) => hits(o, d));
+  if (focus.stuck && h.settled) focus.cut = Math.min(1, focus.cut + dt * FOCUS.cutRate);
+  // camera right = picture left
+  const k = 1 - Math.exp(-dt * FOCUS.panRate);
+  focus.pan.x -= ((d[0] * h.z) / p[0]) * k;
+  focus.pan.y -= ((d[1] * h.z) / p[5]) * k;
 }
 function finishFocus(rack) {
   if (hoverArg === null) for (const r of racks) if (r) r.forceHover = r === rack && focus.freeze && !r.turning ? focus.freeze.key : null;
@@ -955,9 +1019,10 @@ function frame(t, dtOverride, draw = true) {
   const k = nav.tilt;
   updateFocus(dt);
   // the swing about the hovered record, then the cursor tilt on top
-  camera.position.copy(focus.offP);
+  camera.position.copy(focus.offP).add(_fp.set(focus.pan.x, focus.pan.y, 0).applyQuaternion(focus.offQ));
   camera.quaternion.copy(focus.offQ).multiply(_qa.setFromEuler(_e.set(-tilt.y * 0.09 * k, -tilt.x * 0.2 * k, 0)));
   rig.updateMatrixWorld();
+  updatePickCam();
 
   // ?hover=N holds record N up on the rack you are at (a pinned ?cam counts as the table)
   const hoverAt = pinnedPose && nav.at === AT_HOME ? 0 : nav.settled ? nav.at : -1;
@@ -971,8 +1036,11 @@ function frame(t, dtOverride, draw = true) {
     if (!rack || !rack.root.visible) return;
     const active = (nav.settled && nav.at === i) || (!!pinnedPose && i === hoverAt);
     // the cursor over the suitcase or collection list does not pick records through them
-    rack.update(dt, camera, active && !suitcase.over && !spread.isOpen && !collectionList.isOpen() ? pointer : null, active);
+    rack.update(dt, camera, active && !suitcase.over && !spread.isOpen && !collectionList.isOpen() ? pointer : null, active, focus.pan.lengthSq() > 1e-8 ? pickCam : camera);
   });
+  // the record the camera is on, where it is on screen now (steerClear works from it next frame)
+  const atRack = currentRack();
+  held = atRack && !pinnedPose && !spread.isOpen && focus.aimed >= 0 && atRack.hovered === focus.aimed ? atRack.screenBox(camera) : null;
   // an album or playlist under the cursor: fetch its songs now, so pressing it opens the spread at once
   const hovItem = currentRack()?.core.sleeves[currentRack().hovered]?.item;
   if (canSpread(hovItem)) spread.prefetch(hovItem);
@@ -991,7 +1059,9 @@ function frame(t, dtOverride, draw = true) {
   menu.tilt(uiTiltX, uiTiltY);
   settingsPanel.tilt(uiTiltX, uiTiltY);
   // at a station (or flying to one) the side words step back so the racks stay reachable
-  menu.update(dt, cursorX01, !pinnedPose && nav.at !== AT_HOME);
+  // side words the record still overlaps once the zoom has given up all it can step aside
+  const hold = held && focus.cut >= 1 ? { l: (held.all[0] + 1) / 2 * innerWidth, r: (held.all[1] + 1) / 2 * innerWidth, t: (1 - held.all[3]) / 2 * innerHeight, b: (1 - held.all[2]) / 2 * innerHeight } : null;
+  menu.update(dt, cursorX01, !pinnedPose && nav.at !== AT_HOME, hold);
   if (!draw) return;
   updateLod(camera); // far squares of bricks and flagstones as plain boxes (kit.js)
   if (!params.has('allLights')) lightSlots.update(camera, dt); // ?allLights keeps every lamp on (to compare)

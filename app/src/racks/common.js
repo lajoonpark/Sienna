@@ -838,6 +838,35 @@ function keepUnderCursor(core, camera, dt, pointer) {
   }
 }
 
+// Where the hovered record and its name tag are on screen now, for the camera (main.js) to keep them clear
+// of the window's edges and the buttons: NDC boxes [left, right, bottom, top] of the cover (rec) and of
+// cover + tag (all), the cover's depth in metres (z) and the cursor it must stay under (hoverAnchor; the
+// cover's middle when the hover is forced). Null until the record is well on its way up.
+const _sV = new THREE.Vector3();
+function screenBox(core, camera) {
+  const s = core.sleeves[core.hovered];
+  if (!s || !s.mesh.visible || s.lift < 0.3) return null;
+  camera.updateWorldMatrix(true, false);
+  s.mesh.updateWorldMatrix(true, true);
+  const p = camera.projectionMatrix.elements;
+  const grow = (box, obj, x, y) => {
+    _sV.set(x, y, 0).applyMatrix4(obj.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
+    const w = Math.max(1e-3, -_sV.z), nx = (p[0] * _sV.x) / w, ny = (p[5] * _sV.y) / w;
+    box[0] = Math.min(box[0], nx); box[1] = Math.max(box[1], nx); box[2] = Math.min(box[2], ny); box[3] = Math.max(box[3], ny);
+    return w;
+  };
+  const rec = [Infinity, -Infinity, Infinity, -Infinity];
+  let z = 0;
+  for (const [a, c] of CORNERS) z += grow(rec, s.mesh, (a * s.size) / 2, (c * s.size) / 2) / 4;
+  const all = [...rec], t = core.tag;
+  if (t.mesh.parent && t.mesh.visible) {
+    const cardH = t.lines > 1 ? t.h2 : t.h;
+    for (const x of [-t.w / 2, t.w / 2]) for (const y of [t.h / 2, t.h / 2 - cardH]) grow(all, t.mesh, x, y);
+  }
+  const a = core.anchor.i === core.hovered ? core.anchor : { x: (rec[0] + rec[1]) / 2, y: (rec[2] + rec[3]) / 2 };
+  return { rec, all, z, anchor: { x: a.x, y: a.y }, settled: s.lift > FIT_FROM };
+}
+
 export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_ITEMS, sleeve = {}, tagOnSleeve = true } = {}) {
   const root = new THREE.Group();
   const core = {
@@ -905,16 +934,20 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
         core.sign?.setTitle(shelf.title);
         def.items(core, items);
       },
-      update(dt, camera, pointer, active) {
+      update(dt, camera, pointer, active, pickCamera = camera) {
         const n = core.sleeves.length;
         let want = -1;
         if (forced !== null) want = forced < n ? forced : -1;
         else if (active && pointer && n && !def.turning?.(core)) { // nothing lifts while the rack is turned by hand
-          const base = () => (def.pick ? def.pick(core, pointer, camera) : core.picker.pick(pointer, camera, root));
+          const base = (cam) => (def.pick ? def.pick(core, pointer, cam) : core.picker.pick(pointer, cam, root));
           // every record keeps its own patch of screen (its rest spot), so a lifted record that has
           // grown over a neighbour never hides it. The lifted one only catches the cursor where no
           // other record is (the bit sticking out above the rack): you click the song, not the rack.
-          want = base();
+          // The camera may slide to bring the lifted one clear of the window's edges and buttons
+          // (main.js steerClear); pickCamera is the camera without that slide, so while the cursor is
+          // in the lifted record's patch as it was before the slide, it keeps the hover.
+          const keep = core.hovered >= 0 && pickCamera !== camera && base(pickCamera) === core.hovered;
+          want = keep ? core.hovered : base(camera);
           if (want < 0) want = heldUnder(core, pointer, camera);
         }
         // picks >= 1000 are controls of the rack itself (page arrows...): def.control(core, id) on click
@@ -969,6 +1002,7 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
         s.mesh.getWorldPosition(out);
         return true;
       },
+      screenBox(camera) { return screenBox(core, camera); },
       set forceHover(i) { forced = Number.isFinite(i) ? i : null; },
       get core() { return core; }, // debug / checks (scripts/cover-check.mjs)
       // make this rack's hover covers now (in idle time); upload(tex) puts each on the GPU early

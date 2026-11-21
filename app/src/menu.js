@@ -117,7 +117,7 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
     el.addEventListener('pointerenter', () => { over++; });
     el.addEventListener('pointerleave', () => { over = Math.max(0, over - 1); });
     parent.stack.appendChild(el);
-    return { el, side: parent, seed, label, fontPx: 0, lines: [] };
+    return { el, side: parent, seed, label, fontPx: 0, lines: [], away: 0, out: false, home: null };
   }
   const home = makeButton(H, 'Home', 3, () => onHome?.());
   home.el.setAttribute('aria-label', 'Back to the entrance');
@@ -238,17 +238,38 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
     tilt(tx, ty) { tiltX = tx; tiltY = ty; apply(); },
     // Called every frame. `recede`: step the columns back (at a station or in flight). They come back
     // to full when the cursor is within 16% of their screen edge or over them. x01: cursor x in 0..1 or null.
-    update(dt, x01, recede) {
+    // `hold`: a held-up record's box on screen ({ l, t, r, b } px) or null; side words it overlaps (where
+    // they stood when last measured by blockers()) slide off to their edge and fade, letting the cursor
+    // through, until the record goes down.
+    update(dt, x01, recede, hold = null) {
       receded = recede;
       cursorX = x01;
+      const ke = 1 - Math.exp(-12 * Math.min(dt, 0.2)); // ~0.25 s
       for (const side of [L, R]) {
         const near = x01 != null && (side === L ? x01 < 0.16 : x01 > 0.84);
         const full = !receded || near || over > 0;
-        side.k += ((full ? 1 : 0) - side.k) * (1 - Math.exp(-12 * Math.min(dt, 0.2))); // ~0.25 s
+        side.k += ((full ? 1 : 0) - side.k) * ke;
         side.el.style.setProperty('--rec', String(0.5 + 0.5 * side.k));
         side.el.classList.toggle('faded', !full); // faded words let the cursor through to the racks
       }
+      for (const b of buttons) {
+        const h = b.home, out = !!hold && !!h && h.left < hold.r && h.right > hold.l && h.top < hold.b && h.bottom > hold.t;
+        if (out !== b.out) { b.out = out; b.el.style.pointerEvents = out ? 'none' : ''; }
+        b.away += ((out ? 1 : 0) - b.away) * ke;
+        if (!out && b.away < 1e-3) b.away = 0;
+        b.el.style.translate = b.away ? `${(b.side === L ? -1 : 1) * b.away * (h?.width ?? 0) * 1.2}px 0` : '';
+        b.el.style.opacity = b.away ? String((0.5 + 0.5 * b.side.k) * (1 - b.away)) : '';
+      }
       apply();
+    },
+    // Boxes on screen ({ l, t, r, b } px) a held-up record should keep clear of: the side words still in
+    // place and the home word. Measures them now (only call it while a record is held up).
+    blockers() {
+      const list = [];
+      const add = (r) => { if (r.width && r.height) list.push({ l: r.left, t: r.top, r: r.right, b: r.bottom }); };
+      if (shown) for (const b of buttons) if (!b.away && !b.out) add((b.home = b.el.getBoundingClientRect()));
+      if (H.el.classList.contains('show')) add(home.el.getBoundingClientRect());
+      return list;
     },
     relayout: layout,
     get hovering() { return over > 0; },

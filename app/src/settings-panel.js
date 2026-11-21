@@ -549,6 +549,12 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     page: () => current,
     tilt,
     restock: runRestock,
+    // where the top-right words are on screen ({ l, t, r, b } px), or null while they are hidden
+    buttonsBox() {
+      if (!btnWrap.classList.contains('show')) return null;
+      const r = btnStack.getBoundingClientRect();
+      return r.width && r.height ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null;
+    },
     // the top-right words show once the intro is over (like the section buttons)
     show(on) { btnWrap.classList.toggle('show', on); if (on) refreshLayout(); },
   };
