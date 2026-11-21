@@ -103,10 +103,11 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
 - **Richer Search.** Press **⌃⌥J** to search **Songs**, **Albums**, **Playlists**, or **Artists**
   (`Tab` switches tabs). Songs slide out of the suitcase drawer; albums and playlists fan open into
   records; artists open into their top songs and releases.
-- **Shared paper lists.** Search, collection songs and Up next use aligned torn slips: terracotta
-  marks the keyboard cursor and indigo marks the playing song. Collections filter as you type;
-  **Play** starts the first filtered song and **Shuffle** uses the filtered pool. Up next pins the
-  playing song first. Loading, empty and error notes stay in the list, with Retry on fetch errors.
+- **Shared paper lists.** Search, collection songs and Up next each sit on one paper sheet with
+  ruled rows: terracotta marks the keyboard cursor and indigo marks the playing song. Collections
+  filter as you type; **Play** starts the first filtered song and **Shuffle** uses the filtered
+  pool. Up next pins the playing song first. Loading, empty and error notes stay in the list,
+  with Retry on fetch errors.
 - **Paper sheets & notes.** Settings and Lyrics open as folding paper dialogs with a Close stamp,
   keyboard focus kept inside and returned to the opener on close. Settings has a page rail and
   painted choice chips; long pages show a scroll hint. Lyrics and tour body text use a book serif
