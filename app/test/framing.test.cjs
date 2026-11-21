@@ -49,3 +49,11 @@ test('framing: with no clear spot, leaves the least covered', async () => {
   assert.ok(Math.abs(dx + 60) < 1e-6, String(dx));
   assert.ok(coveredArea({ l: box.l + dx, t: box.t, r: box.r + dx, b: box.b }, view, []) > 0);
 });
+
+test('framing: cursors too far apart for one slide -> stays put', async () => {
+  const { frameShift } = await load();
+  const box = { l: 900, t: 200, r: 1100, b: 400 };
+  // hover began near the left edge, the cursor is now near the right: no slide keeps both 60 px inside
+  const keep = [...keepFor(box, 920, 300, 60), ...keepFor(box, 1080, 300, 60)];
+  assert.deepStrictEqual(frameShift({ box, view, obstacles: [], keep }), [0, 0]);
+});

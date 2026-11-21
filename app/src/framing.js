@@ -9,7 +9,8 @@
 //     keep:      [[[x, y] x4], ...]    convex quads (the record shrunk by the cursor inset, as the cursor
 //                                      sees it): each must still hold its cursor point after the slide.
 //                                      Given as the allowed slides: quad k = cursor_k - record quad.
-// When nothing clears everything, the slide that leaves the least of the box covered wins.
+// When nothing clears everything, the slide that leaves the least of the box covered wins; when no slide
+// keeps every cursor inside, it stays put.
 
 const area = (l, t, r, b) => Math.max(0, r - l) * Math.max(0, b - t);
 
@@ -21,12 +22,13 @@ export function coveredArea(box, view, obstacles) {
   return bad;
 }
 
-function inside(quad, x, y) {
+function inside(quad, x, y, eps = 1e-9) {
   let pos = 0, neg = 0;
   for (let i = 0; i < quad.length; i++) {
     const [ax, ay] = quad[i], [bx, by] = quad[(i + 1) % quad.length];
     const c = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
-    if (c > 1e-9) pos++; else if (c < -1e-9) neg++;
+    const e = eps * Math.hypot(bx - ax, by - ay);
+    if (c > e) pos++; else if (c < -e) neg++;
   }
   return !(pos && neg);
 }
@@ -56,10 +58,13 @@ export function frameShift({ box, view, obstacles = [], keep = [] }) {
   let best = null;
   for (const cx of xs) for (const cy of ys) {
     const [dx, dy] = clampToKeep(keep, cx, cy);
+    // the cursors are too far apart for any slide to keep both inset (the cursor crossed the record):
+    // stay put rather than slide off one of them
+    if (!keep.every((q) => inside(q, dx, dy, 0.01))) continue;
     const bad = coveredArea({ l: box.l + dx, t: box.t + dy, r: box.r + dx, b: box.b + dy }, view, obstacles);
     // any covering outweighs a long slide: 10 px² of record is worth a px of camera travel
     const cost = bad / 10 + Math.hypot(dx, dy);
     if (!best || cost < best.cost - 1e-6) best = { cost, d: [dx, dy] };
   }
-  return best.d;
+  return best ? best.d : [0, 0];
 }
