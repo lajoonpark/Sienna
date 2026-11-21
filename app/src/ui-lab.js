@@ -20,6 +20,7 @@ import { icon, ICON_NAMES } from './ui/icons.js';
 import { createSheet, overlayOpen, onOverlay } from './ui/sheet.js';
 import { createList, listStats } from './ui/list.js';
 import { createBanner } from './ui/banner.js';
+import { createScrollCue } from './ui/scroll-cue.js';
 
 injectTokens();
 
@@ -1024,6 +1025,7 @@ async function buildFullLab(samples) {
     );
 
     sheet.body.append(rowSharp, rowCovers, rowDanger, fine);
+    createScrollCue(sheet.body, { parent: sheet.footer });
 
     const doneBtn = brushButton('Done', {
       size: 'md',

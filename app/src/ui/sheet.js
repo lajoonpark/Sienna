@@ -45,7 +45,7 @@ const SHEET_CSS = `
   transition: opacity var(--sienna-dur-mid) var(--sienna-ease-out); }
 .ui-sheet-veil.closing { opacity: 0; visibility: visible; pointer-events: none;
   transition: opacity var(--sienna-dur-mid) var(--sienna-ease-in); }
-.ui-sheet-lean { display: flex; justify-content: center; will-change: transform; transform-style: preserve-3d; }
+.ui-sheet-lean { display: flex; justify-content: center; will-change: transform; }
 .ui-sheet-card { position: relative; box-sizing: border-box;
   width: var(--ui-sheet-w, min(760px, 92vw));
   max-height: var(--ui-sheet-max-h, min(620px, 88vh));

@@ -11,7 +11,7 @@ if (!out) { console.log('usage: node scripts/account-check.mjs out_dir'); proces
 const port = Number(process.env.SIENNA_PORT) || 5233;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: ['--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || (process.platform === 'darwin' ? 'metal' : 'swiftshader')}`, '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 page.on('pageerror', (e) => { console.log('[pageerror]', e.message); errors.push(e.message); });
@@ -20,7 +20,7 @@ const name = () => page.locator('.st-page.on .st-name').first().textContent();
 const at = () => page.evaluate(() => document.querySelector('.st-page.on')?.dataset.page);
 
 await page.goto(`http://127.0.0.1:${port}/?at=home&tour=0&settings=account`, { timeout: 180000 });
-await page.waitForSelector('.st-veil.show', { timeout: 120000 });
+await page.waitForSelector('.st-settings.show', { timeout: 120000 });
 await wait(2500);
 console.log('webgl:', await page.evaluate(() => { const g = document.createElement('canvas').getContext('webgl'); const d = g?.getExtension('WEBGL_debug_renderer_info'); return d ? g.getParameter(d.UNMASKED_RENDERER_WEBGL) : '?'; }));
 assert.strictEqual(await at(), 'account');
@@ -28,32 +28,33 @@ assert.strictEqual(await name(), 'Sienna Lane');
 await page.screenshot({ path: `${out}/1-account.png` });
 console.log('ok   signed in as the first account');
 
-await page.locator('.st-page.on .st-alt .st-w', { hasText: 'Lemon Grove' }).click();
+await page.locator('.st-page.on .st-alt .ui-ink', { hasText: 'Lemon Grove' }).click();
 await wait(1200);
 assert.strictEqual(await name(), 'Lemon Grove Records');
-assert.ok(await page.locator('.st-page.on .st-alt .st-w', { hasText: 'Sienna Lane' }).isVisible(), 'the other account is offered back');
+assert.ok(await page.locator('.st-page.on .st-alt .ui-ink', { hasText: 'Sienna Lane' }).isVisible(), 'the other account is offered back');
 console.log('ok   switched');
 
-await page.locator('.st-page.on .st-w', { hasText: /^Sign out$/ }).click();
+await page.locator('.st-page.on .ui-ink', { hasText: /^Sign out$/ }).click();
 await wait(600);
 assert.ok(await page.locator('.st-confirm.on').isVisible(), 'asks first');
 await page.screenshot({ path: `${out}/2-confirm.png` });
-await page.locator('.st-w', { hasText: 'Keep me in' }).click();
+await page.locator('.ui-ink', { hasText: 'Keep me in' }).click();
 await wait(300);
 assert.ok(!(await page.locator('.st-confirm.on').count()), 'Keep me in backs out');
-await page.locator('.st-page.on .st-w', { hasText: /^Sign out$/ }).click();
-await page.locator('.st-w', { hasText: 'Yes, sign out' }).click();
+await page.locator('.st-page.on .ui-ink', { hasText: /^Sign out$/ }).click();
+await page.locator('.ui-ink', { hasText: 'Yes, sign out' }).click();
 await wait(1200);
 assert.strictEqual(await name(), 'Not signed in');
-assert.ok(await page.locator('.st-page.on .st-w', { hasText: /^Sign in$/ }).isVisible(), 'offers sign in');
+assert.ok(await page.locator('.st-page.on .ui-ink', { hasText: /^Sign in$/ }).isVisible(), 'offers sign in');
 await page.screenshot({ path: `${out}/3-guest.png` });
 console.log('ok   signed out, guest page');
 
-await page.locator('.st-page.on .st-w', { hasText: /^Sign in$/ }).click();
+await page.locator('.st-page.on .ui-ink', { hasText: /^Sign in$/ }).click();
 await wait(1200);
 assert.strictEqual(await name(), 'Sienna Lane');
 console.log('ok   signed back in');
 
+await page.locator('.st-side [aria-current="page"]').focus();
 await page.keyboard.press('ArrowDown');
 await wait(800);
 assert.strictEqual(await at(), 'look');
@@ -75,7 +76,7 @@ console.log('ok   reopens on the same page');
 
 await page.setViewportSize({ width: 700, height: 600 });
 await wait(800);
-const fits = await page.evaluate(() => { const c = document.querySelector('.st-card').getBoundingClientRect(); return c.right <= innerWidth + 1 && c.bottom <= innerHeight + 1; });
+const fits = await page.evaluate(() => { const c = document.querySelector('.st-settings .ui-sheet-card').getBoundingClientRect(); return c.right <= innerWidth + 1 && c.bottom <= innerHeight + 1; });
 assert.ok(fits, 'card fits a small window');
 await page.screenshot({ path: `${out}/6-narrow.png` });
 console.log('ok   small window');
