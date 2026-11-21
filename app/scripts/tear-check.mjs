@@ -11,7 +11,7 @@ const out = outDir(process.argv[2], 'sienna-tear');
 const port = Number(process.env.SIENNA_PORT) || 5243;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: ['--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || (process.platform === 'darwin' ? 'metal' : 'swiftshader')}`, '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
@@ -56,7 +56,7 @@ console.log(`ok   2000 seeds stay within the cap (deepest ${(worst.deepest * 100
 // 2. every tour note keeps its words clear of the tear (cap 12 there)
 for (const step of ['welcome', 'letters', 'smooth', 'record', 'player', 'keys', 'bye']) {
   await open(`at=home&tour=${step}`);
-  const i = await insets('.tr-stage:not(.tr-ghost) .tr-note', '.tr-title, .tr-body, .tr-fine, .tr-msg');
+  const i = await insets('.tr-stage:not(.tr-ghost) .tr-note', '.tr-title, .tr-body, .tr-fine, .tr-msg, .tr-float');
   assert.ok(i.n > 0, `${step}: no text found`);
   for (const k of ['l', 't', 'r', 'b']) assert.ok(i[k] >= 12 + MARGIN, `${step}: text only ${i[k]}px from the ${k} edge`);
   await page.screenshot({ path: `${out}/${step}.png` });
@@ -67,7 +67,7 @@ for (const step of ['welcome', 'letters', 'smooth', 'record', 'player', 'keys', 
 for (const [w, h] of [[1280, 720], [700, 600]]) {
   await page.setViewportSize({ width: w, height: h });
   await open('at=home&tour=0&settings');
-  const i = await insets('.st-card', '.st-head, .st-side, .st-body, .st-foot');
+  const i = await insets('.st-settings .ui-sheet-card', '.ui-sheet-head, .st-side, .ui-sheet-body, .ui-sheet-foot');
   for (const k of ['l', 't', 'r', 'b']) assert.ok(i[k] >= 10 + MARGIN, `settings ${w}px: text only ${i[k]}px from the ${k} edge`);
   await page.screenshot({ path: `${out}/settings-${w}.png` });
   console.log(`ok   settings ${w}px text clear of the tear (l${i.l} t${i.t} r${i.r} b${i.b})`);

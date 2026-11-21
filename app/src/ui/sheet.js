@@ -9,6 +9,11 @@ import { onCursorTilt, tiltCSS } from '../cursortilt.js';
 // ---- Shared overlay signal (sheets, search, lists, queue) ----
 const openOverlays = new Set();
 const overlayListeners = new Set();
+const openSheets = [];
+
+export function sheetOpen() {
+  return openSheets.length > 0;
+}
 
 export function overlayOpen() {
   return openOverlays.size > 0;
@@ -45,7 +50,7 @@ const SHEET_CSS = `
   transition: opacity var(--sienna-dur-mid) var(--sienna-ease-out); }
 .ui-sheet-veil.closing { opacity: 0; visibility: visible; pointer-events: none;
   transition: opacity var(--sienna-dur-mid) var(--sienna-ease-in); }
-.ui-sheet-lean { display: flex; justify-content: center; will-change: transform; transform-style: preserve-3d; }
+.ui-sheet-lean { display: flex; justify-content: center; will-change: transform; }
 .ui-sheet-card { position: relative; box-sizing: border-box;
   width: var(--ui-sheet-w, min(760px, 92vw));
   max-height: var(--ui-sheet-max-h, min(620px, 88vh));
@@ -228,7 +233,7 @@ export function createSheet({
   }
 
   function handleWindowKeyDown(e) {
-    if (!openNow) return;
+    if (!openNow || !isTopmost()) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -251,7 +256,7 @@ export function createSheet({
       } else {
         nextIdx = idx < 0 || idx >= list.length - 1 ? 0 : idx + 1;
       }
-      list[nextIdx].focus({ preventScroll: true });
+      list[nextIdx].focus();
       return;
     }
     // If focus is somehow outside the sheet while open, swallow keys so nothing reaches the shop.
@@ -261,11 +266,17 @@ export function createSheet({
     }
   }
 
+  function isTopmost() {
+    return openSheets.at(-1) === veil;
+  }
+
   function open({ returnFocusTo = null } = {}) {
     if (destroyed || openNow) return;
     clearTimeout(closeTimer);
     opener = returnFocusTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     openNow = true;
+    openSheets.push(veil);
+    host.appendChild(veil);
     setOverlayOpen(owner, true);
 
     veil.classList.remove('closing');
@@ -290,7 +301,9 @@ export function createSheet({
 
   function close() {
     if (!openNow) return;
+    const wasTopmost = isTopmost();
     openNow = false;
+    openSheets.splice(openSheets.indexOf(veil), 1);
     window.removeEventListener('keydown', handleWindowKeyDown, true);
     setOverlayOpen(owner, false);
 
@@ -305,9 +318,12 @@ export function createSheet({
     unlean?.();
     unlean = null;
 
-    const restore = opener;
+    const top = openSheets.at(-1);
+    const restore = top && !top.contains(opener)
+      ? getFocusables(top)[0] ?? top.querySelector('.ui-sheet-card')
+      : opener;
     opener = null;
-    if (restore && restore.isConnected && typeof restore.focus === 'function') {
+    if (wasTopmost && restore && restore.isConnected && typeof restore.focus === 'function') {
       restore.focus({ preventScroll: true });
     }
     onClose?.();
@@ -346,6 +362,7 @@ export function createSheet({
     open,
     close,
     isOpen: () => openNow,
+    isTopmost,
     setTitle,
     setDescription,
     destroy,

@@ -1,71 +1,20 @@
-import { setOverlayOpen } from './ui/sheet.js';
+import { createSheet, setOverlayOpen, sheetOpen } from './ui/sheet.js';
 // Torn-paper overlay sheets matching Sienna's Settings & Tour aesthetic:
 //   - Lyrics sheet with 3D paper-unfold animation (pulled from YouTube Music's `next` -> Lyrics tab)
 //   - Up Next Queue list that emerges directly from the open suitcase bottom drawer
 //   - Offline / load-error status banner with Retry button
 //   - WebGL initialization fallback screen
 import { injectTokens, MOTION } from './ui/tokens.js';
-import { torn, paperSurface } from './ui/paper.js';
+import { paperSurface } from './ui/paper.js';
 import { createList } from './ui/list.js';
-import { stamp } from './ui/inputs.js';
-import { word } from './settings-panel.js';
-import { onCursorTilt, tiltCSS } from './cursortilt.js';
-import { onLettering } from './style.js';
+import { inkButton, stamp } from './ui/inputs.js';
+import { createBanner } from './ui/banner.js';
+import { createScrollCue } from './ui/scroll-cue.js';
 
 const CSS = `
-.ln-veil { position: fixed; inset: 0; z-index: var(--sienna-z-sheet); display: flex; align-items: center; justify-content: center;
-  background: var(--sienna-veil); perspective: 1500px; opacity: 0; visibility: hidden;
-  transition: opacity var(--sienna-dur-mid) ease, visibility 0s var(--sienna-dur-mid); font-family: var(--sienna-font); color: var(--sienna-ink); }
-.ln-veil.show { opacity: 1; visibility: visible; transition: opacity var(--sienna-dur-mid) ease; }
-.ln-veil.closing { opacity: 0; visibility: visible; pointer-events: none; transition: opacity var(--sienna-dur-mid) ease; }
-.ln-lean { display: flex; justify-content: center; will-change: transform; transform-style: preserve-3d; }
-.ln-card { position: relative; width: min(560px, 90vw); max-height: min(640px, 84vh); box-sizing: border-box;
-  display: flex; flex-direction: column; padding: var(--sienna-space-6) var(--sienna-space-8) var(--sienna-space-5); filter: drop-shadow(var(--sienna-shadow-lift));
-  transform-style: preserve-3d; transform-origin: 50% 54%; transform: rotate(var(--sienna-tilt-sm)); }
-.ln-veil.show .ln-card.unfold { animation: ln-unfold var(--sienna-dur-slow) var(--sienna-ease-out) both; }
-.ln-veil.closing .ln-card.unfold { animation: ln-fold var(--sienna-dur-mid) var(--sienna-ease-in) both; }
-@keyframes ln-unfold {
-  0%   { opacity: 0; transform: translateY(34px) translateZ(-90px) rotateX(66deg) rotateY(-10deg) rotateZ(-3.2deg) scaleY(.48) scaleX(.92); filter: drop-shadow(0 22px 26px rgba(45,30,20,.38)); }
-  38%  { opacity: 1; transform: translateY(-6px) translateZ(18px) rotateX(-15deg) rotateY(3.6deg) rotateZ(.9deg) scaleY(1.03) scaleX(1.01); filter: drop-shadow(0 14px 18px rgba(45,30,20,.32)); }
-  68%  { opacity: 1; transform: translateY(2px) translateZ(3px) rotateX(4.8deg) rotateY(-1.4deg) rotateZ(-.85deg) scaleY(.994) scaleX(1); filter: drop-shadow(0 9px 15px rgba(45,30,20,.29)); }
-  86%  { opacity: 1; transform: translateY(0) translateZ(0) rotateX(-1.4deg) rotateY(.4deg) rotateZ(-.25deg) scale(1); }
-  100% { opacity: 1; transform: rotate(var(--sienna-tilt-sm)); filter: drop-shadow(var(--sienna-shadow-lift)); }
-}
-@keyframes ln-fold {
-  0%   { opacity: 1; transform: rotate(var(--sienna-tilt-sm)); }
-  100% { opacity: 0; transform: translateY(26px) translateZ(-70px) rotateX(-52deg) rotateY(7deg) rotateZ(2.4deg) scaleY(.52) scaleX(.93); }
-}
-.ln-paper { position: absolute; inset: 0; background: var(--sienna-paper); }
-/* transient 3D unfolding flap: visible only during the unfold/fold motion, completely gone once settled */
-.ln-flap { position: absolute; left: 0; right: 0; top: 0; height: 50%; background: linear-gradient(180deg, var(--sienna-paper) 0%, var(--sienna-paper-lo) 100%);
-  transform-origin: 50% 100%; backface-visibility: visible; pointer-events: none; opacity: 0; z-index: 3; }
-.ln-veil.show .ln-card.unfold .ln-flap { animation: ln-flap-open var(--sienna-dur-slow) var(--sienna-ease-out) both; }
-.ln-veil.closing .ln-card.unfold .ln-flap { animation: ln-flap-close var(--sienna-dur-mid) var(--sienna-ease-in) both; }
-@keyframes ln-flap-open {
-  0%   { opacity: .96; transform: rotateX(-165deg); box-shadow: 0 12px 24px rgba(55,38,24,.28); }
-  55%  { opacity: .62; transform: rotateX(-14deg); box-shadow: 0 4px 10px rgba(55,38,24,.12); }
-  85%  { opacity: .18; transform: rotateX(4deg); box-shadow: none; }
-  100% { opacity: 0; transform: rotateX(0deg); box-shadow: none; }
-}
-@keyframes ln-flap-close {
-  0%   { opacity: 0; transform: rotateX(0deg); }
-  35%  { opacity: .55; transform: rotateX(-55deg); }
-  100% { opacity: .9; transform: rotateX(-145deg); }
-}
-.ln-head { position: relative; flex: none; margin: 0 0 var(--sienna-space-1); font-size: var(--sienna-text-xl); line-height: 1.05; color: var(--sienna-indigo); }
-.ln-sub { position: relative; flex: none; margin: 0 0 var(--sienna-space-4); font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.35; color: var(--sienna-ink-2); }
-.ln-scroll { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
-  margin-right: -12px; padding: var(--sienna-space-2) var(--sienna-space-4) var(--sienna-space-3) 0;
-  -webkit-mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 10px), transparent);
-  mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 10px), transparent);
-  scrollbar-width: thin; scrollbar-color: rgba(112,87,66,.45) transparent; }
-.ln-scroll::-webkit-scrollbar { width: 7px; }
-.ln-scroll::-webkit-scrollbar-thumb { background: rgba(112,87,66,.45); border-radius: 4px; }
-.ln-lyrics { white-space: pre-wrap; font-family: var(--sienna-serif); font-size: var(--sienna-text-md); line-height: 1.55; color: var(--sienna-ink); user-select: text; }
-.ln-src { position: relative; flex: none; margin-top: var(--sienna-space-3); font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); color: var(--sienna-ink-3); }
-.ln-foot { position: relative; flex: none; display: flex; justify-content: flex-end; gap: var(--sienna-space-3); padding-top: var(--sienna-space-3); font-size: var(--sienna-text-lg); }
+.ln-lyrics { white-space: pre-wrap; font-family: var(--sienna-serif); font-size: var(--sienna-text-md); line-height: 1.6; color: var(--sienna-ink); user-select: text; }
+.ln-src { font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); color: var(--sienna-ink-3); flex: 1; }
 .ln-empty { font-family: var(--sienna-serif); font-size: var(--sienna-text-md); color: var(--sienna-ink-2); padding: var(--sienna-space-5) 0; }
-
 /* ---- Queue overlay ---- */
 .ln-qveil { position: fixed; inset: 0; z-index: var(--sienna-z-list); pointer-events: none; visibility: hidden; opacity: 0;
   transition: opacity var(--sienna-dur-mid), visibility var(--sienna-dur-mid); font-family: var(--sienna-font); }
@@ -84,21 +33,13 @@ const CSS = `
 .ln-qbox > .ui-list { min-height: 0; flex: 1; }
 .ln-qbox .ui-list-scroll { min-height: 0; }
 
-/* offline / error banner at top centre */
-.ln-banner { position: fixed; top: 3vh; left: 50%; z-index: var(--sienna-z-banner); transform: translateX(-50%) rotate(var(--sienna-tilt-sm));
-  display: none; align-items: center; gap: var(--sienna-space-4); padding: var(--sienna-space-3) var(--sienna-space-6); font-family: var(--sienna-font);
-  color: var(--sienna-ink); filter: drop-shadow(var(--sienna-shadow-lift)); max-width: min(640px, 90vw); }
-.ln-banner.show { display: flex; }
-.ln-banner .ln-bpaper { position: absolute; inset: 0; background: var(--sienna-paper); z-index: -1; }
-.ln-banner .ln-bmsg { font-family: var(--sienna-serif); font-size: var(--sienna-text-md); line-height: 1.3; }
-.ln-banner .ln-bact { flex: none; font-size: var(--sienna-text-md); }
 /* WebGL fallback */
 .ln-fatal { position: fixed; inset: 0; z-index: var(--sienna-z-fatal); display: flex; align-items: center; justify-content: center;
-  background: #1b1410; padding: var(--sienna-space-6); font-family: var(--sienna-serif); }
-.ln-fatal-card { max-width: 520px; background: var(--sienna-paper); color: var(--sienna-ink); padding: var(--sienna-space-8); border-radius: 8px;
+  background: var(--sienna-ink); padding: var(--sienna-space-6); font-family: var(--sienna-serif); }
+.ln-fatal-card { max-width: calc(var(--sienna-space-10) * 13); color: var(--sienna-ink); padding: var(--sienna-space-8);
   box-shadow: var(--sienna-shadow-lift); }
 .ln-fatal-card h1 { margin: 0 0 var(--sienna-space-3); font-family: var(--sienna-font); font-size: var(--sienna-text-xl); color: var(--sienna-indigo); }
-.ln-fatal-card p { margin: 0 0 var(--sienna-space-3); font-size: var(--sienna-text-sm); line-height: 1.5; }
+.ln-fatal-card p { margin: 0 0 var(--sienna-space-3); font-family: var(--sienna-serif); font-size: var(--sienna-text-md); line-height: 1.5; }
 .ln-fatal-card code { font-size: var(--sienna-text-xs); background: var(--sienna-paper-lo); padding: 2px var(--sienna-space-2); border-radius: 4px; }
 `;
 
@@ -116,9 +57,11 @@ export function showWebGLError(err) {
   const h1 = document.createElement('h1'); h1.textContent = 'Sienna could not start 3D graphics (WebGL)';
   const p1 = document.createElement('p'); p1.textContent = 'Sienna renders its painted Tuscan record shop with WebGL2, which is currently unavailable on this system or disabled in your GPU driver.';
   const p2 = document.createElement('p'); p2.textContent = `Details: ${String(err?.message ?? err ?? 'WebGL context creation failed')}`;
+  card.setAttribute('role', 'alert');
   card.append(h1, p1, p2);
   wrap.appendChild(card);
   document.body.appendChild(wrap);
+  paperSurface(card, { seed: 91, elevation: 'lift' });
 }
 
 export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, onQueueClose = null, getDrawerPos = null, onPickQueue = null } = {}) {
@@ -127,25 +70,17 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     const st = document.createElement('style'); st.id = 'ln-css'; st.textContent = CSS; document.head.appendChild(st);
   }
 
-  // ---- lyrics sheet (3D paper unfold) ----
-  const veil = document.createElement('div');
-  veil.className = 'ln-veil';
-  veil.innerHTML = `<div class="ln-lean"><div class="ln-card unfold"><div class="ln-paper"></div><div class="ln-flap"></div>
-    <div class="ln-head"></div><div class="ln-sub"></div>
-    <div class="ln-scroll"></div><div class="ln-src"></div>
-    <div class="ln-foot"></div></div></div>`;
-  document.body.appendChild(veil);
-  const leaner = veil.querySelector('.ln-lean');
-  const card = veil.querySelector('.ln-card');
-  const paper = veil.querySelector('.ln-paper');
-  const flap = veil.querySelector('.ln-flap');
-  const head = veil.querySelector('.ln-head');
-  const sub = veil.querySelector('.ln-sub');
-  const scroll = veil.querySelector('.ln-scroll');
-  const srcEl = veil.querySelector('.ln-src');
-  const foot = veil.querySelector('.ln-foot');
-  paper.style.clipPath = torn(43);
-  flap.style.clipPath = torn(43, 4, 8);
+  const lyricsSheet = createSheet({ title: 'Liner notes', seed: 43,
+    width: 'min(calc(var(--sienna-space-10) * 16), 90vw)',
+    onClose: () => { if (mode === 'lyrics') { mode = null; seq++; } },
+  });
+  const veil = lyricsSheet.el;
+  veil.classList.add('ln-sheet');
+  const scroll = lyricsSheet.body;
+  const srcEl = document.createElement('div');
+  srcEl.className = 'ln-src';
+  const cue = createScrollCue(scroll, { parent: lyricsSheet.footer });
+  lyricsSheet.footer.appendChild(srcEl);
 
   // ---- queue drawer-to-list overlay ----
   const qveil = document.createElement('div');
@@ -173,43 +108,24 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   paperSurface(qTitle, { seed: 61 });
 
   let mode = null; // null | 'lyrics' | 'queue'
-  let unlean = null;
-  let closeTimer = 0;
   let qCloseTimer = 0;
   let qRefreshTimer = 0;
   let qRetryTimer = 0;
   let renderedItems = [];
   let seq = 0;
 
-  const closeBtn = word('Close', 73, () => close());
-  foot.appendChild(closeBtn);
+  const closeBtn = inkButton('Close', { onClick: () => close() });
+  lyricsSheet.footer.appendChild(closeBtn);
   const qCloseBtn = stamp('close', { label: 'Close', tooltip: 'Close (Esc)', onClick: () => close() });
   qCloseWrap.appendChild(qCloseBtn);
 
-  card.addEventListener('click', (e) => e.stopPropagation());
-  veil.addEventListener('click', () => close());
   qBox.addEventListener('click', (e) => e.stopPropagation());
   qBackdrop.addEventListener('click', () => close());
 
   function openLyricsSheet() {
-    clearTimeout(closeTimer);
     mode = 'lyrics';
-    setOverlayOpen(veil, true);
-    veil.classList.remove('closing');
-    veil.classList.remove('show');
-    void card.offsetWidth;
-    veil.classList.add('show');
+    lyricsSheet.open();
     scroll.scrollTop = 0;
-    requestAnimationFrame(() => closeBtn.paint());
-    unlean ??= onCursorTilt((x, y) => { leaner.style.transform = tiltCSS(x, y, 5); });
-  }
-
-  function closeLyricsSheet() {
-    clearTimeout(closeTimer);
-    veil.classList.remove('show');
-    veil.classList.add('closing');
-    closeTimer = setTimeout(() => { veil.classList.remove('closing'); }, 280);
-    unlean?.(); unlean = null;
   }
 
   function drawerOrigin() {
@@ -235,36 +151,50 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     if (!mode) return;
     const prev = mode;
     mode = null;
-    setOverlayOpen(prev === 'lyrics' ? veil : qveil, false);
+    if (prev === 'queue') setOverlayOpen(qveil, false);
     seq++;
-    if (prev === 'lyrics') closeLyricsSheet();
+    if (prev === 'lyrics') lyricsSheet.close();
     else if (prev === 'queue') closeQueueOverlay({ keepDrawer });
   }
 
   async function openLyrics(track) {
     if (mode === 'lyrics') { close(); return; }
     if (mode === 'queue') close();
-    const my = ++seq;
-    head.textContent = track?.title || 'Liner notes';
-    sub.textContent = [track?.artist, track?.album].filter(Boolean).join(' · ') || 'Lyrics';
-    srcEl.textContent = '';
-    scroll.replaceChildren(Object.assign(document.createElement('div'), { className: 'ln-empty', textContent: 'Looking up the liner notes…' }));
     openLyricsSheet();
-    if (!track?.videoId) {
-      scroll.replaceChildren(Object.assign(document.createElement('div'), { className: 'ln-empty', textContent: 'Play a record first to read its lyrics.' }));
+    return loadLyrics(track);
+  }
+
+  async function loadLyrics(track) {
+    const my = ++seq;
+    lyricsSheet.setTitle([track?.title || 'Liner notes', track?.artist].filter(Boolean).join(' · '));
+    lyricsSheet.setDescription(track?.album || 'Lyrics');
+    srcEl.textContent = '';
+    const note = message => {
+      const el = document.createElement('div');
+      el.className = 'ln-empty';
+      el.setAttribute('role', 'status');
+      el.textContent = message;
+      scroll.replaceChildren(el);
+    };
+    note('Looking up the liner notes…');
+    if (!track?.videoId) { note('Play a record first to read its lyrics.'); return; }
+    let res;
+    try { res = await music.lyrics?.(track.videoId); }
+    catch {
+      if (my !== seq || mode !== 'lyrics') return;
+      note('Could not load the lyrics just now.');
+      scroll.appendChild(inkButton('Retry', { onClick: () => loadLyrics(track) }));
+      cue.refresh();
       return;
     }
-    const res = await music.lyrics?.(track.videoId).catch(() => null);
     if (my !== seq || mode !== 'lyrics') return;
-    if (!res?.lyrics) {
-      scroll.replaceChildren(Object.assign(document.createElement('div'), { className: 'ln-empty', textContent: 'No lyrics are available for this track on YouTube Music.' }));
-      return;
-    }
+    if (!res?.lyrics) { note('No lyrics are available for this track on YouTube Music.'); return; }
     const body = document.createElement('div');
     body.className = 'ln-lyrics';
     body.textContent = res.lyrics;
     scroll.replaceChildren(body);
     srcEl.textContent = res.source || '';
+    cue.refresh();
   }
 
   function sameQueueTracks(a, b) {
@@ -376,6 +306,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     lastTrackKey = trackKey;
     lastShuffle = s.shuffle;
     if (s.queueSig !== undefined) lastQueueSig = s.queueSig;
+    if (mode === 'lyrics' && trackChanged) loadLyrics(s);
     if (mode !== 'queue') return;
     if (trackChanged || shuffleChanged || sigChanged) {
       if (trackChanged && s.videoId) syncQueueSelection(s.videoId);
@@ -386,35 +317,14 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     }
   });
 
-  // ---- offline / error status banner ----
-  const banner = document.createElement('div');
-  banner.className = 'ln-banner';
-  const bpaper = document.createElement('div'); bpaper.className = 'ln-bpaper';
-  bpaper.style.clipPath = torn(89, 4, 8);
-  const bmsg = document.createElement('div'); bmsg.className = 'ln-bmsg';
-  const bact = document.createElement('div'); bact.className = 'ln-bact';
-  let retryCb = null;
-  const retryBtn = word('Retry', 97, () => retryCb?.());
-  bact.appendChild(retryBtn);
-  banner.append(bpaper, bmsg, bact);
-  document.body.appendChild(banner);
-
-  function setStatus(message, onRetry = null) {
-    retryCb = onRetry;
-    if (!message) {
-      banner.classList.remove('show');
-      return;
-    }
-    bmsg.textContent = message;
-    bact.style.display = onRetry ? '' : 'none';
-    banner.classList.add('show');
-    requestAnimationFrame(() => retryBtn.paint());
+  const banner = createBanner({ seed: 89 });
+  function setStatus(message, onRetry = null, kind = onRetry ? 'error' : 'status') {
+    if (!message) { banner.hide(); return; }
+    banner.show({ message, kind, actionLabel: onRetry ? 'Retry' : null, onAction: onRetry });
   }
 
-  onLettering(veil, () => { closeBtn.paint(); retryBtn.paint(); });
-
   addEventListener('keydown', (e) => {
-    if (!mode) return;
+    if (mode !== 'queue' || sheetOpen()) return;
     if (mode === 'queue' && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
     if (mode === 'queue' && ['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Enter'].includes(e.key)) {
       if (e.key === 'Enter' && e.target.closest?.('button')) return;

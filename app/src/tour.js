@@ -1,4 +1,4 @@
-import { setOverlayOpen } from './ui/sheet.js';
+import { setOverlayOpen, sheetOpen } from './ui/sheet.js';
 // The first-run tour: torn paper notes in the shop, with brush-stroke words floating under them, the same
 // paper and words as the Settings card. It starts once the intro reaches home on a new install, and each
 // step ends when you have done the thing it is about (signed in, played a record, pressed a shortcut).
@@ -21,10 +21,11 @@ import { setOverlayOpen } from './ui/sheet.js';
 // the welcome note as a guest sees it, since the fake store counts as signed in).
 import { settings } from './settings.js';
 import { shortcuts } from './shortcuts.js';
-import { torn } from './ui/paper.js';
-import { word } from './settings-panel.js';
+import { paperSurface } from './ui/paper.js';
+import { brushButton } from './ui/brush.js';
+import { inkButton } from './ui/inputs.js';
 import { FONTS, onLettering } from './style.js';
-import { COLORS, injectTokens } from './ui/tokens.js';
+import { COLORS, SPACE, injectTokens } from './ui/tokens.js';
 import { createFx, COLOURS } from './tourfx.js';
 import { onCursorTilt, tiltCSS } from './cursortilt.js';
 
@@ -46,22 +47,20 @@ const CSS = `
 .tr.show { opacity: 1; visibility: visible; transition: opacity var(--sienna-dur-slow) ease; }
 .tr-skip { position: absolute; top: 3.4vh; left: 50%; transform: translateX(-50%); font-size: var(--sienna-text-md); pointer-events: auto; opacity: .85; }
 .tr-skip:hover { opacity: 1; }
-.tr-stage { position: absolute; left: 50%; top: 50%; width: min(620px, 92vw); transform-style: preserve-3d; will-change: transform;
+.tr-stage { position: absolute; left: 50%; top: 50%; width: min(620px, 92vw); will-change: transform;
   display: flex; flex-direction: column; align-items: center; }
 .tr-stage[data-at="upper"] { top: 9vh; }
 .tr-stage[data-at="top"] { top: 11vh; width: min(560px, 88vw); }
 .tr-stage[data-at="player"] { left: auto; top: auto; width: min(430px, 60vw); align-items: flex-start; }
 
 /* the note: it drops onto the shop with a little bounce, and is flicked away when you move on */
-.tr-note { position: relative; box-sizing: border-box; width: 100%; padding: var(--sienna-space-6) var(--sienna-space-8) var(--sienna-space-5); transform: rotate(var(--sienna-tilt-sm)); opacity: 0; }
+.tr-note { pointer-events: auto; position: relative; box-sizing: border-box; width: 100%; padding: var(--sienna-space-4) var(--sienna-space-8); transform: rotate(var(--sienna-tilt-sm)); opacity: 0; }
 .tr-note.in { opacity: 1; animation: tr-drop var(--sienna-dur-slow) var(--sienna-ease-out) both; }
 @keyframes tr-drop {
   0% { opacity: 0; transform: translateY(-70px) rotate(5deg) scale(1.08); }
   45% { opacity: 1; transform: translateY(7px) rotate(-1.4deg) scale(.985, 1.01); }
   70% { transform: translateY(-4px) rotate(-.3deg) scale(1.005); }
   100% { transform: rotate(var(--sienna-tilt-sm)); } }
-.tr-sh { position: absolute; inset: 0; filter: drop-shadow(var(--sienna-shadow-lift)); }
-.tr-paper { position: absolute; inset: 0; background: var(--sienna-paper); }
 .tr-tape { position: absolute; top: -13px; left: 26px; width: 96px; height: 28px; transform: rotate(-7deg);
   background: linear-gradient(90deg, rgba(232,214,160,.82), rgba(240,226,180,.78)); box-shadow: 0 1px 2px rgba(60,40,20,.15);
   clip-path: polygon(0 8%, 4% 0, 8% 10%, 12% 0, 100% 0, 96% 12%, 100% 25%, 96% 40%, 100% 55%, 96% 70%, 100% 85%, 96% 100%, 0 100%, 4% 85%, 0 70%, 4% 55%, 0 40%, 4% 25%); }
@@ -83,7 +82,7 @@ const CSS = `
 .tr-lab span { padding-top: .12em; }
 
 /* the title falls in letter by letter, and a brush stroke underlines it */
-.tr-title { position: relative; font-size: var(--sienna-text-2xl); line-height: 1; color: var(--sienna-indigo); margin: 0 0 var(--sienna-space-3); }
+.tr-title { position: relative; font-size: var(--sienna-text-xl); line-height: 1; color: var(--sienna-indigo); margin: 0 0 var(--sienna-space-3); }
 .tr-tt { position: relative; display: inline-block; }
 .tr-tw { display: inline-block; white-space: nowrap; }
 .tr-tw.hot { color: var(--sienna-terracotta); }
@@ -137,7 +136,7 @@ const CSS = `
 @keyframes tr-rise { 0% { opacity: 0; transform: translate(0, 0) rotate(-12deg); } 15% { opacity: .95; }
   100% { opacity: 0; transform: translate(var(--dx), -300px) rotate(18deg); } }
 
-/* the words float in the shop, not on the paper: each bobs on its own, out of step with the others */
+/* each word bobs out of step with the others */
 .tr-float { position: relative; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--sienna-space-4) var(--sienna-space-5);
   margin-top: var(--sienna-space-5); font-size: var(--sienna-text-lg); transform-style: preserve-3d; }
 .tr-stage[data-list] .tr-float { flex-direction: column; align-items: flex-end; width: max-content; margin-left: auto; margin-right: auto; }
@@ -148,12 +147,10 @@ const CSS = `
 .tr-b.pop { animation: tr-pop var(--sienna-dur-slow) var(--sienna-ease-pop) both, tr-bob var(--d, 3.2s) ease-in-out .6s infinite alternate; }
 @keyframes tr-bob { from { transform: translateY(-5px) rotate(var(--r, 0deg)); } to { transform: translateY(6px) rotate(calc(var(--r, 0deg) * -0.6)); } }
 @keyframes tr-pop { from { opacity: 0; transform: translateY(26px) scale(.5) rotate(calc(var(--r, 0deg) * 4)); } }
-.tr-b .st-w { font-size: inherit; transition: transform var(--sienna-dur-mid) var(--sienna-ease-pop); }
-.tr-b .st-w:hover { transform: translateY(-3px) rotate(var(--sienna-tilt-lg)) scale(1.1); }
-.tr-b .st-w:active { transform: scale(.92); transition-duration: .06s; }
-.tr-b .st-w.big { font-size: var(--sienna-text-xl); }
+.tr-b .ui-ink { font-size: inherit; transition: transform var(--sienna-dur-mid) var(--sienna-ease-pop); }
+.tr-b .ui-ink.big { font-size: var(--sienna-text-xl); }
 .tr-key { display: inline-flex; align-items: center; gap: var(--sienna-space-2); }
-.tr-kname { font-size: var(--sienna-text-md); color: var(--sienna-paper); text-shadow: 0 1px 3px rgba(30,20,15,.85), 0 0 8px rgba(30,20,15,.5); }
+.tr-kname { font-family: var(--sienna-serif); font-size: var(--sienna-text-md); color: var(--sienna-ink-2); }
 .tr-tick { font-size: var(--sienna-text-2xl); font-weight: bold; color: var(--sienna-terracotta); opacity: 0; transform: scale(.3) rotate(-25deg); transition: transform var(--sienna-dur-mid) var(--sienna-ease-pop), opacity var(--sienna-dur-fast); text-shadow: 0 1px 2px rgba(248,241,226,.9); }
 .tr.away .tr-stage:not(.tr-ghost) .tr-note { opacity: .5; }
 .tr-tick.on { opacity: 1; transform: scale(1) rotate(-8deg); }
@@ -175,6 +172,11 @@ const CSS = `
 .tr-p.now::after { content: ''; position: absolute; width: 2px; height: 2px; border-radius: 50%; background: var(--sienna-paper); top: 22%; left: 48%; }
 .tr-pl { margin-left: var(--sienna-space-2); font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); font-variant-numeric: lining-nums tabular-nums; color: var(--sienna-paper); text-shadow: 0 1px 3px rgba(30,20,15,.85), 0 0 8px rgba(30,20,15,.5); white-space: nowrap; }
 
+.tr-stage > .tr-tape { z-index: var(--sienna-z-caption); }
+.tr .tr-note { max-height: calc(100dvh - var(--sienna-space-10) * 2); overflow-y: auto; }
+.tr-float { margin-top: var(--sienna-space-3); }
+.tr-stage[data-list] .tr-float { align-items: flex-start; width: auto; }
+.tr-key { flex-wrap: wrap; max-width: 100%; }
 .tr.still, .tr.still * { transition: none !important; animation: none !important; }
 .tr.still .tr-amb { display: none; }
 `;
@@ -218,7 +220,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   const root = document.createElement('div');
   root.className = 'tr';
   root.innerHTML = '<div class="tr-stage"><div class="tr-amb"></div><div class="tr-note"><div class="tr-disc"><div class="tr-vinyl"><div class="tr-lab"><span></span></div></div></div>'
-    + '<div class="tr-sh"><div class="tr-paper"></div></div><div class="tr-tape"></div><div class="tr-title"></div><div class="tr-body"></div><div class="tr-fine"></div><div class="tr-msg"></div></div>'
+    + '<div class="tr-tape"></div><div class="tr-title"></div><div class="tr-body"></div><div class="tr-fine"></div><div class="tr-msg"></div></div>'
     + '<div class="tr-float"></div></div><div class="tr-prog"></div>';
   const still = params.has('shot');
   if (still) root.classList.add('still');   // screenshots: no fades, no bobbing, no particles
@@ -226,8 +228,9 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   const fx = createFx({ still });
   const stage = root.querySelector('.tr-stage');
   const note = root.querySelector('.tr-note');
-  const paper = root.querySelector('.tr-paper');
+  const notePaper = paperSurface(note, { seed: 31, amp: 6, cap: 12, elevation: 'lift' });
   const disc = root.querySelector('.tr-disc'), lab = root.querySelector('.tr-lab');
+  stage.prepend(disc, root.querySelector('.tr-tape'));
   // the notes drifting up beside the welcome and goodbye notes, each on its own path and beat
   root.querySelector('.tr-amb').innerHTML = Array.from({ length: 10 }, (_, k) => {
     const side = k % 2 ? 1 : -1;
@@ -240,26 +243,30 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   const progLabel = prog.appendChild(Object.assign(document.createElement('span'), { className: 'tr-pl' }));
   const titleEl = root.querySelector('.tr-title'), bodyEl = root.querySelector('.tr-body'), fineEl = root.querySelector('.tr-fine'), msgEl = root.querySelector('.tr-msg');
   const floatEl = root.querySelector('.tr-float');
+  note.appendChild(floatEl);
   const skipWrap = document.createElement('div');
   skipWrap.className = 'tr-skip';
-  const skip = word('Skip tour', 53, () => finish());
+  const skip = inkButton('Skip tour', { seed: 53, onClick: () => finish() });
   skipWrap.appendChild(skip);
   root.appendChild(skipWrap);
   note.addEventListener('click', (e) => e.stopPropagation());
 
   let words = [skip];
-  const paintAll = () => words.forEach((w) => w.paint());
+  const paintAll = () => place();
   document.fonts?.addEventListener?.('loadingdone', paintAll);
   onLettering(root, paintAll); // Settings > Lettering
 
   // a floating word: bobbing out of step with the others, a little tilted; `big` for the main choice
   let seed = 200;
   function float(text, onClick, { on = false, big = false, font = null, extra = null } = {}) {
-    const w = word(text, seed += 7, () => {
+    const click = () => {
       fx.burst(w, big ? { count: 26, power: 560 } : { count: 16, power: 380, kinds: ['splat', 'strip'], colours: [COLORS.terracotta, '#d9a441', COLORS.indigo] });
       onClick();
-    });
-    if (on) w.classList.add('on');
+    };
+    const w = text === 'Sign in'
+      ? brushButton(text, { seed: seed += 7, onClick: click })
+      : inkButton(text, { seed: seed += 7, onClick: click, selected: on, size: big ? 'lg' : 'md' });
+    w.classList.add('tr-action');
     if (big) w.classList.add('big');
     if (font) w.style.fontFamily = font;
     const b = document.createElement('span');
@@ -294,6 +301,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
     for (const fn of cleanup) fn();
     cleanup = [];
     onKey = null;
+    words.forEach(w => { if (w !== skip) w.destroy?.(); });
     floatEl.replaceChildren();
     words = [skip];
     msgEl.textContent = '';
@@ -303,7 +311,8 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
     note.classList.remove('in');
     const name = STEPS[at];
     STEP[name]();
-    paper.style.clipPath = torn(31 + at * 5, 6);
+    if (at > 0) float('Back', () => go(at - 1));
+    notePaper.repaint(false);
     // the record behind the note slides out again, with this step's number on its label
     lab.firstChild.textContent = at + 1;
     lab.style.setProperty('--lab', COLOURS[at % COLOURS.length]);
@@ -369,7 +378,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   // the choices of one setting, as floating words; the chosen one is painted terracotta
   function choices(key, opts) {
     const ws = opts.map(([label, value, font]) => float(label, () => settings.set(key, value), { on: settings.get(key) === value, font }));
-    const mark = () => ws.forEach((w, i) => w.classList.toggle('on', opts[i][1] === settings.get(key)));
+    const mark = () => ws.forEach((w, i) => w.setSelected(opts[i][1] === settings.get(key)));
     cleanup.push(settings.on(key, mark));
   }
 
@@ -467,9 +476,8 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
       float('Next', next, { big: true });
       const relabel = () => {
         for (const [name, w] of Object.entries(keyWords)) {
-          w.querySelector('span').textContent = shortcuts.recording && recordingName === name ? 'Press keys…' : shortcuts.label(name);
-          w.classList.toggle('on', shortcuts.recording && recordingName === name);
-          requestAnimationFrame(() => w.paint());
+          w.setLabel(shortcuts.recording && recordingName === name ? 'Press keys…' : shortcuts.label(name));
+          w.setSelected(shortcuts.recording && recordingName === name);
         }
       };
       let recordingName = null;
@@ -542,33 +550,48 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
 
   // the note leans toward the cursor (cursortilt.js runs its own easing, so it turns even while the shop's
   // camera holds still for a record at a rack)
-  let leanX = 0, leanY = 0;
+  let leanX = 0, leanY = 0, lastLean = '';
   function lean() {
     if (at < 0) return;
-    stage.style.transform = `${STEPS[at] === 'player' ? '' : 'translate(-50%, 0) '}${stage.dataset.at === 'centre' ? 'translateY(-50%) ' : ''}${tiltCSS(leanX, leanY, 9)}`;
+    const next = tiltCSS(leanX, leanY, 9);
+    if (next !== lastLean) { stage.style.transform = next; lastLean = next; }
   }
   onCursorTilt((x, y) => { leanX = x; leanY = y; lean(); });
 
   // where the note sits; the player note stands just above the suitcase
   function place() {
-    if (STEPS[at] !== 'player') { stage.style.left = stage.style.bottom = ''; return; }
-    const r = playerBox();
-    // beside the case, on its right, standing on the same floor line (above it there are the shelf words)
-    stage.style.left = `${Math.max(16, r ? r.right + 18 : 360)}px`;
-    stage.style.bottom = `${Math.max(16, r ? innerHeight - r.bottom + 10 : 40)}px`;
+    if (at < 0) return;
+    const w = stage.offsetWidth, h = stage.offsetHeight, margin = SPACE[8];
+    const sideMargin = margin + Math.max(0, -parseFloat(getComputedStyle(disc).right) || 0);
+    const bottomMargin = margin + prog.offsetHeight;
+    let x = (innerWidth - w) / 2;
+    let y = stage.dataset.at === 'centre' ? (innerHeight - h) / 2 : innerHeight * .11;
+    if (STEPS[at] === 'player') {
+      const r = playerBox();
+      x = r ? r.right + SPACE[5] : SPACE[10] * 9;
+      y = r ? r.bottom - h : innerHeight - h - SPACE[10];
+    }
+    const left = `${Math.round(Math.max(sideMargin, Math.min(innerWidth - w - sideMargin, x)))}px`;
+    const top = `${Math.round(Math.max(margin, Math.min(innerHeight - h - bottomMargin, y)))}px`;
+    if (stage.style.left !== left) stage.style.left = left;
+    if (stage.style.top !== top) stage.style.top = top;
+    stage.style.bottom = '';
   }
+  const noteResize = new ResizeObserver(place);
+  noteResize.observe(stage);
 
   // Keys while a note is up: Enter does its main thing, Esc ends the tour, and the shop's own keys
   // (Space, Tab, arrows) stay quiet so they do not move things behind the note. Shortcuts with
   // Control / Option / Command pass, so the search key and Settings still work. The record step is a
   // hint over a usable shop, so it leaves every key alone.
   addEventListener('keydown', (e) => {
-    if (at < 0 || shortcuts.recording || isSearchOpen()) return;
+    if (at < 0 || shortcuts.recording || isSearchOpen() || sheetOpen()) return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (STEPS[at] === 'record') return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); finish(); return; }
+    if (t?.closest?.('button') && ['Enter', ' '].includes(e.key)) { e.stopImmediatePropagation(); return; }
     if (onKey?.(e)) { e.preventDefault(); e.stopImmediatePropagation(); return; }
     if (STEPS[at] === 'player') return;   // the player keys are what that note is about: let them work
     if (!['Shift', 'CapsLock'].includes(e.key)) { e.preventDefault(); e.stopImmediatePropagation(); }

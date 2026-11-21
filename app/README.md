@@ -53,6 +53,31 @@ focus/ARIA/keys, notes and retries, 612-song batching/filtering/actions, live qu
 no native control titles and two seconds with no kit/shared-bar callbacks. Existing `search-check`,
 `search-anim-check` and `mini-suggest-check` retain their interaction, animation and prefetch coverage.
 
+### Sheets and notes
+
+Settings and Lyrics use `createSheet()`: labelled modal dialogs with the shared paper, lean,
+unfold/fold, Close stamp, Escape, focus trap and return to the opener. Settings retains its utilities,
+account flow, shortcut recorder and persistent choices; its ink rail exposes `aria-current="page"`
+and its options are radio segmented chips. About groups version, manual updates and diagnostics.
+Lyrics uses a song · artist lettering title and reading-size Alegreya with loading, empty and
+retryable error states, live track changes and Queue exclusion. Both sheets retain caption ownership.
+
+`src/ui/scroll-cue.js::createScrollCue(scroller, { parent })` adds a size-cached paper hint and bottom
+fade while more content remains, clearing both at the last row. It observes changes rather than
+polling. The lab's sheet uses the same helper. Tour notes share the paper with their existing tape
+and effects, serif body text, a brush Sign in and ink choices/navigation, including Back. Notes clamp
+to the viewport; overflowing notes remain scrollable. Offline/error/restock notices use
+`createBanner()`; the WebGL fallback uses the same paper and typography.
+
+`node scripts/sheets-check.mjs <out_dir>` exercises real components with an isolated fake store:
+dialog ARIA, close/focus/keyboard ownership, rail/pages, persistent radios and one lettering repaint,
+account confirmation/cancel/error recovery, two-size scrolling and last-row reachability, all Lyrics
+states/live updates/exclusion, every tour note's viewport bounds and single welcome Sign in,
+banner roles/actions, fallback tokens, caption tucking, cached reopening and two seconds with no kit
+callbacks. It never authenticates. Existing `account-check`, `tour-check`, `shortcuts-check` and
+`tear-check` retain their integration coverage; browser checks accept `SIENNA_ANGLE=swiftshader`
+on Linux.
+
 A hidden `music.youtube.com` window plays the audio (`electron/ytm.cjs`). YouTube Music itself does
 the queue, radio, ads, history and likes; Sienna drives it through a small script injected into the
 page (`electron/ytm-page.js`) and reads your home shelves from the same internal API the page uses

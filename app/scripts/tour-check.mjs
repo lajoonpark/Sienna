@@ -12,7 +12,7 @@ const out = outDir(process.argv[2], 'sienna-tour');
 const port = Number(process.env.SIENNA_PORT) || 5241;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: ['--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || (process.platform === 'darwin' ? 'metal' : 'swiftshader')}`, '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
 page.on('pageerror', (e) => { errors.push(e.message); console.log('[pageerror]', e.message); });
@@ -22,7 +22,7 @@ const step = () => page.evaluate(() => window.__siennaDebug.tour.step);
 const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('sienna.tour') || 'null'));
 const setting = (k) => page.evaluate((key) => JSON.parse(localStorage.getItem('sienna.settings') || '{}')[key], k);
 // the floating words bob for ever, so Playwright would wait for them to hold still: click where they are
-const press = async (label) => { await page.locator('.tr-stage:not(.tr-ghost) .st-w', { hasText: label }).first().click({ force: true }); await wait(400); };
+const press = async (label) => { await page.locator('.tr-stage:not(.tr-ghost) .tr-action', { hasText: label }).first().click({ force: true }); await wait(400); };
 const shot = (name) => page.screenshot({ path: `${out}/${name}.png` });
 async function open(query) {
   await page.goto(`http://127.0.0.1:${port}/?${query}`, { timeout: 180000 });
@@ -102,7 +102,7 @@ ok('the search shortcut is ticked off');
 await press('+ K');
 await page.keyboard.press('Control+Alt+KeyM');
 await wait(400);
-assert.ok((await page.locator('.tr-stage:not(.tr-ghost) .st-w', { hasText: '+ M' }).count()) === 1, 'mini player shortcut changed');
+assert.ok((await page.locator('.tr-stage:not(.tr-ghost) .tr-action', { hasText: '+ M' }).count()) === 1, 'mini player shortcut changed');
 await press('+ M');
 await page.keyboard.press('Control+Alt+KeyK');
 await wait(400);
@@ -123,9 +123,9 @@ ok('not again after it was finished');
 // Settings > Tour > Show it again
 await page.keyboard.press('Control+Comma');
 await wait(500);
-await page.locator('.st-side .st-w[data-page="tour"]').click();   // the Tour page on the rail
+await page.locator('.st-side .ui-ink[data-page="tour"]').click();   // the Tour page on the rail
 await wait(300);
-await page.locator('.st-veil .st-w', { hasText: 'Show it again' }).click();
+await page.locator('.st-settings .ui-ink', { hasText: 'Show it again' }).click();
 await wait(500);
 assert.strictEqual(await step(), 'welcome');
 await page.keyboard.press('Escape');

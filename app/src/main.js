@@ -548,6 +548,7 @@ async function loadShelves({ force = false } = {}) {
     liner.setStatus(
       offline ? 'You appear to be offline — shelves will restock when you reconnect.' : 'Could not reach YouTube Music to stock the shelves.',
       () => { music.retry?.(); loadShelves({ force: true }); },
+      offline ? (force ? 'restock' : 'offline') : 'error',
     );
   } finally {
     if (my === loadSeq) {
@@ -579,7 +580,7 @@ addEventListener('online', () => {
   if (!shelves.length) { music.retry?.(); loadShelves({ force: true }); }
 });
 addEventListener('offline', () => {
-  liner.setStatus('You appear to be offline — playback may pause until you reconnect.', () => { music.retry?.(); loadShelves({ force: true }); });
+  liner.setStatus('You appear to be offline — playback may pause until you reconnect.', () => { music.retry?.(); loadShelves({ force: true }); }, 'offline');
 });
 // Periodic shelf restock every 45 minutes while settled at the entrance.
 setInterval(() => {

@@ -459,7 +459,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
     await pinPlayingTrack(page);
     await domClick(page, '.cad-tag .tool, .cad-tag .ui-stamp', 'Lyrics');
     await page.waitForFunction(
-      () => document.querySelector('.ln-veil.show') && document.querySelector('.ln-lyrics'),
+      () => document.querySelector('.ln-sheet.show, .ln-veil.show') && document.querySelector('.ln-lyrics'),
       null,
       { timeout: 10000 },
     );
@@ -477,11 +477,11 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
   if (wantAny(settingsSurfaces)) {
     const accountName = await page.evaluate(async () => (await window.__siennaDebug.music.account()).name);
     await domClick(page, '.st-btn button', 'Settings');
-    await page.waitForSelector('.st-veil.show', { timeout: 10000 });
+    await page.waitForSelector('.st-settings.show, .st-veil.show', { timeout: 10000 });
     await wait(750);
 
     const openPage = async (id) => {
-      await domClick(page, `.st-side .st-w[data-page="${id}"]`);
+      await domClick(page, `.st-side :is(.ui-ink, .st-w)[data-page="${id}"]`);
       await page.waitForFunction((p) => document.querySelector('.st-page.on')?.dataset.page === p, id, { timeout: 5000 });
       await wait(450);
     };
@@ -508,6 +508,11 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
       if (want.has(`settings-${id}`)) {
         await openPage(id);
         await snap(`settings-${id}`);
+        if (id === 'performance') {
+          await page.evaluate(() => { const scroller = document.querySelector('.st-scroll'); scroller.scrollTop = scroller.scrollHeight; });
+          await raf(page, 2);
+          await page.screenshot({ path: join(out, `settings-performance-bottom-${vw}x${vh}-${fontKey}.png`), timeout: 60000 });
+        }
       }
     }
 
@@ -518,7 +523,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
   // 22-24. Banners (offline, error, restock-offline)
   if (want.has('banner-offline')) {
     await page.evaluate(() => window.dispatchEvent(new Event('offline')));
-    await page.waitForSelector('.ln-banner.show', { timeout: 5000 });
+    await page.waitForSelector('.ui-banner.show, .ln-banner.show', { timeout: 5000 });
     await wait(250);
     await snap('banner-offline');
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
@@ -534,7 +539,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
     });
     await domClick(page, '.st-btn button', 'Restock');
     await page.waitForFunction(
-      () => document.querySelector('.ln-banner.show .ln-bmsg')?.textContent?.includes('Could not reach'),
+      () => document.querySelector(':is(.ui-banner.show .ui-banner-msg, .ln-banner.show .ln-bmsg)')?.textContent?.includes('Could not reach'),
       null,
       { timeout: 5000 },
     );
@@ -544,7 +549,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
       const d = window.__siennaDebug;
       d.music.shelves = window.__origShelvesErr;
     });
-    await domClick(page, '.ln-banner button', 'Retry');
+    await domClick(page, '.ui-banner button, .ln-banner button', 'Retry');
     await wait(700);
   }
 
@@ -558,7 +563,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
     });
     await domClick(page, '.st-btn button', 'Restock');
     await page.waitForFunction(
-      () => document.querySelector('.ln-banner.show .ln-bmsg')?.textContent?.includes('restock'),
+      () => document.querySelector(':is(.ui-banner.show .ui-banner-msg, .ln-banner.show .ln-bmsg)')?.textContent?.includes('restock'),
       null,
       { timeout: 5000 },
     );
@@ -569,7 +574,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
       d.music.shelves = window.__origShelvesRestock;
       Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
     });
-    await domClick(page, '.ln-banner button', 'Retry');
+    await domClick(page, '.ui-banner button, .ln-banner button', 'Retry');
     await wait(700);
   }
 
@@ -602,7 +607,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
     await wait(300);
 
     const pressTour = async (label) => {
-      await domClick(page, '.tr-stage:not(.tr-ghost) .st-w', label);
+      await domClick(page, '.tr-stage:not(.tr-ghost) :is(.tr-action, .st-w)', label);
       await wait(220);
       await page.evaluate(() => document.querySelectorAll('.tr-ghost').forEach((g) => g.remove()));
     };

@@ -1,8 +1,9 @@
-import { setOverlayOpen } from './ui/sheet.js';
+import { createSheet } from './ui/sheet.js';
+import { createScrollCue } from './ui/scroll-cue.js';
 // Settings: a SETTINGS word top-right (like HOME top-left) and Cmd+, (Ctrl+, elsewhere) open a
 // torn paper card in the middle of the screen. A side rail of brush-stroke words on the left picks a
 // page (Account, Look, Playback, Performance, Shortcuts, Tour); the page shows on the right. Each
-// setting is a row of brush-stroke words; the chosen one is painted terracotta. Changes apply at once
+// setting is a row of radio chips; the chosen one is painted terracotta. Changes apply at once
 // and are remembered (settings.js). The card leans toward the cursor (cursortilt.js), like the tour's notes.
 // Esc, clicking outside the card, or DONE closes it. While it is open the shop's keys stay quiet
 // (main.js checks isOpen()); Up/Down (or Tab) move through the rail.
@@ -13,15 +14,13 @@ import { setOverlayOpen } from './ui/sheet.js';
 //
 // Shot hook: ?settings opens it, ?settings=<page> on that page (account, look, playback, performance,
 // shortcuts, tour). With the fake store, add ?guest for the signed-out Account page.
-import { FONTS, onLettering } from './style.js';
-import { COLORS, injectTokens } from './ui/tokens.js';
-import { brushStroke } from './ui/brush.js';
-import { inkButton } from './ui/inputs.js';
+import { FONTS } from './style.js';
+import { injectTokens } from './ui/tokens.js';
+import { inkButton, segmented } from './ui/inputs.js';
 import { torn, tornDepths } from './ui/paper.js';
 import { settings } from './settings.js';
 import { shortcuts, fromEvent } from './shortcuts.js';
-import { rng } from './rand.js';
-import { onCursorTilt, tiltCSS } from './cursortilt.js';
+
 
 export { torn, tornDepths };
 
@@ -32,143 +31,34 @@ const CSS = `
 .st-btn-stack { display: flex; align-items: center; gap: var(--sienna-space-2); transform-style: preserve-3d; transform-origin: 100% 50%; will-change: transform; }
 .st-btn .ui-ink { pointer-events: auto; }
 .st-btn:not(.show) .ui-ink { pointer-events: none; }
-.st-w { position: relative; display: inline-block; border: 0; padding: 0; background: none; cursor: pointer; font-family: var(--sienna-font);
-  font-size: inherit; color: var(--sienna-paper); line-height: 1; transition: transform var(--sienna-dur-fast) var(--sienna-ease-pop); }
-.st-w .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity var(--sienna-dur-mid); filter: drop-shadow(var(--sienna-shadow-rest)); }
-.st-w .plate.hot { opacity: 0; }
-.st-w:hover .plate.hot, .st-w.on .plate.hot { opacity: 1; }
-.st-w:hover { transform: translateY(-2px) rotate(var(--sienna-tilt-md)); }
-.st-w span { position: relative; display: block; padding: .16em 1em .1em .7em; white-space: nowrap; text-shadow: 0 0 1px rgba(248,241,226,.7); }
-.st-veil { position: fixed; inset: 0; z-index: var(--sienna-z-modal); display: flex; align-items: center; justify-content: center;
-  background: var(--sienna-veil); perspective: 1600px; opacity: 0; visibility: hidden; transition: opacity var(--sienna-dur-mid) ease, visibility 0s var(--sienna-dur-mid); }
-.st-veil.show { opacity: 1; visibility: visible; transition: opacity var(--sienna-dur-mid) ease; }
-.st-veil.closing { opacity: 0; visibility: visible; pointer-events: none; transition: opacity var(--sienna-dur-mid) ease; }
-/* the card leans toward the cursor (cursortilt.js); a wrapper carries the lean so the card's own open/close unfold stays */
-.st-lean { display: flex; justify-content: center; will-change: transform; transform-style: preserve-3d; }
-.st-card { position: relative; width: min(940px, 94vw); height: min(640px, 92vh); box-sizing: border-box; display: flex; flex-direction: column; padding: var(--sienna-space-8) var(--sienna-space-10) var(--sienna-space-6); color: var(--sienna-ink);
-  font-family: var(--sienna-font); filter: drop-shadow(var(--sienna-shadow-lift));
-  transform-style: preserve-3d; transform-origin: 50% 54%; transform: rotate(var(--sienna-tilt-sm)); }
-.st-veil.show .st-card { animation: st-unfold var(--sienna-dur-slow) var(--sienna-ease-out) both; }
-.st-veil.closing .st-card { animation: st-fold var(--sienna-dur-mid) var(--sienna-ease-in) both; }
-@keyframes st-unfold {
-  0%   { opacity: 0; transform: translateY(34px) translateZ(-95px) rotateX(64deg) rotateY(-9deg) rotateZ(-3deg) scaleY(.48) scaleX(.93); filter: drop-shadow(0 22px 28px rgba(50,35,25,.36)); }
-  38%  { opacity: 1; transform: translateY(-6px) translateZ(18px) rotateX(-14deg) rotateY(3.2deg) rotateZ(.85deg) scaleY(1.028) scaleX(1.008); filter: drop-shadow(0 13px 18px rgba(50,35,25,.3)); }
-  68%  { opacity: 1; transform: translateY(2px) translateZ(3px) rotateX(4.4deg) rotateY(-1.2deg) rotateZ(-.9deg) scaleY(.995) scaleX(1); }
-  86%  { opacity: 1; transform: translateY(0) translateZ(0) rotateX(-1.3deg) rotateY(.35deg) rotateZ(-.3deg) scale(1); }
-  100% { opacity: 1; transform: rotate(var(--sienna-tilt-sm)); filter: drop-shadow(var(--sienna-shadow-lift)); }
-}
-@keyframes st-fold {
-  0%   { opacity: 1; transform: rotate(var(--sienna-tilt-sm)); }
-  100% { opacity: 0; transform: translateY(26px) translateZ(-75px) rotateX(-50deg) rotateY(6deg) rotateZ(2.2deg) scaleY(.52) scaleX(.93); }
-}
-.st-paper { position: absolute; inset: 0; background: var(--sienna-paper); }
-/* transient 3D unfolding flap: vanishes completely once the sheet settles flat */
-.st-flap { position: absolute; left: 0; right: 0; top: 0; height: 50%; background: linear-gradient(180deg, var(--sienna-paper) 0%, var(--sienna-paper-lo) 100%);
-  transform-origin: 50% 100%; backface-visibility: visible; pointer-events: none; opacity: 0; z-index: 4; }
-.st-veil.show .st-flap { animation: st-flap-open var(--sienna-dur-slow) var(--sienna-ease-out) both; }
-.st-veil.closing .st-flap { animation: st-flap-close var(--sienna-dur-mid) var(--sienna-ease-in) both; }
-@keyframes st-flap-open {
-  0%   { opacity: .95; transform: rotateX(-165deg); box-shadow: 0 12px 24px rgba(55,38,24,.26); }
-  55%  { opacity: .58; transform: rotateX(-14deg); box-shadow: 0 4px 10px rgba(55,38,24,.1); }
-  85%  { opacity: .16; transform: rotateX(4deg); box-shadow: none; }
-  100% { opacity: 0; transform: rotateX(0deg); box-shadow: none; }
-}
-@keyframes st-flap-close {
-  0%   { opacity: 0; transform: rotateX(0deg); }
-  35%  { opacity: .55; transform: rotateX(-55deg); }
-  100% { opacity: .9; transform: rotateX(-145deg); }
-}
-.st-head { position: relative; flex: none; font-size: var(--sienna-text-2xl); margin: 0 0 var(--sienna-space-3); color: var(--sienna-indigo); }
-/* the rail on the left, the page on the right; a painted line between them */
-.st-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; gap: 0 var(--sienna-space-8); }
-.st-side { position: relative; flex: none; width: 190px; display: flex; flex-direction: column; align-items: flex-start; gap: var(--sienna-space-2); padding-top: var(--sienna-space-2); font-size: var(--sienna-text-lg); overflow-y: auto; scrollbar-width: none; }
-.st-side::-webkit-scrollbar { display: none; }
-.st-side .st-w:not(.on) .plate:not(.hot) { opacity: 0; }
-.st-side .st-w:not(.on) span { color: var(--sienna-indigo); text-shadow: none; }
-.st-side .st-w:not(.on):hover span { color: var(--sienna-paper); }
-.st-rule { flex: none; width: 4px; align-self: stretch; margin: var(--sienna-space-2) 0; background-size: 100% 100%; opacity: .55; }
-/* only the page scrolls: the paper, the title, the rail and DONE stay put, so the card is always whole */
-.st-scroll { position: relative; flex: 1 1 auto; min-width: 0; overflow-y: auto; overflow-x: hidden; margin-right: -14px; padding-right: 14px; perspective: 900px;
-  -webkit-mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 10px), transparent); mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 10px), transparent);
-  padding-top: var(--sienna-space-2); padding-bottom: var(--sienna-space-2); scrollbar-width: thin; scrollbar-color: rgba(112,87,66,.45) transparent; }
-.st-scroll::-webkit-scrollbar { width: 8px; }
-.st-scroll::-webkit-scrollbar-track { background: transparent; }
-.st-scroll::-webkit-scrollbar-thumb { background: rgba(112,87,66,.45); border-radius: 4px; }
-.st-page { display: none; transform-origin: 0% 45%; }
-.st-page.on { display: block; animation: st-in var(--sienna-dur-mid) var(--sienna-ease-out); }
-@keyframes st-in {
-  0%   { opacity: 0; transform: translateX(14px) rotateY(-18deg) rotateZ(-.6deg); }
-  65%  { opacity: 1; transform: translateX(-1px) rotateY(2deg) rotateZ(.15deg); }
-  100% { opacity: 1; transform: none; }
-}
-.st-row { position: relative; margin: 0 0 var(--sienna-space-5); }
-.st-label { font-size: var(--sienna-text-lg); }
-.st-hint { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.4; color: var(--sienna-ink-2); margin: var(--sienna-space-1) 0 var(--sienna-space-3); }
-.st-opts { display: flex; flex-wrap: wrap; gap: var(--sienna-space-2) var(--sienna-space-1); font-size: var(--sienna-text-lg); }
-.st-keys .st-opts { align-items: center; gap: var(--sienna-space-2) var(--sienna-space-1); }
-.st-kpair { display: inline-flex; align-items: center; gap: var(--sienna-space-1); white-space: nowrap; margin-right: var(--sienna-space-4); }
-.st-kname { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); font-weight: 600; color: var(--sienna-ink-2); margin: 0 var(--sienna-space-1) 0 0; }
-.st-keys .st-msg { min-height: 1.2em; color: var(--sienna-danger); }
-/* Settings > Account */
-.st-who { display: flex; align-items: center; gap: var(--sienna-space-4); margin: var(--sienna-space-1) 0 var(--sienna-space-2); }
-.st-face { flex: none; width: 74px; height: 74px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center;
-  background: var(--sienna-terracotta); color: var(--sienna-paper); font-size: var(--sienna-text-xl); box-shadow: 0 0 0 3px var(--sienna-paper), 0 0 0 5px rgba(45,49,88,.55); }
-.st-face.small { width: 34px; height: 34px; font-size: var(--sienna-text-sm); box-shadow: 0 0 0 2px var(--sienna-paper), 0 0 0 3px rgba(45,49,88,.4); }
-.st-face img { width: 100%; height: 100%; object-fit: cover; }
-.st-name { font-size: var(--sienna-text-xl); color: var(--sienna-indigo); line-height: 1.05; }
-.st-handle { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.35; color: var(--sienna-ink-2); }
-.st-alt { display: flex; align-items: center; gap: var(--sienna-space-3); margin: 0 0 var(--sienna-space-2); font-size: var(--sienna-text-lg); }
-.st-alt .st-hint { margin: 0; }
-.st-confirm { display: none; }
+.st-settings .ui-sheet-body { display: flex; gap: var(--sienna-space-6); overflow: hidden; }
+.st-settings .ui-sheet-card { height: min(calc(var(--sienna-space-10) * 13), 82dvh); }
+.st-side { flex: none; width: calc(var(--sienna-space-10) * 4 + var(--sienna-space-4)); padding: var(--sienna-space-1); box-sizing: border-box; display: flex; flex-direction: column;
+  align-items: flex-start; gap: var(--sienna-space-1); overflow-y: auto; }
+.st-side .ui-ink { font-size: var(--sienna-text-lg); }
+.st-scroll { flex: 1; min-width: 0; overflow-y: auto; padding: 0 var(--sienna-space-2) var(--sienna-space-4); }
+.st-page { display: none; }
+.st-page.on { display: block; }
+.st-page-title { margin: 0 0 var(--sienna-space-1); font-family: var(--sienna-font); font-size: var(--sienna-text-xl); line-height: 1.1; color: var(--sienna-indigo); }
+.st-page-desc, .st-hint { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.4; color: var(--sienna-ink-2); }
+.st-page-desc { margin: 0 0 var(--sienna-space-4); }
+.st-row { margin: 0 0 var(--sienna-space-5); }
+.st-label, .st-name { font-family: var(--sienna-font); font-size: var(--sienna-text-lg); color: var(--sienna-indigo); line-height: 1.2; }
+.st-opts { display: flex; flex-wrap: wrap; gap: var(--sienna-space-2) var(--sienna-space-4); margin-top: var(--sienna-space-2); }
+.st-small, .st-handle, .st-kname { font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); line-height: 1.4; color: var(--sienna-ink-3); }
+.st-confirm { display: none; margin-top: var(--sienna-space-3); }
 .st-confirm.on { display: block; }
-.st-confirm .st-hint { color: var(--sienna-danger); }
-.st-small { font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); line-height: 1.45; color: var(--sienna-ink-3); margin-top: var(--sienna-space-4); max-width: 44em; }
-.st-foot { position: relative; flex: none; display: flex; padding-top: var(--sienna-space-2); justify-content: flex-end; font-size: var(--sienna-text-lg); }
-@media (max-width: 720px) { .st-side { width: 130px; font-size: var(--sienna-text-md); } .st-body { gap: 0 var(--sienna-space-4); } .st-card { padding: var(--sienna-space-6) var(--sienna-space-5) var(--sienna-space-5); } }
+.st-who, .st-alt { display: flex; align-items: center; gap: var(--sienna-space-3); margin-bottom: var(--sienna-space-4); }
+.st-alt { flex-wrap: wrap; }
+.st-face { flex: none; width: calc(var(--sienna-space-6) * 2); height: calc(var(--sienna-space-6) * 2);
+  border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--sienna-paper-lo); font-size: var(--sienna-text-lg); }
+.st-face.small { width: var(--sienna-space-8); height: var(--sienna-space-8); }
+.st-face img { width: 100%; height: 100%; object-fit: cover; }
+.st-kpair { display: flex; flex-direction: column; align-items: flex-start; }
+.st-settings .ui-scroll-cue { margin-right: auto; }
 `;
 
-// A word in an oil-dab plate. Plates are painted once the word has its real size (after fonts load).
-export function word(text, seed, onClick, { flipX = false } = {}) {
-  const el = document.createElement('button');
-  el.className = 'st-w';
-  el.tabIndex = -1;
-  el.innerHTML = '<div class="plate"></div><div class="plate hot"></div><span></span>';
-  el.querySelector('span').textContent = text;
-  el.addEventListener('click', (e) => { e.stopPropagation(); el.blur(); onClick(); });
-  let painted = '';
-  el.paint = () => {
-    const w = Math.ceil(el.offsetWidth), h = Math.ceil(el.offsetHeight);
-    if (!w || !h || painted === `${w}x${h}`) return;
-    painted = `${w}x${h}`;
-    const [cold, hot] = el.querySelectorAll('.plate');
-    cold.style.backgroundImage = `url(${brushStroke(w, h, COLORS.indigo, seed, { flipX })})`;
-    hot.style.backgroundImage = `url(${brushStroke(w, h, COLORS.terracotta, seed, { flipX })})`;
-  };
-  return el;
-}
-
-
-// A painted vertical line (the rule between the rail and the page).
-function paintRule(el, seed) {
-  const h = Math.ceil(el.offsetHeight);
-  if (!h || el.dataset.h === String(h)) return;
-  el.dataset.h = String(h);
-  const c = document.createElement('canvas');
-  c.width = 8; c.height = h;
-  const g = c.getContext('2d');
-  const r = rng(seed);
-  g.fillStyle = COLORS.indigo;
-  for (let pass = 0; pass < 6; pass++) {
-    g.globalAlpha = 0.18;
-    g.beginPath();
-    let x = 4;
-    g.moveTo(x, 0);
-    for (let y = 0; y <= h; y += 12) { x = Math.max(2, Math.min(6, x + (r() - 0.5) * 1.6)); g.lineTo(x + 1.2, y); }
-    for (let y = h; y >= 0; y -= 12) g.lineTo(4 - 1.2 + (r() - 0.5), y);
-    g.fill();
-  }
-  el.style.backgroundImage = `url(${c.toDataURL()})`;
-}
+const action = (text, seed, onClick, danger = false) => inkButton(text, { seed, onClick, danger });
 
 export function createSettingsPanel({ music = null, onTour = null, onRestock = null } = {}) {
   injectTokens();
@@ -233,23 +123,19 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   });
   document.body.appendChild(btnWrap);
 
-  const veil = document.createElement('div');
-  veil.className = 'st-veil';
-  veil.innerHTML = `<div class="st-lean"><div class="st-card"><div class="st-paper"></div><div class="st-flap"></div><div class="st-head">Settings</div>
-    <div class="st-body"><div class="st-side"></div><div class="st-rule"></div><div class="st-scroll"></div></div>
-    <div class="st-foot"></div></div></div>`;
-  document.body.appendChild(veil);
-  const card = veil.querySelector('.st-card');
-  const leaner = veil.querySelector('.st-lean');
-  const side = veil.querySelector('.st-side');
-  const rule = veil.querySelector('.st-rule');
-  const scroller = veil.querySelector('.st-scroll');
-  let unlean = null;
-  let closeTimer = 0;
-  card.querySelector('.st-paper').style.clipPath = torn(7);
-  card.querySelector('.st-flap').style.clipPath = torn(7, 4, 8);
-  card.addEventListener('click', (e) => e.stopPropagation());
-  veil.addEventListener('click', () => close());
+  const sheet = createSheet({ title: 'Settings', seed: 7,
+    width: 'min(calc(var(--sienna-space-10) * 21), 92vw)',
+    onClose: () => { openNow = false; stopRecording(); },
+  });
+  const veil = sheet.el;
+  veil.classList.add('st-settings');
+  const side = document.createElement('nav');
+  side.className = 'st-side';
+  side.setAttribute('aria-label', 'Settings pages');
+  const scroller = document.createElement('div');
+  scroller.className = 'st-scroll';
+  sheet.body.append(side, scroller);
+  const cue = createScrollCue(scroller, { parent: sheet.footer });
 
   const optWords = [];
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -269,8 +155,18 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   function addPage(id, label, onShow = null) {
     const page = el('div', 'st-page');
     page.dataset.page = id;
+    const descriptions = {
+      account: 'Your YouTube Music identity and accounts.',
+      look: 'Handwriting and painted cover art, made yours.',
+      playback: 'Choose how Sienna plays and lives on your computer.',
+      performance: 'Balance smooth motion, detail and battery life.',
+      shortcuts: 'Your quickest ways back to the music.',
+      tour: 'Take another walk around the record shop.',
+      about: 'Version, updates and private diagnostics.',
+    };
+    page.append(el('h3', 'st-page-title', label), el('p', 'st-page-desc', descriptions[id]));
     scroller.appendChild(page);
-    const w = word(label, 141 + PAGES.length * 11, () => show(id));
+    const w = action(label, 141 + PAGES.length * 11, () => show(id));
     w.dataset.page = id;
     side.appendChild(w);
     railWords[id] = w;
@@ -281,11 +177,16 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     const p = PAGES.find((x) => x.id === id) ?? PAGES[0];
     if (current === p.id) return;
     current = p.id;
-    for (const x of PAGES) { x.page.classList.toggle('on', x === p); railWords[x.id].classList.toggle('on', x === p); }
+    for (const x of PAGES) {
+      x.page.classList.toggle('on', x === p);
+      railWords[x.id].setSelected(x === p);
+      if (x === p) railWords[x.id].setAttribute('aria-current', 'page');
+      else railWords[x.id].removeAttribute('aria-current');
+    }
     scroller.scrollTop = 0;
     stopRecording();
     p.onShow?.();
-    requestAnimationFrame(paintAll);
+    requestAnimationFrame(refreshLayout);
   }
 
   // ---- Account ----
@@ -320,22 +221,22 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     const small = el('div', 'st-small', 'Sienna keeps no passwords and stores nothing about you. Sign-in happens on Google’s page, and the session stays inside Sienna’s own player on this computer.');
     page.append(who, switchRow.row, addRow.row, outRow.row, inRow.row, small);
 
-    const add = word('Use another account', 211, () => music.addAccount());
+    const add = action('Use another account', 211, () => music.addAccount());
     addRow.box.appendChild(add);
-    const out = word('Sign out', 223, () => { confirm.classList.add('on'); out.style.display = 'none'; requestAnimationFrame(paintAll); });
+    const out = action('Sign out', 223, () => { confirm.classList.add('on'); out.style.display = 'none'; refreshLayout(); }, true);
     outRow.box.appendChild(out);
-    const yes = word('Yes, sign out', 227, async () => {
+    const yes = action('Yes, sign out', 227, async () => {
       busy('Signing out…');
       await music.signOut().catch(() => {});
       resetConfirm();
       // the player reloads as a guest; onAccount brings the page up to date (and once more here, in case)
       setTimeout(() => refreshAccount(), 2500);
-    });
-    const no = word('Keep me in', 229, () => resetConfirm());
+    }, true);
+    const no = action('Keep me in', 229, () => resetConfirm());
     confirmBox.append(yes, no);
-    const signIn = word('Sign in', 233, () => music.signIn());
+    const signIn = action('Sign in', 233, () => music.signIn());
     inRow.box.appendChild(signIn);
-    const retry = word('Try again', 239, () => refreshAccount());
+    const retry = action('Try again', 239, () => refreshAccount());
     optWords.push(add, out, yes, no, signIn, retry);
     function resetConfirm() { confirm.classList.remove('on'); out.style.display = ''; }
 
@@ -356,7 +257,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
         console.warn('[sienna] account', e);
         who.replaceChildren(el('div', 'st-hint', 'Could not reach YouTube Music just now.'), retry);
         for (const r of [switchRow, addRow, outRow, inRow]) r.row.style.display = 'none';
-        requestAnimationFrame(paintAll);
+        requestAnimationFrame(refreshLayout);
         return;
       }
       if (n !== seq) return;
@@ -387,7 +288,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
         list.forEach((a, i) => {
           if (a.selected) return;
           const alt = el('div', 'st-alt');
-          const w = word(a.name, 251 + i * 7, async () => {
+          const w = action(a.name, 251 + i * 7, async () => {
             busy(`Switching to ${a.name}…`);
             if (!(await music.switchAccount(i).catch(() => false))) refreshAccount();
             else setTimeout(() => { if (who.textContent.startsWith('Switching')) refreshAccount(); }, 8000);
@@ -400,7 +301,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
         optWords.push(...altWords);
         switchRow.row.style.display = altWords.length ? '' : 'none';
       }
-      requestAnimationFrame(paintAll);
+      requestAnimationFrame(refreshLayout);
     };
     // signed in, out or switched (here, in the sign-in window, or by Google itself)
     music.onAccount?.(() => { if (current === 'account') refreshAccount(); else who.replaceChildren(); });
@@ -411,16 +312,12 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     rows.forEach((row, r) => {
       const { row: rowEl, box } = makeRow(row.label, row.hint);
       page.appendChild(rowEl);
-      const ws = row.opts.map(([label, value, font], i) => {
-        const w = word(label, seed0 + r * 13 + i * 5, () => settings.set(row.key, value));
-        if (font) w.style.fontFamily = font.family; // each lettering choice is written in itself
-        box.appendChild(w);
-        optWords.push(w);
-        return w;
+      const chips = segmented(row.opts.map(([label, value, font]) => ({ label, value, font: font?.family })), {
+        role: 'radio', label: row.label, value: settings.get(row.key), seed: seed0 + r * 13,
+        onChange: value => settings.set(row.key, value),
       });
-      const mark = () => ws.forEach((w, i) => w.classList.toggle('on', row.opts[i][1] === settings.get(row.key)));
-      mark();
-      settings.on(row.key, mark);
+      box.appendChild(chips.el);
+      settings.on(row.key, value => chips.setValue(value));
     });
   }
   settingRows(addPage('look', 'Look'), [
@@ -446,17 +343,14 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     const { row: loginRow, box: loginBox } = makeRow('Start at login', 'Launch Sienna automatically when you sign in to your computer.');
     playbackPage.appendChild(loginRow);
     let loginState = false;
-    const loginOff = word('Off', 173, () => setLogin(false));
-    const loginOn = word('On', 179, () => setLogin(true));
-    loginBox.append(loginOff, loginOn);
-    optWords.push(loginOff, loginOn);
-    const markLogin = () => {
-      loginOff.classList.toggle('on', !loginState);
-      loginOn.classList.toggle('on', !!loginState);
-    };
-    const setLogin = (v) => {
-      music.app.loginItem(v).then((res) => { loginState = !!res; markLogin(); }).catch(() => {});
-    };
+    const login = segmented([['Off', false], ['On', true]], { role: 'radio', label: 'Start at login', value: false,
+      onChange: v => {
+        login.setValue(loginState);
+        music.app.loginItem(v).then(res => { loginState = !!res; markLogin(); }).catch(() => {});
+      },
+    });
+    loginBox.appendChild(login.el);
+    const markLogin = () => login.setValue(loginState);
     markLogin();
     music.app.info?.().then((info) => { if (info) { loginState = !!info.loginItem; markLogin(); } }).catch(() => {});
   }
@@ -481,20 +375,19 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     const pair = el('span', 'st-kpair');
     keysBox.appendChild(pair);
     pair.appendChild(el('span', 'st-kname', label));
-    const w = word('', 91 + i * 7, () => (recording === name ? stopRecording() : startRecording(name)));
+    const w = action('', 91 + i * 7, () => (recording === name ? stopRecording() : startRecording(name)));
     pair.appendChild(w);
     keyWords[name] = w;
     optWords.push(w);
   });
-  const resetWord = word('Reset', 117, () => { stopRecording(); shortcuts.reset().then(() => { msg.textContent = ''; }); });
+  const resetWord = action('Reset', 117, () => { stopRecording(); shortcuts.reset().then(() => { msg.textContent = ''; }); });
   keysBox.appendChild(resetWord);
   optWords.push(resetWord);
   function showKeys() {
     for (const [name] of KEYS) {
       const w = keyWords[name];
-      w.querySelector('span').textContent = recording === name ? 'Press keys…' : shortcuts.label(name);
-      w.classList.toggle('on', recording === name);
-      requestAnimationFrame(() => w.paint());
+      w.setLabel(recording === name ? 'Press keys…' : shortcuts.label(name));
+      w.setSelected(recording === name);
     }
     const refused = KEYS.filter(([n]) => shortcuts.failed(n)).map(([, l]) => l);
     if (!recording && refused.length && !msg.dataset.sticky) msg.textContent = `${refused.join(' and ')}: another app already uses that shortcut. Pick another.`;
@@ -539,7 +432,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   if (onTour) {
     const { row, box } = makeRow('Tour', 'The welcome notes from the first time, with the choices and shortcuts.');
     addPage('tour', 'Tour').appendChild(row);
-    const again = word('Show it again', 131, () => { close(); onTour(); });
+    const again = action('Show it again', 131, () => { close(); onTour(); });
     box.appendChild(again);
     optWords.push(again);
   }
@@ -552,9 +445,9 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   const updMsg = el('div', 'st-hint');
   updRow.appendChild(updMsg);
   let releaseUrl = null;
-  const openRelBtn = word('Open release page', 293, () => { if (releaseUrl) music?.app?.openRelease?.(releaseUrl); });
+  const openRelBtn = action('Open release page', 293, () => { if (releaseUrl) music?.app?.openRelease?.(releaseUrl); });
   openRelBtn.style.display = 'none';
-  const checkBtn = word('Check for updates', 283, async () => {
+  const checkBtn = action('Check for updates', 283, async () => {
     updMsg.textContent = 'Checking GitHub Releases…';
     openRelBtn.style.display = 'none';
     const res = await music?.app?.checkUpdates?.().catch(() => ({ ok: false, error: 'Could not check for updates.' }));
@@ -564,7 +457,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
       releaseUrl = res.url;
       updMsg.textContent = `Sienna ${res.latest} is available (you have ${res.current}).`;
       openRelBtn.style.display = '';
-      requestAnimationFrame(paintAll);
+      requestAnimationFrame(refreshLayout);
     } else {
       updMsg.textContent = res.note || `You are up to date (v${res.current}).`;
     }
@@ -575,7 +468,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   const { row: diagRow, box: diagBox } = makeRow('Diagnostics', 'Copy a sanitized summary (version, OS, GPU, player status — never cookies, account info, or listening history) for bug reports.');
   const diagMsg = el('div', 'st-hint');
   diagRow.appendChild(diagMsg);
-  const copyDiagBtn = word('Copy debug info', 307, async () => {
+  const copyDiagBtn = action('Copy debug info', 307, async () => {
     try {
       const base = (await music?.app?.diagnostics?.()) ?? {};
       let webgl = null;
@@ -598,51 +491,26 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   });
   diagBox.appendChild(copyDiagBtn);
   optWords.push(copyDiagBtn);
-  aboutPage.append(verHint, updRow, diagRow, unsignedNote);
+  const { row: versionRow } = makeRow('Version', '');
+  versionRow.append(verHint, unsignedNote);
+  aboutPage.append(versionRow, updRow, diagRow);
   music?.app?.info?.().then((info) => {
     if (info?.version) verHint.textContent = `Sienna v${info.version} — free, open-source 3D vinyl shop for YouTube Music (MIT License).`;
   }).catch(() => {});
 
-  const done = word('Done', 31, () => close());
-  card.querySelector('.st-foot').appendChild(done);
-
-  const paintAll = () => {
-    if (!openNow) return;
-    for (const w of [...Object.values(railWords), ...optWords, done]) w.paint();
-    paintRule(rule, 5);
-  };
-  document.fonts?.ready.then(paintAll);
-  onLettering(done, paintAll); // Settings > Lettering: words reflow in the new face, plates follow
-  document.fonts?.addEventListener?.('loadingdone', paintAll); // the lettering choices load when first shown
-  requestAnimationFrame(paintAll);
+  const done = action('Done', 31, () => close());
+  sheet.footer.appendChild(done);
+  const refreshLayout = () => cue.refresh();
 
   let openNow = false;
   function open(page = null) {
-    clearTimeout(closeTimer);
     openNow = true;
-    setOverlayOpen(veil, true);
-    veil.classList.remove('closing');
-    veil.classList.remove('show');
-    void card.offsetWidth;
-    veil.classList.add('show');
     if (page || !current) show(page || 'account');
-    else PAGES.find((x) => x.id === current)?.onShow?.();   // the same page as last time, brought up to date
-    paintAll();
-    requestAnimationFrame(paintAll);
-    // a big card, so a gentler lean than the tour's notes
-    unlean ??= onCursorTilt((x, y) => { leaner.style.transform = tiltCSS(x, y, 5); });
+    else PAGES.find(x => x.id === current)?.onShow?.();
+    sheet.open({ returnFocusTo: document.activeElement === document.body ? btn : document.activeElement });
+    refreshLayout();
   }
-  function close() {
-    if (!openNow) return;
-    stopRecording();
-    openNow = false;
-    setOverlayOpen(veil, false);
-    clearTimeout(closeTimer);
-    veil.classList.remove('show');
-    veil.classList.add('closing');
-    closeTimer = setTimeout(() => { veil.classList.remove('closing'); }, 280);
-    unlean?.(); unlean = null; // it holds its last lean while it folds away
-  }
+  function close() { sheet.close(); }
   function toggle() { (openNow ? close : open)(); }
   function step(d) {
     const i = PAGES.findIndex((x) => x.id === current);
@@ -654,16 +522,17 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   // while the card is up.
   const mac = /Mac/.test(navigator.platform);
   addEventListener('keydown', (e) => {
+    if (openNow && !sheet.isTopmost()) return;
     if (openNow && recording) { e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) record(e); return; }
     if (e.key === ',' && (mac ? e.metaKey : e.ctrlKey) && !e.altKey) {
       e.preventDefault(); e.stopImmediatePropagation(); toggle(); return;
     }
     if (!openNow) return;
-    if (e.key === 'Escape') close();
-    else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) step(1);
-    else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) step(-1);
-    e.preventDefault();
-    e.stopImmediatePropagation();
+    if (side.contains(e.target) && ['ArrowDown', 'ArrowUp'].includes(e.key)) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      step(e.key === 'ArrowDown' ? 1 : -1);
+      railWords[current].focus();
+    }
   }, true);
 
   const shot = new URLSearchParams(location.search);
@@ -681,6 +550,6 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     tilt,
     restock: runRestock,
     // the top-right words show once the intro is over (like the section buttons)
-    show(on) { btnWrap.classList.toggle('show', on); if (on) requestAnimationFrame(paintAll); },
+    show(on) { btnWrap.classList.toggle('show', on); if (on) refreshLayout(); },
   };
 }

@@ -10,7 +10,7 @@ if (!S) { console.log('usage: node scripts/shortcuts-check.mjs out_dir'); proces
 fs.rmSync(`${S}/ud`, { recursive: true, force: true });
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), '--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || (process.platform === 'darwin' ? 'metal' : 'swiftshader')}`, '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
   env: { ...process.env, SIENNA_TEST: '1' },
   timeout: 60000,
 });
@@ -33,15 +33,15 @@ ok(JSON.stringify(await registered()) === JSON.stringify(['Control+Alt+K', 'Cont
 // open the card and read the row
 await page.keyboard.press('Control+Comma');
 await wait(600);
-await page.locator('.st-side .st-w[data-page="shortcuts"]').click();   // the Shortcuts page on the rail
+await page.locator('.st-side .ui-ink[data-page="shortcuts"]').click();   // the Shortcuts page on the rail
 await wait(400);
-const words = () => page.evaluate(() => [...document.querySelectorAll('.st-keys .st-w span')].map((e) => e.textContent));
+const words = () => page.evaluate(() => [...document.querySelectorAll('.st-keys .ui-ink .ui-ink-label')].map((e) => e.textContent));
 console.log('     row:', (await words()).join(' | '));
 ok((await words())[0] === 'Ctrl + Alt + J', 'search shown as Ctrl + Alt + J');
 await page.screenshot({ path: `${S}/settings-shortcuts.png` });
 
 // record the mini player shortcut: click it, globals let go, press Ctrl+Alt+M
-await page.locator('.st-keys .st-w').nth(2).click();
+await page.locator('.st-keys .ui-ink').nth(2).click();
 await wait(200);
 ok((await words())[2] === 'Press keys…', 'recording shows "Press keys…"');
 ok((await registered()).length === 0, 'globals let go while recording');
@@ -55,7 +55,7 @@ const saved = JSON.parse(fs.readFileSync(`${S}/ud/shortcuts.json`, 'utf8'));
 ok(saved.mini === 'Control+Alt+M', 'saved to shortcuts.json');
 
 // a clash is refused with a message
-await page.locator('.st-keys .st-w').nth(1).click();
+await page.locator('.st-keys .ui-ink').nth(1).click();
 await page.keyboard.press('Control+Alt+KeyM');
 await wait(400);
 st = await page.evaluate(() => window.sienna.keys.get());
@@ -64,13 +64,13 @@ ok(st.app === 'Control+Alt+L' && /Mini player/.test(msg), `clash refused: "${msg
 ok(JSON.stringify(await registered()) === JSON.stringify(['Control+Alt+L', 'Control+Alt+M']), 'globals back after the refused one');
 
 // Esc cancels a recording without closing the card
-await page.locator('.st-keys .st-w').nth(1).click();
+await page.locator('.st-keys .ui-ink').nth(1).click();
 await page.keyboard.press('Escape');
 await wait(200);
-ok((await words())[1] === 'Ctrl + Alt + L' && await page.evaluate(() => document.querySelector('.st-veil').classList.contains('show')), 'Esc cancels recording, card stays');
+ok((await words())[1] === 'Ctrl + Alt + L' && await page.evaluate(() => document.querySelector('.st-settings').classList.contains('show')), 'Esc cancels recording, card stays');
 
 // search: record Ctrl+Shift+F, then it opens the bar (and the old Ctrl+Alt+J does not)
-await page.locator('.st-keys .st-w').nth(0).click();
+await page.locator('.st-keys .ui-ink').nth(0).click();
 await page.keyboard.press('Control+Shift+KeyF');
 await wait(300);
 await page.keyboard.press('Escape');   // close the card
