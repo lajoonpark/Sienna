@@ -1,3 +1,4 @@
+import { setOverlayOpen } from './ui/sheet.js';
 // Torn-paper overlay sheets matching Sienna's Settings & Tour aesthetic:
 //   - Lyrics sheet with 3D paper-unfold animation (pulled from YouTube Music's `next` -> Lyrics tab)
 //   - Up Next Queue list that emerges directly from the open suitcase bottom drawer
@@ -222,6 +223,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   function openLyricsSheet() {
     clearTimeout(closeTimer);
     mode = 'lyrics';
+    setOverlayOpen(veil, true);
     veil.classList.remove('closing');
     veil.classList.remove('show');
     void card.offsetWidth;
@@ -276,6 +278,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     if (!mode) return;
     const prev = mode;
     mode = null;
+    setOverlayOpen(prev === 'lyrics' ? veil : qveil, false);
     seq++;
     if (prev === 'lyrics') closeLyricsSheet();
     else if (prev === 'queue') closeQueueOverlay({ keepDrawer });
@@ -468,6 +471,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     clearTimeout(qRefreshTimer);
     clearTimeout(qRetryTimer);
     mode = 'queue';
+    setOverlayOpen(qveil, true);
     renderedItems = [];
 
     // Start fetching the queue AND opening the drawer + launching the sweeping vinyls immediately

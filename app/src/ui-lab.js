@@ -7,9 +7,9 @@
 import './fonts.js';
 import { rng } from './rand.js';
 import { createMusic } from './music.js';
+import { createCaption } from './controls.js';
 import { settings } from './settings.js';
 import { FONTS, LETTERING, fontReady, onLettering } from './style.js';
-import { dabCluster, TONES } from './brushpaint.js';
 import {
   COLORS, TYPE, SPACE, TILT, ELEVATION, MOTION, Z, CONTRAST_PAIRS, injectTokens,
 } from './ui/tokens.js';
@@ -190,28 +190,10 @@ const LAB_CSS = `
 /* Banners showcase */
 .lab-banners-stack { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sienna-space-4); }
 
-/* Composed now-playing tag preview */
 .lab-tag-stage { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sienna-space-6); padding: var(--sienna-space-4) 0; }
-.lab-tag-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sienna-space-2); }
-.lab-tag-card { width: min(390px, 86vw); box-sizing: border-box;
-  padding: var(--sienna-space-4) var(--sienna-space-6) var(--sienna-space-4);
-  transform: rotate(var(--sienna-tilt-lg)); }
-.lab-tag-title { font-family: var(--sienna-font); font-size: var(--sienna-text-lg); line-height: 1.08;
-  color: var(--sienna-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lab-tag-artist { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.3;
-  color: var(--sienna-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lab-tag-bar { position: relative; height: 14px; margin-top: var(--sienna-space-2); cursor: pointer; }
-.lab-tag-bar-track { position: absolute; inset: 0; background-size: 100% 100%; background-repeat: no-repeat; }
-.lab-tag-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 34%;
-  background-size: 340px 100%; background-repeat: no-repeat; }
-.lab-tag-bar-knob { position: absolute; left: 34%; top: 50%; width: 10px; height: 10px; border-radius: 50%;
-  background: var(--sienna-indigo); border: 2px solid var(--sienna-paper);
-  transform: translate(-50%, -50%); box-shadow: var(--sienna-shadow-rest); }
-.lab-tag-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--sienna-space-2);
-  margin-top: var(--sienna-space-2); }
-.lab-tag-time { font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); color: var(--sienna-ink-3);
-  font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
-.lab-tag-tools { display: flex; align-items: center; gap: var(--sienna-space-1); }
+.lab-tag-wrap { width: min(calc(var(--sienna-space-10) * 10), 100%); min-width: 0; }
+.lab-tag-wrap .cad-tag.shop, .lab-tag-wrap .cad-tag.mini { position: relative; left: auto; bottom: auto; width: 100%; max-width: 100%; transform: none; perspective: none; }
+.lab-tag-wrap .cad-tag > .turn, .lab-tag-wrap .cad-tag .cap { width: 100%; }
 
 /* Sheet inner demo (Settings-like page) */
 .lab-sheet-row { margin-bottom: var(--sienna-space-4); }
@@ -236,9 +218,8 @@ const LAB_CSS = `
   border-bottom: 1px solid var(--sienna-hairline); padding-bottom: var(--sienna-space-1); }
 .lab-compare-sheet-title { font-family: var(--sienna-font); font-size: var(--sienna-text-xl);
   color: var(--sienna-indigo); line-height: 1.05; }
-.lab-compare-col .lab-tag-card { padding: var(--sienna-space-3) var(--sienna-space-4); }
-.lab-compare-col .lab-tag-tools { gap: 0; }
-.lab-compare-col .ui-stamp--sm { width: 26px; height: 26px; }
+.lab-compare-col .cad-tag .cap { min-width: 0; padding: var(--sienna-space-3) var(--sienna-space-4); }
+.lab-compare-col .cad-tag .meta, .lab-compare-col .cad-tag .tools { flex-wrap: wrap; }
 .lab-compare-col .ui-list-row { padding: 0 var(--sienna-space-4) 0 var(--sienna-space-4); gap: var(--sienna-space-2); }
 .lab-compare-col .ui-list-cover { width: 38px; height: 38px; }
 .lab-compare-col .ui-list-title { font-size: var(--sienna-text-md); }
@@ -306,72 +287,28 @@ function makeSection(id, title, caption, { onPaper = true, seed = 11 } = {}) {
   return { sec, surface };
 }
 
-// Helper: composed now-playing tag preview built strictly from kit parts
-function buildComposedTag({ seed = 61, compact = false } = {}) {
+function buildComposedTag({ variant = 'shop' } = {}) {
   const wrap = el('div', 'lab-tag-wrap');
-  const signInBtn = brushButton('Sign in', { size: compact ? 'md' : 'lg', tone: 'ink', seed: seed + 1 });
-
-  const card = el('div', 'lab-tag-card');
-  if (compact) card.style.width = '100%';
-  const titleEl = el('div', 'lab-tag-title', "Don't Leave Yet");
-  const artistEl = el('div', 'lab-tag-artist', "Eric Nam · Don't Leave Yet");
-
-  const bar = el('div', 'lab-tag-bar');
-  bar.setAttribute('role', 'slider');
-  bar.setAttribute('aria-label', 'Playback position');
-  bar.setAttribute('aria-valuemin', '0');
-  bar.setAttribute('aria-valuemax', '166');
-  bar.setAttribute('aria-valuenow', '56');
-  bar.tabIndex = 0;
-  const track = el('div', 'lab-tag-bar-track');
-  const fill = el('div', 'lab-tag-bar-fill');
-  const knob = el('div', 'lab-tag-bar-knob');
-  track.style.backgroundImage = `url(${dabCluster(340, 14, { tones: TONES.track, seed: 62, rows: 1, tilt: 0.04, overlap: 0.56, minCols: 4, impasto: 0.28, soft: true, solid: true, scale: 1.5 })})`;
-  fill.style.backgroundImage = `url(${dabCluster(340, 14, { tones: TONES.ink, seed: 63, rows: 1, tilt: 0.04, overlap: 0.56, minCols: 4, impasto: 0.52, even: true, solid: true, scale: 1.5 })})`;
-  bar.append(track, fill, knob);
-
-  const meta = el('div', 'lab-tag-meta');
-  const timeEl = el('span', 'lab-tag-time', '0:10 / 2:46');
-  const tools = el('div', 'lab-tag-tools');
-
-  const muteBtn = stamp('volume', {
-    label: 'Mute',
-    toggle: true,
-    on: false,
-    size: 'sm',
-    tooltip: (on) => (on ? 'Mute: on (muted)' : 'Mute: off'),
-    onClick: (on) => muteBtn.setIcon(on ? 'mute' : 'volume'),
-  });
-  const shuffleBtn = stamp('shuffle', { label: 'Shuffle', toggle: true, on: true, size: 'sm' });
-  let repeatMode = 0; // 0 off, 1 all, 2 one
-  const repeatBtn = stamp('repeat', {
-    label: 'Repeat',
-    toggle: true,
-    on: false,
-    size: 'sm',
-    tooltip: () => (repeatMode === 2 ? 'Repeat: one' : repeatMode === 1 ? 'Repeat: all' : 'Repeat: off'),
-    onClick: () => {
-      repeatMode = (repeatMode + 1) % 3;
-      repeatBtn.setIcon(repeatMode === 2 ? 'repeat-one' : 'repeat');
-      repeatBtn.setOn(repeatMode > 0);
-    },
-  });
-  const queueBtn = stamp('queue', { label: 'Up next queue', size: 'sm' });
-  const lyricsBtn = stamp('lyrics', { label: 'Lyrics', size: 'sm' });
-
-  tools.append(muteBtn, shuffleBtn, repeatBtn, queueBtn, lyricsBtn);
-  meta.append(timeEl, tools);
-  card.append(titleEl, artistEl, bar, meta);
-  wrap.append(signInBtn, card);
-
-  const paper = paperSurface(card, { seed, elevation: 'rest', amp: 4, cap: 8 });
-  return {
-    el: wrap,
-    card,
-    paper,
-    signInBtn,
-    stamps: { mute: muteBtn, shuffle: shuffleBtn, repeat: repeatBtn, queue: queueBtn, lyrics: lyricsBtn },
+  let state = {
+    ready: true, signedIn: false, title: "Don't Leave Yet", artist: 'Eric Nam',
+    album: "Don't Leave Yet", position: 56, duration: 166, shuffle: true, repeat: 'OFF',
   };
+  const update = () => caption.setState(state, { real: true });
+  const caption = createCaption({
+    parent: wrap, variant,
+    onSeek: (position) => { state = { ...state, position }; update(); },
+    onSignIn: () => { state = { ...state, signedIn: true }; update(); },
+    onCommand: (command) => {
+      if (command === 'mute') state = { ...state, muted: !state.muted };
+      if (command === 'shuffle') state = { ...state, shuffle: !state.shuffle };
+      if (command === 'repeat') state = { ...state, repeat: { OFF: 'ALL', ALL: 'ONE', ONE: 'OFF' }[state.repeat] };
+      update();
+    },
+    onQueue: () => {}, onLyrics: () => {},
+  });
+  update();
+  caption.show(true, true);
+  return { el: wrap, caption, signInBtn: caption.el.querySelector('.ui-brush') };
 }
 
 // ---- Compare mode (?compare): 4 columns, one per lettering ----
@@ -447,7 +384,7 @@ async function buildCompareView(samples) {
     col.appendChild(miniList.el);
 
     // Composed tag
-    const tag = buildComposedTag({ seed: 61 + colIdx * 5, compact: true });
+    const tag = buildComposedTag();
     col.appendChild(tag.el);
 
     grid.appendChild(col);
@@ -723,7 +660,14 @@ async function buildFullLab(samples) {
       states.appendChild(cell);
     }
     sec.appendChild(states);
-    lab.components.brush = [bSm, bMd, bLg, bHot, bFlip, bDanger, ...stateList.map((x) => x[1])];
+    const multiline = el('div', 'lab-row');
+    const twoLine = brushButton(['Forgotten', 'favourites'], { size: 'lg', seed: 43 });
+    const threeLine = brushButton(['Songs for', 'a quiet', 'Sunday'], { size: 'lg', seed: 47 });
+    threeLine.setCurrent(true);
+    multiline.append(twoLine, threeLine);
+    sec.appendChild(multiline);
+
+    lab.components.brush = [bSm, bMd, bLg, bHot, bFlip, bDanger, twoLine, threeLine, ...stateList.map((x) => x[1])];
   }
 
   // ============================================================================
@@ -1173,22 +1117,24 @@ async function buildFullLab(samples) {
   }
 
   // ============================================================================
-  // 11. COMPOSED NOW-PLAYING TAG (Phase 3 preview built from kit parts)
+  // 11. NOW-PLAYING TAG (shared with the shop and mini player)
   // ============================================================================
   {
     const { sec } = makeSection(
       'lab-tag',
-      'Composed now-playing tag',
-      'Phase 3 preview: one paper, lettering title, serif artist & tabular time, painted progress bar, and icon stamps.',
+      'Now-playing tag',
+      'The real shop and mini captions, with a fake song and working seek, Sign in, mute, shuffle and repeat controls.',
       { seed: 97 },
     );
     const stage = el('div', 'lab-list-stage');
     const tagRow = el('div', 'lab-tag-stage');
-    const tag = buildComposedTag({ seed: 61 });
-    tagRow.appendChild(tag.el);
+    const tag = buildComposedTag();
+    const miniTag = buildComposedTag({ variant: 'mini' });
+    tagRow.append(tag.el, miniTag.el);
     stage.appendChild(tagRow);
     sec.appendChild(stage);
     lab.components.tag = tag;
+    lab.components.miniTag = miniTag;
   }
 
   // Scratch mount helpers for ui-lab-check.mjs performance & cache tests

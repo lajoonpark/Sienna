@@ -10,6 +10,7 @@
 //   SIENNA_FONTS=amatic,kaushan,sriracha,caveat
 //   SIENNA_SIZES=1280x720,1024x640
 //   SIENNA_WC=1   (set 0 to disable oil paint)
+//   SIENNA_APP_ROOT=.../app   (capture a baseline worktree with the same harness)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { createServer as createHttpServer } from 'node:http';
@@ -153,7 +154,7 @@ async function setFontLive(page, fontKey) {
 
 async function waitForShopReady(page) {
   await page.waitForFunction(
-    () => window.__siennaDebug?.state?.introDone && window.__siennaDebug?.shelves?.length > 0,
+    () => window.__ready && window.__siennaDebug?.state?.introDone && window.__siennaDebug?.shelves?.length > 0,
     null,
     { timeout: 120000 },
   );
@@ -176,17 +177,27 @@ async function pinPlayingTrack(page) {
       await d.music.command('pause');
     }
   });
-  await page.waitForFunction(() => {
-    const cap = document.querySelector('.cad-tag .cap');
-    return cap && !cap.classList.contains('empty') && !!cap.querySelector('.t')?.textContent;
-  }, null, { timeout: 10000 });
+  try {
+    await page.waitForFunction(() => {
+      const cap = document.querySelector('.cad-tag .cap');
+      return cap && !cap.classList.contains('empty') && !!cap.querySelector('.t')?.textContent;
+    }, null, { timeout: 120000, polling: 100 });
+  } catch (error) {
+    console.error('Playback fixture:', await page.evaluate(() => ({
+      items: window.__siennaDebug.shelves[0]?.items?.length,
+      captions: [...document.querySelectorAll('.cad-tag')].map(e => e.outerHTML),
+    })));
+    throw error;
+  }
   await wait(350);
 }
 
 async function domClick(page, selector, text = null) {
   const clicked = await page.evaluate(({ sel, txt }) => {
     const els = [...document.querySelectorAll(sel)];
-    const target = txt == null ? els[0] : els.find((e) => e.textContent?.includes(txt));
+    const target = txt == null ? els[0] : els.find((e) =>
+      `${e.textContent} ${e.getAttribute('aria-label') || ''}`.toLowerCase().includes(txt.toLowerCase()) ||
+      (txt === 'Queue' && e.getAttribute('aria-label') === 'Up next'));
     if (!target) return false;
     target.click();
     return true;
@@ -197,6 +208,14 @@ async function domClick(page, selector, text = null) {
 async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
   const snap = async (name) => {
     const file = join(shotDir, `${name}.png`);
+    await page.evaluate(async () => {
+      await window.__seek(3);
+      const fps = document.querySelector('[data-matrix-fps="1"]');
+      if (fps) {
+        fps.style.display = 'block';
+        (fps.querySelector('span') || fps).textContent = '120 fps · worst 99.9 ms';
+      }
+    });
     await raf(page, 2);
     await page.screenshot({ path: file, timeout: 60000 });
     process.stdout.write(`  ${name}\n`);
@@ -210,20 +229,20 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
   // 1. home-playing (with deterministic fps box + now-playing tag + shelf words + Restock + Settings)
   if (want.has('home-playing')) {
     await page.evaluate(() => {
-      const box = [...document.querySelectorAll('body > div')].find(
+      const box = document.querySelector('.fps-ticket') || [...document.querySelectorAll('body > div')].find(
         (d) => d.style.pointerEvents === 'none' && d.style.position === 'fixed' && d.style.left === '8px',
       );
       if (box) {
         box.dataset.matrixFps = '1';
         box.style.display = 'block';
-        box.textContent = '60 fps · worst 12 ms · balanced';
+        (box.querySelector('span') || box).textContent = '120 fps · worst 99.9 ms';
       }
     });
     await wait(120);
     await snap('home-playing');
     await page.evaluate(() => {
       const box = document.querySelector('[data-matrix-fps="1"]');
-      if (box) box.style.display = 'none';
+      if (box) { box.style.display = 'none'; delete box.dataset.matrixFps; }
     });
   }
 
@@ -236,7 +255,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
     });
     await page.waitForFunction(() => {
       const btn = document.querySelector('.cad-tag > .turn > button');
-      const plate = btn?.querySelector('.plate');
+      const plate = btn?.querySelector('.plate, .ui-brush-plate');
       return btn && btn.style.display !== 'none' && plate && plate.style.backgroundImage;
     }, null, { timeout: 10000 });
     await wait(250);
@@ -257,9 +276,9 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
       window.__origShelves = d.music.shelves;
       d.music.shelves = () => new Promise((res) => { window.__resolveRestock = res; });
     });
-    await domClick(page, '.st-btn .st-w', 'Restock');
+    await domClick(page, '.st-btn button', 'Restock');
     await page.waitForFunction(
-      () => document.querySelector('.st-btn .st-w.on')?.textContent?.includes('Restocking'),
+      () => document.querySelector('.st-btn button:disabled, .st-btn .st-w.on')?.textContent?.includes('Restocking'),
       null,
       { timeout: 5000 },
     );
@@ -310,7 +329,19 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
       await page.locator('.cs-tab', { hasText: 'Songs' }).click();
       await page.fill('.cs-input', '');
       await page.fill('.cs-input', 'lemon');
-      await page.waitForFunction(() => document.querySelectorAll('.cs-slip').length > 0, null, { timeout: 5000 });
+      try {
+        await page.waitForFunction(() => document.querySelectorAll('.cs-slip').length > 0, null, { timeout: 5000 });
+      } catch (error) {
+        console.error('Search fixture:', await page.evaluate(async () => ({
+          input: document.querySelector('.cs-input')?.value,
+          note: document.querySelector('.cs-note')?.textContent,
+          rows: document.querySelectorAll('.cs-slip').length,
+          filter: document.querySelector('.cs-tab.on')?.textContent,
+          originalRestored: window.__siennaDebug.music.search === window.__origSearch,
+          matches: (await window.__siennaDebug.music.search('lemon', 'songs')).length,
+        })));
+        throw error;
+      }
       await wait(650);
       await page.keyboard.press('ArrowDown');
       await page.keyboard.press('ArrowDown');
@@ -411,7 +442,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
   // 12. Queue drawer
   if (want.has('queue')) {
     await pinPlayingTrack(page);
-    await domClick(page, '.cad-tag .tool', 'Queue');
+    await domClick(page, '.cad-tag .tool, .cad-tag .ui-stamp', 'Queue');
     await page.waitForFunction(
       () => document.querySelector('.ln-qveil.show') && document.querySelectorAll('.ln-qslip').length > 0,
       null,
@@ -426,7 +457,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
   // 13. Lyrics sheet
   if (want.has('lyrics')) {
     await pinPlayingTrack(page);
-    await domClick(page, '.cad-tag .tool', 'Lyrics');
+    await domClick(page, '.cad-tag .tool, .cad-tag .ui-stamp', 'Lyrics');
     await page.waitForFunction(
       () => document.querySelector('.ln-veil.show') && document.querySelector('.ln-lyrics'),
       null,
@@ -444,7 +475,8 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
     'settings-performance', 'settings-shortcuts', 'settings-tour', 'settings-about',
   ];
   if (wantAny(settingsSurfaces)) {
-    await domClick(page, '.st-btn .st-w', 'Settings');
+    const accountName = await page.evaluate(async () => (await window.__siennaDebug.music.account()).name);
+    await domClick(page, '.st-btn button', 'Settings');
     await page.waitForSelector('.st-veil.show', { timeout: 10000 });
     await wait(750);
 
@@ -456,7 +488,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
 
     if (want.has('settings-account')) {
       await openPage('account');
-      await page.waitForFunction(() => document.querySelector('.st-page.on .st-name')?.textContent?.includes('Sienna'), null, { timeout: 10000 });
+      await page.waitForFunction(name => document.querySelector('.st-page.on .st-name')?.textContent?.includes(name), accountName, { timeout: 10000 });
       await wait(250);
       await snap('settings-account');
     }
@@ -468,7 +500,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
       await wait(300);
       await snap('settings-account-guest');
       await page.evaluate(() => window.__siennaDebug.music.signIn());
-      await page.waitForFunction(() => document.querySelector('.st-page.on .st-name')?.textContent?.includes('Sienna'), null, { timeout: 10000 });
+      await page.waitForFunction(name => document.querySelector('.st-page.on .st-name')?.textContent?.includes(name), accountName, { timeout: 10000 });
       await wait(250);
     }
 
@@ -494,13 +526,13 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
   }
 
   if (want.has('banner-error')) {
-    await page.waitForFunction(() => document.querySelector('.st-btn .st-w')?.textContent?.trim() === 'Restock', null, { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => document.querySelector('.st-btn button')?.textContent?.trim() === 'Restock', null, { timeout: 5000 }).catch(() => {});
     await page.evaluate(() => {
       const d = window.__siennaDebug;
       window.__origShelvesErr = d.music.shelves;
       d.music.shelves = async () => { throw new Error('network error'); };
     });
-    await domClick(page, '.st-btn .st-w', 'Restock');
+    await domClick(page, '.st-btn button', 'Restock');
     await page.waitForFunction(
       () => document.querySelector('.ln-banner.show .ln-bmsg')?.textContent?.includes('Could not reach'),
       null,
@@ -512,19 +544,19 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
       const d = window.__siennaDebug;
       d.music.shelves = window.__origShelvesErr;
     });
-    await domClick(page, '.ln-banner .st-w', 'Retry');
+    await domClick(page, '.ln-banner button', 'Retry');
     await wait(700);
   }
 
   if (want.has('banner-restock')) {
-    await page.waitForFunction(() => document.querySelector('.st-btn .st-w')?.textContent?.trim() === 'Restock', null, { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => document.querySelector('.st-btn button')?.textContent?.trim() === 'Restock', null, { timeout: 5000 }).catch(() => {});
     await page.evaluate(() => {
       const d = window.__siennaDebug;
       window.__origShelvesRestock = d.music.shelves;
       d.music.shelves = async () => { throw new Error('offline'); };
       Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
     });
-    await domClick(page, '.st-btn .st-w', 'Restock');
+    await domClick(page, '.st-btn button', 'Restock');
     await page.waitForFunction(
       () => document.querySelector('.ln-banner.show .ln-bmsg')?.textContent?.includes('restock'),
       null,
@@ -537,7 +569,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
       d.music.shelves = window.__origShelvesRestock;
       Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
     });
-    await domClick(page, '.ln-banner .st-w', 'Retry');
+    await domClick(page, '.ln-banner button', 'Retry');
     await wait(700);
   }
 
@@ -636,7 +668,7 @@ async function captureStatic3D(browser, baseUrl, vw, vh, surfaceName, query) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log(`[${surfaceName} pageerror]`, e.message));
   await page.goto(`${baseUrl}/index.html?shot&hour=14&tour=0${WC_Q}&${query}`, { timeout: 180000 });
-  await page.waitForFunction('window.__ready === true', null, { timeout: 120000 });
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   await page.evaluate(() => window.__seek(10));
   for (const fontKey of FONTS) {
     await setFontLive(page, fontKey);
@@ -654,7 +686,7 @@ async function captureMini(browser, baseUrl, vw, vh) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log('[mini pageerror]', e.message));
   await page.goto(`${baseUrl}/mini.html?shot&hour=14&p=0.3${WC_Q}`, { timeout: 180000 });
-  await page.waitForFunction('window.__ready === true', null, { timeout: 120000 });
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   await page.evaluate(() => window.__seek(1.5));
   const stage = page.locator('#stage');
   for (const fontKey of FONTS) {
@@ -839,7 +871,7 @@ ${SURFACES.map((surface) => `    <tr>
 }
 
 const t0 = Date.now();
-const appRoot = new URL('..', import.meta.url).pathname;
+const appRoot = process.env.SIENNA_APP_ROOT || new URL('..', import.meta.url).pathname;
 const server = await createServer({ root: appRoot, server: { port, host: '127.0.0.1', strictPort: true, hmr: false }, logLevel: 'error' });
 await server.listen();
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -855,7 +887,7 @@ try {
       const ctx = await browser.newContext({ viewport: { width: vw, height: vh } });
       const page = await ctx.newPage();
       page.on('pageerror', (e) => console.log(`[home ${sizeKey} pageerror]`, e.message));
-      await page.goto(`${baseUrl}/index.html?at=home&tour=0&hour=14&shelves=8&albums=1${WC_Q}`, { timeout: 180000 });
+      await page.goto(`${baseUrl}/index.html?shot=1&at=home&tour=0&hour=14&shelves=8&albums=1${WC_Q}`, { timeout: 180000 });
       await waitForShopReady(page);
 
       for (const fontKey of FONTS) {

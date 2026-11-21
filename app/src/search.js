@@ -1,3 +1,4 @@
+import { setOverlayOpen } from './ui/sheet.js';
 // Search bar. Opens with the search shortcut (Control+Option+J by default, see shortcuts.js): chunky
 // cream oil dabs pressed over chunky indigo oil dabs, top centre, with results stamped in under
 // it row by row as chunky oil-dab clusters, the chosen one painted over in terracotta oil dabs.
@@ -384,6 +385,7 @@ export function createSearch({ music, onPlay, onOpenCollection = null, suggest =
   function open() {
     if (isOpen) return;
     isOpen = true;
+    setOverlayOpen(root, true);
     root.classList.remove('closing');
     root.classList.add('show');
     paintStrokes();
@@ -399,6 +401,7 @@ export function createSearch({ music, onPlay, onOpenCollection = null, suggest =
   function close() {
     if (!isOpen) return;
     isOpen = false;
+    setOverlayOpen(root, false);
     clearTimeout(timer);
     seq++; // answers still on their way are dropped
     pendingEnter = false;
