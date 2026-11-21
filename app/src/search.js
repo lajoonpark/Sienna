@@ -18,7 +18,7 @@
 import { shortcuts } from './shortcuts.js';
 import { rng } from './rand.js';
 import { FONT, onLettering } from './style.js';
-import { INK, HOT, PAPER } from './controls.js';
+import { COLORS, injectTokens } from './ui/tokens.js';
 import { dabCluster, layoutDabCluster } from './brushpaint.js';
 import { createBarPaint, slipMasks, MARGIN, SLIP_FRAMES } from './searchpaint.js';
 import { paintedCoverURL } from './coverpaint.js';
@@ -30,70 +30,69 @@ const SLIP_H = 66;
 const SLIP_COATS = 5, HOT_COATS = 3;   // rows take turns with a few painted swipes: they are slow to paint, quick to reuse
 
 const CSS = `
-.cs { position: fixed; top: 3.2vh; left: 50%; width: min(640px, 92vw); z-index: 60; transform: translateX(-50%);
+.cs { position: fixed; top: 3.2vh; left: 50%; width: min(640px, 92vw); z-index: var(--sienna-z-list); transform: translateX(-50%);
   pointer-events: none; visibility: hidden; font-family: var(--sienna-font); user-select: none; }
 .cs.show { pointer-events: auto; visibility: visible; }
 .cs.closing { visibility: visible; }
-.cs-bar { position: relative; height: ${BAR_H}px; transform: rotate(-.6deg); transform-origin: 20% 40%; }
+.cs-bar { position: relative; height: ${BAR_H}px; transform: rotate(var(--sienna-tilt-sm)); transform-origin: 20% 40%; }
 .cs-fx { position: absolute; left: -${MARGIN}px; top: -${MARGIN}px; width: calc(100% + ${MARGIN * 2}px); height: ${BAR_H + MARGIN * 2}px; pointer-events: none; }
-.cs-paper { position: absolute; left: 32px; right: 50px; top: 16px; bottom: 16px; display: flex; align-items: center;
-  padding: 0 26px 0 22px; gap: 8px; }
+.cs-paper { position: absolute; left: var(--sienna-space-8); right: 50px; top: var(--sienna-space-4); bottom: var(--sienna-space-4); display: flex; align-items: center;
+  padding: 0 var(--sienna-space-6) 0 var(--sienna-space-5); gap: var(--sienna-space-2); }
 .cs-paper svg { flex: none; width: 32px; height: 32px; margin-top: 2px; }
-.cs-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: 38px/1 var(--sienna-font); color: #2b2436; padding: 6px 0 2px;
-  caret-color: ${HOT}; letter-spacing: .01em; }
-.cs-input::placeholder { color: #a8957c; }
-.cs-input::selection { background: rgba(180,80,58,.28); }
-.cs-list { margin: -10px 0 0 6px; padding: 12px 12px 18px; width: calc(100% - 12px); box-sizing: border-box; list-style: none; transition: opacity .2s;
+.cs-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: var(--sienna-text-xl)/1 var(--sienna-font); color: var(--sienna-ink); padding: var(--sienna-space-1) 0 2px;
+  caret-color: var(--sienna-terracotta); letter-spacing: .01em; }
+.cs-input::placeholder { color: var(--sienna-ink-3); opacity: 1; }
+.cs-input::selection { background: rgba(166,68,47,.26); }
+.cs-list { margin: -10px 0 0 6px; padding: var(--sienna-space-3) var(--sienna-space-3) var(--sienna-space-5); width: calc(100% - 12px); box-sizing: border-box; list-style: none; transition: opacity var(--sienna-dur-fast);
   max-height: calc(100vh - 3.2vh - ${BAR_H}px - var(--cs-bottom, 16px)); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
   mask-image: linear-gradient(#000 calc(100% - 20px), transparent);
   scrollbar-width: thin; scrollbar-color: rgba(45,49,88,.45) transparent; }
 .cs-list::-webkit-scrollbar { width: 6px; } .cs-list::-webkit-scrollbar-thumb { background: rgba(45,49,88,.45); border-radius: 3px; }
-.cs-head { position: relative; display: inline-block; margin: 0 0 4px 22px; padding: 4px 26px 4px 18px; color: ${PAPER}; font-size: 26px;
-  background-size: 100% 100%; background-image: var(--note); transform: rotate(-1.2deg); }
+.cs-head { position: relative; display: inline-block; margin: 0 0 var(--sienna-space-1) var(--sienna-space-5); padding: var(--sienna-space-1) var(--sienna-space-6) var(--sienna-space-1) var(--sienna-space-4); color: var(--sienna-paper); font-size: var(--sienna-text-lg);
+  background-size: 100% 100%; background-image: var(--note); transform: rotate(var(--sienna-tilt-md)); }
 .cs-head.back { cursor: pointer; }
 .cs-head.back:hover { filter: brightness(1.12); }
-.cs-tabs { display: flex; align-items: center; gap: 6px; margin: -6px 0 6px 26px; pointer-events: auto; }
-.cs.closing .cs-tabs { opacity: 0; transition: opacity .15s; }
-.cs-tab { border: 0; background: rgba(244,234,214,.92); color: #5a4636; font-family: var(--sienna-font); font-size: 21px;
-  line-height: 1; padding: 4px 13px 3px; border-radius: 3px; cursor: pointer; transform: rotate(-.8deg);
-  box-shadow: 0 2px 4px rgba(35,24,18,.22); transition: background .15s, color .15s, transform .15s; }
-.cs-tab:nth-child(even) { transform: rotate(.7deg); }
-.cs-tab:hover { transform: translateY(-1px); color: ${INK}; }
-.cs-tab.on { background: ${HOT}; color: ${PAPER}; }
-.cs-kind { flex: none; font-size: 16px; color: #8c6c50; text-transform: uppercase; letter-spacing: .03em; }
-.cs-slipwrap.on .cs-kind { color: rgba(251,245,232,.85); }
-.cs.show .cs-head { animation: cs-head .34s cubic-bezier(.2,.8,.3,1) var(--lead, 0ms) both; }
-.cs.closing .cs-head { animation: cs-lift .16s ease-in both; }
+.cs-tabs { display: flex; align-items: center; gap: var(--sienna-space-2); margin: -6px 0 var(--sienna-space-2) var(--sienna-space-6); pointer-events: auto; }
+.cs.closing .cs-tabs { opacity: 0; transition: opacity var(--sienna-dur-fast); }
+.cs-tab { border: 0; background: var(--sienna-paper-lo); color: var(--sienna-ink-2); font-family: var(--sienna-font); font-size: var(--sienna-text-md);
+  line-height: 1; padding: var(--sienna-space-1) var(--sienna-space-3) 3px; border-radius: 3px; cursor: pointer; transform: rotate(var(--sienna-tilt-sm));
+  box-shadow: var(--sienna-shadow-rest); transition: background var(--sienna-dur-fast), color var(--sienna-dur-fast), transform var(--sienna-dur-fast); }
+.cs-tab:nth-child(even) { transform: rotate(calc(var(--sienna-tilt-sm) * -1)); }
+.cs-tab:hover { transform: translateY(-1px); color: var(--sienna-indigo); }
+.cs-tab.on { background: var(--sienna-terracotta); color: var(--sienna-paper); }
+.cs-kind { flex: none; font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); color: var(--sienna-ink-3); text-transform: uppercase; letter-spacing: .04em; }
+.cs-slipwrap.on .cs-kind { color: var(--sienna-paper-lo); }
+.cs.show .cs-head { animation: cs-head var(--sienna-dur-mid) var(--sienna-ease-out) var(--lead, 0ms) both; }
+.cs.closing .cs-head { animation: cs-lift var(--sienna-dur-fast) var(--sienna-ease-in) both; }
 .cs-head[hidden] { display: none; }
 .cs-list.stale { opacity: .55; }
 .cs-slipwrap { --sx: -16px; margin-top: -7px; transform: rotate(var(--r)); cursor: pointer;
   mask-image: var(--mask-l); mask-repeat: no-repeat; mask-size: 100% ${SLIP_FRAMES * 100}%; }
 .cs-slipwrap:nth-child(even) { --sx: 16px; mask-image: var(--mask-r); }
 .cs.show .cs-slipwrap { --at: calc(var(--lead, 0ms) + var(--i) * 34ms);
-  animation: cs-mask .26s steps(${SLIP_FRAMES}, jump-none) var(--at) both, cs-land .34s cubic-bezier(.2,.8,.3,1) var(--at) both; }
-.cs.closing .cs-slipwrap { animation: cs-mask .17s steps(${SLIP_FRAMES}, jump-none) var(--o, 0ms) reverse both, cs-lift .17s ease-in var(--o, 0ms) both; }
+  animation: cs-mask var(--sienna-dur-mid) steps(${SLIP_FRAMES}, jump-none) var(--at) both, cs-land var(--sienna-dur-mid) var(--sienna-ease-out) var(--at) both; }
+.cs.closing .cs-slipwrap { animation: cs-mask var(--sienna-dur-fast) steps(${SLIP_FRAMES}, jump-none) var(--o, 0ms) reverse both, cs-lift var(--sienna-dur-fast) var(--sienna-ease-in) var(--o, 0ms) both; }
 .cs:not(.show):not(.closing) .cs-slipwrap { animation: none; }
 .cs .cs-slipwrap.set { animation: none; mask-image: none; }
 @keyframes cs-mask { from { mask-position: 0 0%; } to { mask-position: 0 100%; } }
 @keyframes cs-land { 0% { translate: var(--sx, -14px) -10px; scale: .92 .82; rotate: -1.8deg; } 55% { translate: 0 2px; scale: 1.015 1.06; rotate: .4deg; } 100% { translate: 0 0; scale: 1 1; rotate: 0deg; } }
 @keyframes cs-head { 0% { opacity: 0; translate: -16px -9px; scale: 1 .8; } 55% { opacity: 1; translate: 0 2px; scale: 1 1.07; } 100% { translate: 0 0; scale: 1 1; } }   /* no mask to hide it while it waits */
 @keyframes cs-lift { to { translate: 0 -10px; scale: 1 .86; opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .cs .cs-slipwrap, .cs .cs-head { animation: none !important; mask-image: none; } }
-.cs-slip { position: relative; height: ${SLIP_H}px; background-size: 100% 100%; display: flex; align-items: center; gap: 14px;
-  padding: 0 34px 0 22px; color: #2b2436; transition: color .15s; filter: drop-shadow(0 2px 3px rgba(32,22,18,.18)); }
-.cs-hl { position: absolute; inset: 0; background-size: 100% 100%; opacity: 0; transition: opacity .18s; pointer-events: none; }
+.cs-slip { position: relative; height: ${SLIP_H}px; background-size: 100% 100%; display: flex; align-items: center; gap: var(--sienna-space-3);
+  padding: 0 var(--sienna-space-8) 0 var(--sienna-space-5); color: var(--sienna-ink); transition: color var(--sienna-dur-fast); filter: drop-shadow(var(--sienna-shadow-rest)); }
+.cs-hl { position: absolute; inset: 0; background-size: 100% 100%; opacity: 0; transition: opacity var(--sienna-dur-fast); pointer-events: none; }
 .cs-slipwrap.on .cs-hl { opacity: 1; }
-.cs-slipwrap.on .cs-slip { color: ${PAPER}; }
-.cs-slipwrap.on .cs-a, .cs-slipwrap.on .cs-d { color: rgba(251,245,232,.85); }
-.cs-cover { position: relative; flex: none; width: 46px; height: 46px; transform: rotate(-2.5deg); }
-.cs-cover img, .cs-cover i { display: block; width: 100%; height: 100%; object-fit: cover; background: #d9cbb2; }
-.cs-txt { position: relative; flex: 1; min-width: 0; line-height: 1; }
+.cs-slipwrap.on .cs-slip { color: var(--sienna-paper); }
+.cs-slipwrap.on .cs-a, .cs-slipwrap.on .cs-d { color: var(--sienna-paper-lo); }
+.cs-cover { position: relative; flex: none; width: 46px; height: 46px; transform: rotate(var(--sienna-tilt-lg)); }
+.cs-cover img, .cs-cover i { display: block; width: 100%; height: 100%; object-fit: cover; background: var(--sienna-paper-lo); }
+.cs-txt { position: relative; flex: 1; min-width: 0; line-height: 1.08; }
 .cs-t, .cs-a { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cs-t { font-size: 28px; }
-.cs-a { font-size: 19px; color: #7a5a40; margin-top: 3px; transition: color .15s; }
-.cs-d { position: relative; flex: none; font-size: 20px; color: #7a5a40; transition: color .15s; }
-.cs-note { position: relative; height: ${SLIP_H - 6}px; margin: 0 0 0 10px; display: flex; align-items: center; padding: 0 44px 0 34px;
-  color: ${PAPER}; font-size: 32px; background-size: 100% 100%; text-shadow: 0 0 1px rgba(251,245,232,.7); }
+.cs-t { font-size: var(--sienna-text-lg); }
+.cs-a { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.25; color: var(--sienna-ink-2); margin-top: 2px; transition: color var(--sienna-dur-fast); }
+.cs-d { position: relative; flex: none; font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); font-variant-numeric: lining-nums tabular-nums; color: var(--sienna-ink-3); transition: color var(--sienna-dur-fast); }
+.cs-note { position: relative; height: ${SLIP_H - 6}px; margin: 0 0 0 var(--sienna-space-3); display: flex; align-items: center; padding: 0 var(--sienna-space-10) 0 var(--sienna-space-8);
+  color: var(--sienna-paper); font-size: var(--sienna-text-lg); background-size: 100% 100%; text-shadow: 0 0 1px rgba(248,241,226,.7); }
 .cs-dots span { display: inline-block; animation: cs-dab 1.1s ease-in-out infinite; }
 .cs-dots span:nth-child(2) { animation-delay: .18s; } .cs-dots span:nth-child(3) { animation-delay: .36s; }
 @keyframes cs-dab { 0%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-4px); } }
@@ -102,7 +101,7 @@ const CSS = `
 const mmss = (s) => (s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '');
 
 // A tiny brushed magnifying glass, in indigo.
-const GLASS = `<svg viewBox="0 0 32 32" fill="none" stroke="${INK}" stroke-linecap="round"><filter id="cs-rough" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency=".38" numOctaves="2" seed="4"/><feDisplacementMap in="SourceGraphic" scale="2.2"/></filter><g filter="url(#cs-rough)"><circle cx="13" cy="13" r="8.5" stroke-width="3.2"/><path d="M19.5 19.5 L28 28" stroke-width="4.2"/><path d="M9 11 Q10.5 8 13.5 7.5" stroke-width="1.6" opacity=".5"/></g></svg>`;
+const GLASS = `<svg viewBox="0 0 32 32" fill="none" stroke="${COLORS.indigo}" stroke-linecap="round"><filter id="cs-rough" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency=".38" numOctaves="2" seed="4"/><feDisplacementMap in="SourceGraphic" scale="2.2"/></filter><g filter="url(#cs-rough)"><circle cx="13" cy="13" r="8.5" stroke-width="3.2"/><path d="M19.5 19.5 L28 28" stroke-width="4.2"/><path d="M9 11 Q10.5 8 13.5 7.5" stroke-width="1.6" opacity=".5"/></g></svg>`;
 
 let openCount = 0;
 export const searchOpen = () => openCount > 0;
@@ -115,6 +114,7 @@ const FILTERS = [
 ];
 
 export function createSearch({ music, onPlay, onOpenCollection = null, suggest = null }) {
+  injectTokens();
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -153,12 +153,12 @@ export function createSearch({ music, onPlay, onOpenCollection = null, suggest =
     const paperRect = { x: paper.offsetLeft, y: paper.offsetTop, w: paper.offsetWidth || w - 82, h: paper.offsetHeight || BAR_H - 32 };
     paint.setLayers({
       w, h: BAR_H, paperRect,
-      inkDabs: layoutDabCluster(w, BAR_H, { tones: [INK], seed: 21, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.55, even: true }),
-      paperDabs: layoutDabCluster(paperRect.w, paperRect.h, { tones: [PAPER], seed: 5, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 3, impasto: 0.28, soft: true }),
+      inkDabs: layoutDabCluster(w, BAR_H, { tones: [COLORS.indigo], seed: 21, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.55, even: true }),
+      paperDabs: layoutDabCluster(paperRect.w, paperRect.h, { tones: [COLORS.paper], seed: 5, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 3, impasto: 0.28, soft: true }),
     });
-    for (let i = 0; i < SLIP_COATS; i++) root.style.setProperty(`--slip${i}`, `url(${dabCluster(slipW, SLIP_H, { tones: [PAPER], seed: 200 + i * 13, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.28, soft: true, solid: true })})`);
-    for (let i = 0; i < HOT_COATS; i++) root.style.setProperty(`--hl${i}`, `url(${dabCluster(slipW, SLIP_H, { tones: [HOT], seed: 33 + i * 7, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.55, even: true, solid: true })})`);
-    root.style.setProperty('--note', `url(${dabCluster(slipW - 10, SLIP_H - 6, { tones: [INK], seed: 47, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.55, even: true, solid: true })})`);
+    for (let i = 0; i < SLIP_COATS; i++) root.style.setProperty(`--slip${i}`, `url(${dabCluster(slipW, SLIP_H, { tones: [COLORS.paper], seed: 200 + i * 13, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.28, soft: true, solid: true })})`);
+    for (let i = 0; i < HOT_COATS; i++) root.style.setProperty(`--hl${i}`, `url(${dabCluster(slipW, SLIP_H, { tones: [COLORS.terracotta], seed: 33 + i * 7, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.55, even: true, solid: true })})`);
+    root.style.setProperty('--note', `url(${dabCluster(slipW - 10, SLIP_H - 6, { tones: [COLORS.indigo], seed: 47, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.55, even: true, solid: true })})`);
   };
   const fontReady = (document.fonts?.load(`38px ${FONT}`) ?? Promise.resolve()).then(paintStrokes, paintStrokes);
   new ResizeObserver(() => fontReady.then(paintStrokes)).observe(root);

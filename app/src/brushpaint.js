@@ -4,6 +4,7 @@
 // a rounded loaded start, wandering centerline, torn sides, a dry ragged tail breaking into bristle
 // tracks, raised impasto ridges lit from the upper left, and a second colour streaked along the bristles.
 import { rng } from './rand.js';
+import { COLORS } from './ui/tokens.js';
 
 // The diagonal the arm falls into, as brushstrokes.js LEAN (a canvas's y runs down, so the sign flips).
 export const LEAN = 0.5;
@@ -314,10 +315,10 @@ export const dabCluster = (w, h, opts) => dabClusterCanvas(w, h, opts).toDataURL
 export const brushBandCanvas = (w, h, opts) => dabClusterCanvas(w, h, opts);
 export const brushBand = (w, h, opts) => dabCluster(w, h, opts);
 
-// The palettes of the 2D oil paint
+// The palettes of the 2D oil paint (primary swatches come from ui/tokens.js)
 export const TONES = {
-  ink: ['#2d3158', '#353a66', '#272b4e', '#3d4272', '#2f3a62'],
-  hot: ['#b4503a', '#c05d44', '#a8472f', '#c86a4d', '#b8583c'],
-  paper: ['#fbf5e8', '#f7eedb', '#f3e7cf', '#fdf9ef', '#f6ebd6'],
-  track: ['#dcd2c0', '#e2d9c8', '#d5cab6', '#d8cdb9'],
+  ink: [COLORS.indigo, '#353a66', '#272b4e', '#3d4272', '#2f3a62'],
+  hot: [COLORS.terracotta, '#b34e38', '#983b28', '#bb583f', '#a2422d'],
+  paper: [COLORS.paper, '#f5ecd9', '#f0e4cd', '#faf4e7', '#f3e8d2'],
+  track: [COLORS.paperLo, '#e5d9c2', '#ded1b9', '#e2d6be'],
 };

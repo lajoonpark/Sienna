@@ -1,4 +1,4 @@
-// Checks the torn paper edge (torn() in src/settings-panel.js) can never reach the words: no tear goes
+// Checks the torn paper edge (torn() in src/ui/paper.js) can never reach the words: no tear goes
 // deeper than its cap over many seeds, and on every tour note and the Settings card the text sits further
 // in from each edge than that cap. Screenshots of each note go to out_dir.
 // Usage: node scripts/tear-check.mjs [out_dir]      (SIENNA_PORT=5243)
@@ -41,7 +41,7 @@ const insets = (card, kids) => page.evaluate(([cardSel, kidSel]) => {
 // 1. the numbers: no seed tears deeper than its cap
 await open('at=home&tour=0');
 const worst = await page.evaluate(async () => {
-  const { tornDepths } = await import('/src/settings-panel.js');
+  const { tornDepths } = await import('/src/ui/paper.js');
   let deepest = 0, over = 0;
   for (let s = 0; s < 2000; s++) for (const [amp, cap] of [[5, 10], [6, 12]]) {
     const d = tornDepths(s, amp, cap);

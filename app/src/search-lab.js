@@ -2,9 +2,12 @@
 // counters that show whether any key leaks through to the "shop" while the bar is open.
 //   npm run web, then /search-lab.html?search=lemon   (or SIENNA_PAGE=search-lab.html node scripts/shot.mjs ...)
 import './fonts.js';
+import { injectTokens } from './ui/tokens.js';
 import { rng } from './rand.js';
 import { createMusic } from './music.js';
 import { createSearch } from './search.js';
+
+injectTokens();
 
 // Something painterly to sit on: warm washes, brick-ish blocks and a few dark doorways.
 const c = document.querySelector('canvas') ?? document.body.appendChild(document.createElement('canvas'));

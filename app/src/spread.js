@@ -23,6 +23,7 @@ import * as THREE from 'three';
 import { vinylParts, vinylMaterial, getCover, createTag, canvas, fontReady, springTo, clamp01 } from './racks/common.js';
 import { crisp } from './materials.js';
 import { FONT, onLettering } from './style.js';
+import { COLORS } from './ui/tokens.js';
 import { rng } from './rand.js';
 
 const PAGE = 15;                    // songs per page; the play-all record comes first on every page
@@ -63,12 +64,12 @@ function sticker(text, seed, { w = 96, h = 64 } = {}) {
     for (let x = w - pad; x >= pad; x -= 10) g.lineTo(x, h - pad - r() * 4);
     for (let y = h - pad; y >= pad; y -= 10) g.lineTo(pad + r() * 4, y);
     g.closePath();
-    g.fillStyle = '#f7efdd';
+    g.fillStyle = COLORS.paper;
     g.fill();
-    g.strokeStyle = 'rgba(120,90,60,.35)';
+    g.strokeStyle = 'rgba(112,87,66,.35)';
     g.lineWidth = 2;
     g.stroke();
-    g.fillStyle = '#2b2436';
+    g.fillStyle = COLORS.ink;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.font = `${Math.round(h * 0.62)}px ${FONT}`;
@@ -91,18 +92,18 @@ function playAllTexture() {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
   const draw = () => {
-    g.fillStyle = '#f3e6c8';
+    g.fillStyle = COLORS.paper;
     g.fillRect(0, 0, S, S);
-    g.strokeStyle = 'rgba(150,40,35,.55)';
+    g.strokeStyle = 'rgba(166,68,47,.55)';
     g.lineWidth = 6;
     g.beginPath(); g.arc(S / 2, S / 2, S * 0.44, 0, Math.PI * 2); g.stroke();
-    g.fillStyle = '#2b2436';
+    g.fillStyle = COLORS.ink;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.font = `${Math.round(S * 0.27)}px ${FONT}`;
     g.fillText('Play', S / 2, S * 0.36);
     g.fillText('all', S / 2, S * 0.62);
-    g.fillStyle = '#2b2436';
+    g.fillStyle = COLORS.ink;
     g.beginPath(); g.arc(S / 2, S * 0.84, S * 0.025, 0, Math.PI * 2); g.fill(); // spindle hole
     tex.needsUpdate = true;
   };

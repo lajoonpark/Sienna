@@ -2,16 +2,16 @@
 // records that burst out of a button, a ticked shortcut or a note landing. One canvas over the whole
 // window, just behind the notes (so paint never lands on what you are reading), that only draws while something is flying: when the last particle is gone it is cleared and the
 // loop stops, so a tour at rest costs nothing. Nothing at all under prefers-reduced-motion or in shots.
-import { INK, HOT } from './controls.js';
+import { COLORS, prefersReducedMotion } from './ui/tokens.js';
 
-export const COLOURS = [HOT, INK, '#d9a441', '#7f9c6b', '#c76f8e', '#4f8fa8'];
+export const COLOURS = [COLORS.terracotta, COLORS.indigo, '#d9a441', '#7f9c6b', '#c76f8e', '#4f8fa8'];
 const NOTES = ['♪', '♫', '♩', '♬'];
 
 export function createFx({ still = false } = {}) {
-  const calm = still || matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const calm = still || prefersReducedMotion();
   const canvas = document.createElement('canvas');
   canvas.className = 'tr-fx';
-  canvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:7';
+  canvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:calc(var(--sienna-z-tour, 30) - 1)';
   document.body.appendChild(canvas);
   const ctx = canvas.getContext('2d');
   let dpr = 1, W = 0, H = 0;

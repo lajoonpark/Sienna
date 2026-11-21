@@ -29,7 +29,10 @@ import { createSpread } from './spread.js';
 import { createCollectionList } from './collection-list.js';
 import { isLikedCollection, shouldUseCollectionList } from './collection-filter.js';
 import { createLiner, showWebGLError } from './liner.js';
+import { injectTokens } from './ui/tokens.js';
 import './fonts.js';
+
+injectTokens();
 
 const params = new URLSearchParams(location.search);
 const shotMode = params.has('shot');
@@ -881,7 +884,7 @@ let trayDone = false;
 let pickDone = false;
 // ---- frame-rate readout (Settings > Frame rate, or ?fps=1): average fps and the slowest frame ----
 const fpsBox = document.createElement('div');
-fpsBox.style.cssText = 'position:fixed;left:8px;top:8px;z-index:50;font:12px/1.3 ui-monospace,monospace;color:#fff;background:rgba(0,0,0,.55);padding:3px 6px;border-radius:4px;pointer-events:none;display:none';
+fpsBox.style.cssText = 'position:fixed;left:8px;top:8px;z-index:var(--sienna-z-banner);font:var(--sienna-text-xs)/1.3 ui-monospace,monospace;font-variant-numeric:lining-nums tabular-nums;color:var(--sienna-paper);background:rgba(27,20,16,.72);padding:3px 6px;border-radius:4px;pointer-events:none;display:none';
 document.body.appendChild(fpsBox);
 const fpsOn = () => params.get('fps') === '1' || !!settings.get('fps');
 fpsBox.style.display = fpsOn() ? 'block' : 'none';

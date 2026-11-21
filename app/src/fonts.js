@@ -1,16 +1,21 @@
-// The lettering fonts, bundled via @fontsource. Settings > Lettering picks one (key 'font', style.js).
+// The lettering fonts and book serif, bundled via @fontsource.
+// Settings > Lettering picks one lettering face (key 'font', style.js). Small text (hints, meta,
+// times, lyrics, Settings copy, tour body) uses Alegreya (exposed via --sienna-serif in ui/tokens.js).
 // Each @font-face only downloads when text actually uses it, so the unused choices cost nothing until
 // Settings shows them. style.js imports this, so the faces exist before anything measures with them.
 //
-// Every size in the app (CSS, canvas tags, the shop sign, the fit-to-width code) is tuned for Amatic,
-// a narrow all-caps hand. The other letterings run wider and taller at the same pixel size, so each is
-// registered under its own family name with `size-adjust` (it takes about the room Amatic does) and
-// ascent/descent overrides (its line box is Amatic's 1.27 em, with the letters centred in it the way
+// Every display size in the app (CSS, canvas tags, the shop sign, the fit-to-width code) is tuned for
+// Amatic, a narrow all-caps hand. The other letterings run wider and taller at the same pixel size, so
+// each is registered under its own family name with `size-adjust` (it takes about the room Amatic does)
+// and ascent/descent overrides (its line box is Amatic's 1.27 em, with the letters centred in it the way
 // Amatic's capitals are). Then every use of the font fits without knowing which one is chosen.
 import amaticCss from '@fontsource/amatic-sc/700.css?inline';
 import kaushanCss from '@fontsource/kaushan-script/400.css?inline';
 import srirachaCss from '@fontsource/sriracha/400.css?inline';
 import caveatCss from '@fontsource/caveat/700.css?inline';
+import alegreya400Css from '@fontsource/alegreya/400.css?inline';
+import alegreya600Css from '@fontsource/alegreya/600.css?inline';
+import alegreya400ItalicCss from '@fontsource/alegreya/400-italic.css?inline';
 
 // scale: size against Amatic (wider fonts smaller). cap, xh: cap and x-height in em, measured from
 // the font, to find where the letters' visual middle is.
@@ -20,6 +25,8 @@ export const FONTS = {
   sriracha: { label: 'Sriracha', family: '"Sienna Sriracha"', css: srirachaCss, scale: 0.8, cap: 0.67, xh: 0.49 },
   caveat: { label: 'Caveat', family: '"Sienna Caveat"', css: caveatCss, scale: 0.9, cap: 0.73, xh: 0.37 },
 };
+
+const SERIF_CSS = [alegreya400Css, alegreya600Css, alegreya400ItalicCss].join('\n');
 
 const LINE = 1.27; // Amatic's natural line height (ascent 1.02 + descent .25)
 const pct = (n) => `${(n * 100).toFixed(1)}%`;
@@ -37,6 +44,6 @@ function faces({ family, css, scale, cap, xh }) {
 
 if (typeof document !== 'undefined') {
   const style = document.createElement('style');
-  style.textContent = Object.values(FONTS).map(faces).join('\n');
+  style.textContent = [...Object.values(FONTS).map(faces), SERIF_CSS].join('\n');
   document.head.appendChild(style);
 }

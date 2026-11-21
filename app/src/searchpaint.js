@@ -8,6 +8,7 @@
 // Everything hangs off one clock, so a hotkey pressed halfway just runs that clock backwards.
 import { rng } from './rand.js';
 import { drawOilDab, solidify, TONES } from './brushpaint.js';
+import { prefersReducedMotion } from './ui/tokens.js';
 
 export const IN_MS = 620, OUT_MS = 460;
 export const MARGIN = 64;    // room around the bar for droplets (the canvas is this much larger on every side)
@@ -72,7 +73,7 @@ export function slipMasks() {
 export function createBarPaint({ canvas, bar, glass, input, onClosed }) {
   const g = canvas.getContext('2d');
   const r = rng(77);
-  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const calm = prefersReducedMotion();
 
   let layers = null, inkLayer = null, paperLayer = null, frameId = 0, last = 0;
   let phase = 'in', t = 0, dir = 1, want = false;

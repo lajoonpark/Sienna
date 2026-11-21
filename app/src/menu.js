@@ -3,35 +3,35 @@
 // edge of the screen and up to four on the right, vertically centred, each stack turned in toward the
 // middle and tilting after the cursor. The section you are in is painted terracotta, like a hover.
 // A HOME word sits top-left whenever you are not home.
-import { brushStroke, INK, PAPER } from './controls.js';
+import { brushStroke } from './ui/brush.js';
+import { COLORS, injectTokens } from './ui/tokens.js';
 import { FONT, onLettering } from './style.js';
 
-const HOT = '#b4503a';
 const PER_SIDE = 5;
 
 const CSS = `
-.mn { position: fixed; z-index: 5; pointer-events: none; opacity: 0; transition: opacity .9s ease; user-select: none; perspective: 900px; }
+.mn { position: fixed; z-index: var(--sienna-z-chrome); pointer-events: none; opacity: 0; transition: opacity var(--sienna-dur-slow) ease; user-select: none; perspective: 900px; }
 .mn.show { opacity: 1; }
 .mn.l { left: 1.8vw; perspective-origin: 20% 50%; }
 .mn.r { right: 1.8vw; perspective-origin: 80% 50%; }
-.mn.h { left: 2.6vw; top: 3.4vh; perspective-origin: 20% 50%; transition: opacity .45s ease; }
+.mn.h { left: 2.6vw; top: 3.4vh; perspective-origin: 20% 50%; transition: opacity var(--sienna-dur-mid) ease; }
 .mn .stack { transform-style: preserve-3d; will-change: transform; display: flex; flex-direction: column; gap: 2px; }
 .mn.l .stack, .mn.h .stack { align-items: flex-start; transform-origin: 0% 50%; }
 .mn.r .stack { align-items: flex-end; transform-origin: 100% 50%; }
 .mn button { pointer-events: auto; position: relative; border: 0; padding: 0; background: none; cursor: pointer;
-  font-family: var(--sienna-font); color: ${PAPER}; line-height: 1; letter-spacing: .02em;
-  transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
+  font-family: var(--sienna-font); color: var(--sienna-paper); line-height: 1; letter-spacing: .02em;
+  transition: transform var(--sienna-dur-fast) var(--sienna-ease-pop); }
 .mn.h:not(.show) button { pointer-events: none; }
-.mn button .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; filter: drop-shadow(0 2px 3px rgba(28,20,16,.24)); }
+.mn button .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity var(--sienna-dur-mid); filter: drop-shadow(var(--sienna-shadow-rest)); }
 .mn button .plate.hot { opacity: 0; }
 .mn button:hover .plate.hot, .mn button.on .plate.hot { opacity: 1; }
-.mn.l button:hover, .mn.h button:hover { transform: translateX(6px) translateZ(18px) rotate(-1deg); }
-.mn.r button:hover { transform: translateX(-6px) translateZ(18px) rotate(1deg); }
+.mn.l button:hover, .mn.h button:hover { transform: translateX(6px) translateZ(18px) rotate(var(--sienna-tilt-md)); }
+.mn.r button:hover { transform: translateX(-6px) translateZ(18px) rotate(calc(var(--sienna-tilt-md) * -1)); }
 .mn button:active { transform: translateZ(4px) scale(.97); }
 /* at a station the columns step back (smaller, nearer the edge, half faded) and let the cursor reach the racks */
 .mn.l button, .mn.r button { opacity: var(--rec, 1); }
 .mn.faded button { pointer-events: none; }
-.mn button span { position: relative; display: block; padding: .16em 1.1em .1em .75em; text-shadow: 0 0 1px rgba(251,245,232,.7); }
+.mn button span { position: relative; display: block; padding: .16em 1.1em .1em .75em; text-shadow: 0 0 1px rgba(248,241,226,.7); }
 .mn.r button span { padding: .16em .75em .1em 1.1em; text-align: right; }
 .mn button span i { display: block; font-style: normal; white-space: nowrap; }
 `;
@@ -93,6 +93,7 @@ function makeFitter() {
 }
 
 export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
+  injectTokens();
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -144,8 +145,8 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
     if (!w) return;
     const flipX = b.side === R;
     const [cold, hot] = b.el.querySelectorAll('.plate');
-    cold.style.backgroundImage = plate(w, h, INK, b.seed, flipX);
-    hot.style.backgroundImage = plate(w, h, HOT, b.seed, flipX);
+    cold.style.backgroundImage = plate(w, h, COLORS.indigo, b.seed, flipX);
+    hot.style.backgroundImage = plate(w, h, COLORS.terracotta, b.seed, flipX);
   }
 
   // ---- layout: fit the words, then place the stacks clear of the player on the left ----

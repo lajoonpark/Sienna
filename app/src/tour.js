@@ -20,9 +20,10 @@
 // the welcome note as a guest sees it, since the fake store counts as signed in).
 import { settings } from './settings.js';
 import { shortcuts } from './shortcuts.js';
-import { torn, word } from './settings-panel.js';
+import { torn } from './ui/paper.js';
+import { word } from './settings-panel.js';
 import { FONTS, onLettering } from './style.js';
-import { INK, HOT } from './controls.js';
+import { COLORS, injectTokens } from './ui/tokens.js';
 import { createFx, COLOURS } from './tourfx.js';
 import { onCursorTilt, tiltCSS } from './cursortilt.js';
 
@@ -32,17 +33,17 @@ const SOURCE = 'github.com/lajoonpark/Sienna';
 const mac = /Mac/.test(navigator.platform);
 // the small print on the welcome note: [sticker, under it, colour, what it means]
 const SEALS = [
-  ['Free', 'forever', HOT, 'No price, no plans, no catch. Sienna makes no money at all.'],
-  ['Private', '', INK, "No servers, and it keeps nothing about you. You sign in on Google's own page; settings stay on this computer."],
+  ['Free', 'forever', COLORS.terracotta, 'No price, no plans, no catch. Sienna makes no money at all.'],
+  ['Private', '', COLORS.indigo, "No servers, and it keeps nothing about you. You sign in on Google's own page; settings stay on this computer."],
   ['Ads?', '', '#c99a3c', 'Without Premium you will hear some. YouTube Music chooses and plays them, and Sienna earns nothing from them.'],
   ['Open', 'source', '#6f8f5c', 'Don\'t take our word for it: every line is at <b class="tr-src"></b>'],
 ];
 
 const CSS = `
-.tr { position: fixed; inset: 0; z-index: 8; pointer-events: none; font-family: var(--sienna-font); color: #2b2436; perspective: 1100px;
-  opacity: 0; visibility: hidden; transition: opacity .45s ease, visibility 0s .45s; }
-.tr.show { opacity: 1; visibility: visible; transition: opacity .45s ease; }
-.tr-skip { position: absolute; top: 3.4vh; left: 50%; transform: translateX(-50%); font-size: 22px; pointer-events: auto; opacity: .85; }
+.tr { position: fixed; inset: 0; z-index: var(--sienna-z-tour); pointer-events: none; font-family: var(--sienna-font); color: var(--sienna-ink); perspective: 1100px;
+  opacity: 0; visibility: hidden; transition: opacity var(--sienna-dur-slow) ease, visibility 0s var(--sienna-dur-slow); }
+.tr.show { opacity: 1; visibility: visible; transition: opacity var(--sienna-dur-slow) ease; }
+.tr-skip { position: absolute; top: 3.4vh; left: 50%; transform: translateX(-50%); font-size: var(--sienna-text-md); pointer-events: auto; opacity: .85; }
 .tr-skip:hover { opacity: 1; }
 .tr-stage { position: absolute; left: 50%; top: 50%; width: min(620px, 92vw); transform-style: preserve-3d; will-change: transform;
   display: flex; flex-direction: column; align-items: center; }
@@ -51,137 +52,130 @@ const CSS = `
 .tr-stage[data-at="player"] { left: auto; top: auto; width: min(430px, 60vw); align-items: flex-start; }
 
 /* the note: it drops onto the shop with a little bounce, and is flicked away when you move on */
-.tr-note { position: relative; box-sizing: border-box; width: 100%; padding: 24px 30px 18px; transform: rotate(-.6deg); opacity: 0; }
-.tr-note.in { opacity: 1; animation: tr-drop .62s cubic-bezier(.3,.7,.4,1) both; }
+.tr-note { position: relative; box-sizing: border-box; width: 100%; padding: var(--sienna-space-6) var(--sienna-space-8) var(--sienna-space-5); transform: rotate(var(--sienna-tilt-sm)); opacity: 0; }
+.tr-note.in { opacity: 1; animation: tr-drop var(--sienna-dur-slow) var(--sienna-ease-out) both; }
 @keyframes tr-drop {
   0% { opacity: 0; transform: translateY(-70px) rotate(5deg) scale(1.08); }
   45% { opacity: 1; transform: translateY(7px) rotate(-1.4deg) scale(.985, 1.01); }
   70% { transform: translateY(-4px) rotate(-.3deg) scale(1.005); }
-  100% { transform: rotate(-.6deg); } }
-.tr-sh { position: absolute; inset: 0; filter: drop-shadow(0 8px 12px rgba(50,35,25,.28)); }
-.tr-paper { position: absolute; inset: 0; background: #f4ead6; }
+  100% { transform: rotate(var(--sienna-tilt-sm)); } }
+.tr-sh { position: absolute; inset: 0; filter: drop-shadow(var(--sienna-shadow-lift)); }
+.tr-paper { position: absolute; inset: 0; background: var(--sienna-paper); }
 .tr-tape { position: absolute; top: -13px; left: 26px; width: 96px; height: 28px; transform: rotate(-7deg);
   background: linear-gradient(90deg, rgba(232,214,160,.82), rgba(240,226,180,.78)); box-shadow: 0 1px 2px rgba(60,40,20,.15);
   clip-path: polygon(0 8%, 4% 0, 8% 10%, 12% 0, 100% 0, 96% 12%, 100% 25%, 96% 40%, 100% 55%, 96% 70%, 100% 85%, 96% 100%, 0 100%, 4% 85%, 0 70%, 4% 55%, 0 40%, 4% 25%); }
 .tr-stage[data-at="player"] .tr-tape, .tr-stage[data-at="top"] .tr-tape { width: 70px; }
 
 /* a record peeks out from behind the note, like one out of its sleeve, and spins; its label is the step */
-.tr-disc { position: absolute; top: -54px; right: -50px; width: 98px; height: 98px; animation: tr-out .8s cubic-bezier(.2,1.25,.4,1) .3s both; }
+.tr-disc { position: absolute; top: -54px; right: -50px; width: 98px; height: 98px; animation: tr-out .8s var(--sienna-ease-pop) .3s both; }
 .tr-stage[data-at="top"] .tr-disc, .tr-stage[data-at="player"] .tr-disc { width: 78px; height: 78px; top: -42px; right: -38px; }
 @keyframes tr-out { from { transform: translate(-50px, 50px) rotate(-120deg); } }
-.tr-vinyl { position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 4px 10px rgba(30,20,15,.4);
+.tr-vinyl { position: absolute; inset: 0; border-radius: 50%; box-shadow: var(--sienna-shadow-lift);
   background: radial-gradient(circle, transparent 0 31%, #141216 31.5% 34%, transparent 34.5%),
     conic-gradient(from 20deg, rgba(255,255,255,0) 0 10%, rgba(255,255,255,.18) 14%, rgba(255,255,255,0) 20% 60%, rgba(255,255,255,.12) 64%, rgba(255,255,255,0) 70%),
     repeating-radial-gradient(circle, #1c191f 0 1.6px, #29252d 1.6px 3px);
   animation: tr-spin 1.8s linear 1.1s infinite; }
 @keyframes tr-spin { to { transform: rotate(360deg); } }
-.tr-lab { position: absolute; inset: 31%; border-radius: 50%; background: var(--lab, ${HOT}); display: grid; place-items: center;
-  font-size: 22px; line-height: 1; color: #fbf5e8; text-shadow: 0 1px 1px rgba(30,20,15,.4); box-shadow: inset 0 0 0 2px rgba(251,245,232,.35); }
-.tr-stage[data-at="top"] .tr-lab, .tr-stage[data-at="player"] .tr-lab { font-size: 18px; }
+.tr-lab { position: absolute; inset: 31%; border-radius: 50%; background: var(--lab, var(--sienna-terracotta)); display: grid; place-items: center;
+  font-size: var(--sienna-text-md); line-height: 1; color: var(--sienna-paper); text-shadow: 0 1px 1px rgba(30,20,15,.4); box-shadow: inset 0 0 0 2px rgba(248,241,226,.35); }
+.tr-stage[data-at="top"] .tr-lab, .tr-stage[data-at="player"] .tr-lab { font-size: var(--sienna-text-sm); }
 .tr-lab span { padding-top: .12em; }
 
 /* the title falls in letter by letter, and a brush stroke underlines it */
-.tr-title { position: relative; font-size: 40px; line-height: 1; color: ${INK}; margin: 0 0 12px; }
+.tr-title { position: relative; font-size: var(--sienna-text-2xl); line-height: 1; color: var(--sienna-indigo); margin: 0 0 var(--sienna-space-3); }
 .tr-tt { position: relative; display: inline-block; }
 .tr-tw { display: inline-block; white-space: nowrap; }
-.tr-tw.hot { color: ${HOT}; }
-.tr-ch { display: inline-block; animation: tr-ch .55s cubic-bezier(.2,1.7,.4,1) calc(var(--i) * 30ms + .18s) both; }
+.tr-tw.hot { color: var(--sienna-terracotta); }
+.tr-ch { display: inline-block; animation: tr-ch var(--sienna-dur-slow) var(--sienna-ease-pop) calc(var(--i) * 30ms + .18s) both; }
 @keyframes tr-ch { from { opacity: 0; transform: translateY(-30px) rotate(calc(var(--k) * 1deg)) scale(1.5); } }
-.tr-tw.hot .tr-ch { animation-name: tr-ch, tr-glint; animation-duration: .55s, 3.6s; animation-timing-function: cubic-bezier(.2,1.7,.4,1), ease-in-out;
+.tr-tw.hot .tr-ch { animation-name: tr-ch, tr-glint; animation-duration: var(--sienna-dur-slow), 3.6s; animation-timing-function: var(--sienna-ease-pop), ease-in-out;
   animation-delay: calc(var(--i) * 30ms + .18s), calc(var(--i) * 70ms + 1.6s); animation-iteration-count: 1, infinite; animation-fill-mode: both, none; }
 @keyframes tr-glint { 0%, 82%, 100% { transform: none; } 88% { transform: translateY(-5px) rotate(-6deg); } }
 .tr-sw { position: absolute; left: -3%; bottom: -9px; width: 106%; height: 12px; overflow: visible; }
-.tr-sw path { fill: none; stroke: ${HOT}; stroke-width: 3.2; stroke-linecap: round; opacity: .75; stroke-dasharray: 1; stroke-dashoffset: 0;
-  animation: tr-draw .55s ease-out var(--sd, .5s) both; }
+.tr-sw path { fill: none; stroke: var(--sienna-terracotta); stroke-width: 3.2; stroke-linecap: round; opacity: .75; stroke-dasharray: 1; stroke-dashoffset: 0;
+  animation: tr-draw var(--sienna-dur-slow) ease-out var(--sd, .5s) both; }
 @keyframes tr-draw { from { stroke-dashoffset: 1; } }
 
 /* the words ink in one after another */
-.tr-body { position: relative; font-size: 24px; line-height: 1.15; }
-.tr-body b { font-weight: inherit; color: ${HOT}; }
-.tr-wd { animation: tr-ink .5s ease calc(var(--i) * 15ms + var(--w0, .3s)) both; }
+.tr-body { position: relative; font-family: var(--sienna-serif); font-size: var(--sienna-text-md); line-height: 1.42; color: var(--sienna-ink); }
+.tr-body b { font-weight: 600; color: var(--sienna-terracotta); }
+.tr-wd { animation: tr-ink var(--sienna-dur-slow) ease calc(var(--i) * 15ms + var(--w0, .3s)) both; }
 @keyframes tr-ink { from { opacity: 0; filter: blur(3px); } }
-.tr-stage[data-at="top"] .tr-title { font-size: 32px; }
-.tr-stage[data-at="top"] .tr-body, .tr-stage[data-at="player"] .tr-body { font-size: 21px; }
+.tr-stage[data-at="top"] .tr-title { font-size: var(--sienna-text-xl); }
+.tr-stage[data-at="top"] .tr-body, .tr-stage[data-at="player"] .tr-body { font-size: var(--sienna-text-sm); line-height: 1.42; }
 
 /* the small print, as price stickers slapped on the note one by one */
-.tr-fine { position: relative; color: #6b4f3a; }
+.tr-fine { position: relative; color: var(--sienna-ink-2); }
 .tr-fine:empty { display: none; }
-.tr-fh { font-size: 20px; color: ${INK}; margin: 16px 0 8px; text-align: center; animation: tr-up .4s ease var(--fh, 1s) both; }
-.tr-fh span { color: #9a7a5c; font-size: .85em; }
-.tr-stk { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px 14px; }
+.tr-fh { font-size: var(--sienna-text-md); color: var(--sienna-indigo); margin: var(--sienna-space-4) 0 var(--sienna-space-2); text-align: center; animation: tr-up var(--sienna-dur-mid) ease var(--fh, 1s) both; }
+.tr-fh span { font-family: var(--sienna-serif); color: var(--sienna-ink-3); font-size: var(--sienna-text-sm); }
+.tr-stk { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: var(--sienna-space-3) var(--sienna-space-4); }
 .tr-s { display: flex; flex-direction: column; align-items: center; text-align: center; pointer-events: auto; }
-.tr-sx { transition: transform .3s cubic-bezier(.2,1.8,.4,1); }
+.tr-sx { transition: transform var(--sienna-dur-mid) var(--sienna-ease-pop); }
 .tr-s:hover .tr-sx { transform: scale(1.14) rotate(9deg); }
 .tr-seal { position: relative; width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center; transform: rotate(var(--r));
   background: radial-gradient(circle at 34% 28%, rgba(255,255,255,.28), rgba(255,255,255,0) 45%), var(--c);
-  box-shadow: 0 3px 5px rgba(50,35,25,.3), inset 0 0 0 5px var(--c), inset 0 0 0 7px rgba(251,245,232,.75);
-  color: #fbf5e8; font-size: 23px; line-height: .95; text-shadow: 0 1px 1px rgba(30,20,15,.35);
-  animation: tr-slam .52s cubic-bezier(.3,.7,.4,1) var(--t) both; }
-.tr-seal small { display: block; font-size: 13px; opacity: .9; }
+  box-shadow: var(--sienna-shadow-rest), inset 0 0 0 5px var(--c), inset 0 0 0 7px rgba(248,241,226,.75);
+  color: var(--sienna-paper); font-size: var(--sienna-text-md); line-height: .95; text-shadow: 0 1px 1px rgba(30,20,15,.35);
+  animation: tr-slam var(--sienna-dur-slow) var(--sienna-ease-out) var(--t) both; }
+.tr-seal small { display: block; font-size: var(--sienna-text-xs); opacity: .92; }
 @keyframes tr-slam {
   0% { opacity: 0; transform: scale(2.8) rotate(calc(var(--r) + 30deg)); }
   50% { opacity: 1; transform: scale(.86) rotate(var(--r)); }
   72% { transform: scale(1.07) rotate(var(--r)); }
   100% { transform: rotate(var(--r)); } }
-.tr-cap { margin-top: 7px; font-size: 16px; line-height: 1.12; animation: tr-up .45s ease calc(var(--t) + .22s) both; }
-.tr-cap b { font-weight: inherit; color: ${INK}; user-select: text; }
+.tr-cap { margin-top: var(--sienna-space-2); font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); line-height: 1.35; color: var(--sienna-ink-2); animation: tr-up var(--sienna-dur-mid) ease calc(var(--t) + .22s) both; }
+.tr-cap b { font-weight: 600; color: var(--sienna-indigo); user-select: text; }
 @keyframes tr-up { from { opacity: 0; transform: translateY(8px); } }
 
 /* music notes drift up beside the welcome and goodbye notes */
 .tr-amb { position: absolute; inset: 0; pointer-events: none; display: none; }
 .tr-stage[data-amb] .tr-amb { display: block; }
-.tr-amb i { position: absolute; bottom: 10%; left: var(--x); font-style: normal; font-family: serif; font-size: var(--s); color: var(--c);
-  opacity: 0; text-shadow: 0 0 6px rgba(251,245,232,.7); animation: tr-rise var(--d) ease-in var(--o) infinite; }
+.tr-amb i { position: absolute; bottom: 10%; left: var(--x); font-style: normal; font-family: var(--sienna-serif); font-size: var(--s); color: var(--c);
+  opacity: 0; text-shadow: 0 0 6px rgba(248,241,226,.7); animation: tr-rise var(--d) ease-in var(--o) infinite; }
 @keyframes tr-rise { 0% { opacity: 0; transform: translate(0, 0) rotate(-12deg); } 15% { opacity: .95; }
   100% { opacity: 0; transform: translate(var(--dx), -300px) rotate(18deg); } }
 
 /* the words float in the shop, not on the paper: each bobs on its own, out of step with the others */
-.tr-float { position: relative; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px 18px;
-  margin-top: 22px; font-size: 30px; transform-style: preserve-3d; }
+.tr-float { position: relative; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--sienna-space-4) var(--sienna-space-5);
+  margin-top: var(--sienna-space-5); font-size: var(--sienna-text-lg); transform-style: preserve-3d; }
 .tr-stage[data-list] .tr-float { flex-direction: column; align-items: flex-end; width: max-content; margin-left: auto; margin-right: auto; }
 .tr-brk { flex-basis: 100%; height: 0; }
-.tr-stage[data-at="player"] .tr-float { justify-content: flex-start; margin-top: 12px; font-size: 26px; }
-.tr-b { display: inline-flex; align-items: center; gap: 8px; pointer-events: auto; transform: translateY(0) rotate(var(--r, 0deg));
+.tr-stage[data-at="player"] .tr-float { justify-content: flex-start; margin-top: var(--sienna-space-3); font-size: var(--sienna-text-lg); }
+.tr-b { display: inline-flex; align-items: center; gap: var(--sienna-space-2); pointer-events: auto; transform: translateY(0) rotate(var(--r, 0deg));
   animation: tr-bob var(--d, 3.2s) ease-in-out var(--o, 0s) infinite alternate; }
-.tr-b.pop { animation: tr-pop .6s cubic-bezier(.2,1.6,.4,1) both, tr-bob var(--d, 3.2s) ease-in-out .6s infinite alternate; }
+.tr-b.pop { animation: tr-pop var(--sienna-dur-slow) var(--sienna-ease-pop) both, tr-bob var(--d, 3.2s) ease-in-out .6s infinite alternate; }
 @keyframes tr-bob { from { transform: translateY(-5px) rotate(var(--r, 0deg)); } to { transform: translateY(6px) rotate(calc(var(--r, 0deg) * -0.6)); } }
 @keyframes tr-pop { from { opacity: 0; transform: translateY(26px) scale(.5) rotate(calc(var(--r, 0deg) * 4)); } }
-.tr-b .st-w { font-size: inherit; transition: transform .25s cubic-bezier(.2,1.8,.4,1); }
-.tr-b .st-w:hover { transform: translateY(-3px) rotate(-2.5deg) scale(1.1); }
+.tr-b .st-w { font-size: inherit; transition: transform var(--sienna-dur-mid) var(--sienna-ease-pop); }
+.tr-b .st-w:hover { transform: translateY(-3px) rotate(var(--sienna-tilt-lg)) scale(1.1); }
 .tr-b .st-w:active { transform: scale(.92); transition-duration: .06s; }
-.tr-b .st-w.big { font-size: 1.2em; }
-.tr-key { display: inline-flex; align-items: center; gap: 8px; }
-.tr-kname { font-size: 24px; color: #fbf5e8; text-shadow: 0 1px 3px rgba(30,20,15,.85), 0 0 8px rgba(30,20,15,.5); }
-.tr-tick { font-size: 46px; font-weight: bold; color: ${HOT}; opacity: 0; transform: scale(.3) rotate(-25deg); transition: transform .35s cubic-bezier(.2,1.8,.4,1), opacity .2s; text-shadow: 0 1px 2px rgba(251,245,232,.9); }
+.tr-b .st-w.big { font-size: var(--sienna-text-xl); }
+.tr-key { display: inline-flex; align-items: center; gap: var(--sienna-space-2); }
+.tr-kname { font-size: var(--sienna-text-md); color: var(--sienna-paper); text-shadow: 0 1px 3px rgba(30,20,15,.85), 0 0 8px rgba(30,20,15,.5); }
+.tr-tick { font-size: var(--sienna-text-2xl); font-weight: bold; color: var(--sienna-terracotta); opacity: 0; transform: scale(.3) rotate(-25deg); transition: transform var(--sienna-dur-mid) var(--sienna-ease-pop), opacity var(--sienna-dur-fast); text-shadow: 0 1px 2px rgba(248,241,226,.9); }
 .tr.away .tr-stage:not(.tr-ghost) .tr-note { opacity: .5; }
 .tr-tick.on { opacity: 1; transform: scale(1) rotate(-8deg); }
-.tr-msg { position: relative; min-height: 1.2em; color: #a0442c; font-size: 18px; margin-top: 6px; }
+.tr-msg { position: relative; min-height: 1.2em; font-family: var(--sienna-serif); color: var(--sienna-danger); font-size: var(--sienna-text-sm); margin-top: var(--sienna-space-2); }
 
 /* the note before, flicked off to one side */
-.tr-ghost { position: absolute; margin: 0; pointer-events: none !important; animation: tr-toss .6s cubic-bezier(.55,0,.8,.3) forwards; }
+.tr-ghost { position: absolute; margin: 0; pointer-events: none !important; animation: tr-toss var(--sienna-dur-slow) var(--sienna-ease-in) forwards; }
 .tr-ghost * { animation: none !important; transition: none !important; pointer-events: none !important; }
 .tr-ghost .tr-note { opacity: 1; }
 @keyframes tr-toss { to { opacity: 0; transform: translate(var(--tx), 26vh) rotate(var(--tr)) scale(.82); } }
 
 /* where you are: a row of little records, the one playing spins */
-.tr-prog { position: absolute; bottom: 3vh; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 9px; }
-.tr-p { position: relative; width: 16px; height: 16px; border-radius: 50%; opacity: .45; transition: opacity .3s, transform .4s cubic-bezier(.2,1.8,.4,1);
-  background: radial-gradient(circle, #fbf5e8 0 9%, var(--pl, #9a8f86) 10% 34%, #141216 35%), repeating-radial-gradient(circle, #1c191f 0 1px, #2c2830 1px 2px);
-  box-shadow: 0 1px 3px rgba(30,20,15,.5); }
-.tr-p.done { opacity: .95; --pl: ${INK}; }
-.tr-p.now { opacity: 1; --pl: ${HOT}; transform: scale(1.55); animation: tr-spin 1.4s linear infinite; }
-.tr-p.now::after { content: ''; position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #fbf5e8; top: 22%; left: 48%; }
-.tr-pl { margin-left: 8px; font-size: 19px; color: #fbf5e8; text-shadow: 0 1px 3px rgba(30,20,15,.85), 0 0 8px rgba(30,20,15,.5); white-space: nowrap; }
+.tr-prog { position: absolute; bottom: 3vh; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: var(--sienna-space-2); }
+.tr-p { position: relative; width: 16px; height: 16px; border-radius: 50%; opacity: .45; transition: opacity var(--sienna-dur-mid), transform var(--sienna-dur-mid) var(--sienna-ease-pop);
+  background: radial-gradient(circle, var(--sienna-paper) 0 9%, var(--pl, #9a8f86) 10% 34%, #141216 35%), repeating-radial-gradient(circle, #1c191f 0 1px, #2c2830 1px 2px);
+  box-shadow: var(--sienna-shadow-rest); }
+.tr-p.done { opacity: .95; --pl: var(--sienna-indigo); }
+.tr-p.now { opacity: 1; --pl: var(--sienna-terracotta); transform: scale(1.55); animation: tr-spin 1.4s linear infinite; }
+.tr-p.now::after { content: ''; position: absolute; width: 2px; height: 2px; border-radius: 50%; background: var(--sienna-paper); top: 22%; left: 48%; }
+.tr-pl { margin-left: var(--sienna-space-2); font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); font-variant-numeric: lining-nums tabular-nums; color: var(--sienna-paper); text-shadow: 0 1px 3px rgba(30,20,15,.85), 0 0 8px rgba(30,20,15,.5); white-space: nowrap; }
 
 .tr.still, .tr.still * { transition: none !important; animation: none !important; }
 .tr.still .tr-amb { display: none; }
-@media (prefers-reduced-motion: reduce) {
-  .tr-b, .tr-b.pop, .tr-ch, .tr-wd, .tr-seal, .tr-cap, .tr-fh, .tr-disc, .tr-vinyl, .tr-sw path, .tr-p.now { animation: none !important; }
-  .tr-amb { display: none !important; }
-  .tr-note.in { animation: tr-fade .25s ease both; }
-  .tr-tick { transition: opacity .2s ease; }
-}
-@keyframes tr-fade { from { opacity: 0; } }
 `;
 
 function load() {
@@ -197,6 +191,7 @@ function oldInstall() {
 
 // music: the backend (src/music.js). goHome(): walk the camera back to the entrance.
 export function createTour({ music, goHome = () => {}, isSearchOpen = () => false, playerBox = () => null } = {}) {
+  injectTokens();
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -260,7 +255,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   let seed = 200;
   function float(text, onClick, { on = false, big = false, font = null, extra = null } = {}) {
     const w = word(text, seed += 7, () => {
-      fx.burst(w, big ? { count: 26, power: 560 } : { count: 16, power: 380, kinds: ['splat', 'strip'], colours: [HOT, '#d9a441', INK] });
+      fx.burst(w, big ? { count: 26, power: 560 } : { count: 16, power: 380, kinds: ['splat', 'strip'], colours: [COLORS.terracotta, '#d9a441', COLORS.indigo] });
       onClick();
     });
     if (on) w.classList.add('on');
@@ -452,7 +447,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
       const keyWords = {};
       const tick = (name) => {
         if (STEPS[at] !== 'keys') return;
-        if (!used.has(name) && ticks[name]) later(() => fx.burst(ticks[name], { count: 22, power: 420, colours: [HOT, '#d9a441', '#6f8f5c'] }), 60);
+        if (!used.has(name) && ticks[name]) later(() => fx.burst(ticks[name], { count: 22, power: 420, colours: [COLORS.terracotta, '#d9a441', '#6f8f5c'] }), 60);
         used.add(name);
         ticks[name]?.classList.add('on');
       };

@@ -50,7 +50,8 @@ import { paintOffThread } from '../coverworker.js';
 import { safeArtUrl, artSizeOk } from '../arturl.js';
 import { toon, crisp, unpinned } from '../materials.js';
 import { rng } from '../rand.js';
-import { brushStroke, INK, PAPER } from '../controls.js';
+import { brushStroke } from '../ui/brush.js';
+import { COLORS } from '../ui/tokens.js';
 import { FONT, fontReady, onLettering } from '../style.js';
 import { createPlayTracker } from './play.js';
 
@@ -509,7 +510,7 @@ export function addBox(parent, [w, h, d], mat, [x, y, z] = [0, 0, 0], [rx, ry, r
 // ---- sign and tag -----------------------------------------------------------------------------
 
 // The shelf title, painted like the buttons: paper letters left in an indigo brush stroke.
-export function createSign({ w = 1.2, h = 0.15, color = INK, res = 1024, multiline = false } = {}) {
+export function createSign({ w = 1.2, h = 0.15, color = COLORS.indigo, res = 1024, multiline = false } = {}) {
   const CW = res, CH = Math.round(res * h / w);
   const [c, g] = canvas(CW, CH);
   const tex = new THREE.CanvasTexture(c);
@@ -576,7 +577,7 @@ export function createSign({ w = 1.2, h = 0.15, color = INK, res = 1024, multili
           g.drawImage(plate, CW / 2 - pw / 2, (CH - ph) / 2, pw, ph);
           g.textAlign = 'center';
           g.textBaseline = 'middle';
-          g.fillStyle = PAPER;
+          g.fillStyle = COLORS.paper;
           g.font = `${fs}px ${FONT}`;
           const maxLineDrawW = Math.max(40, pw - padX * 2);
           if (lines.length === 1) {
@@ -641,16 +642,16 @@ function drawTag(g, item, seed, wrap) {
   for (let x = w - pad; x >= pad; x -= 14) g.lineTo(x, h - pad - r() * 6);
   for (let y = h - pad; y >= pad; y -= 14) g.lineTo(pad + r() * 6, y);
   g.closePath();
-  g.fillStyle = '#f7efdd';
+  g.fillStyle = COLORS.paper;
   g.fill();
-  g.strokeStyle = 'rgba(120,90,60,.35)';
+  g.strokeStyle = 'rgba(112,87,66,.35)';
   g.lineWidth = 3;
   g.stroke();
-  g.fillStyle = '#2b2436';
+  g.fillStyle = COLORS.ink;
   g.font = `${size}px ${FONT}`;
   const lh = size * 1.02, top = lines.length > 1 ? 30 + lh / 2 : h * 0.4;
   lines.forEach((l, i) => g.fillText(l, 34, top + i * lh));
-  g.fillStyle = '#7a5a40';
+  g.fillStyle = COLORS.ink2;
   let s = 48;
   const sub = item.subtitle || '';
   do { g.font = `${s}px ${FONT}`; s -= 2; } while (g.measureText(sub).width > w - 72 && s > 36);

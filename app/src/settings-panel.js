@@ -13,58 +13,62 @@
 // Shot hook: ?settings opens it, ?settings=<page> on that page (account, look, playback, performance,
 // shortcuts, tour). With the fake store, add ?guest for the signed-out Account page.
 import { FONTS, onLettering } from './style.js';
-import { INK, HOT, PAPER, brushStroke } from './controls.js';
+import { COLORS, injectTokens } from './ui/tokens.js';
+import { brushStroke } from './ui/brush.js';
+import { torn, tornDepths } from './ui/paper.js';
 import { settings } from './settings.js';
 import { shortcuts, fromEvent } from './shortcuts.js';
 import { rng } from './rand.js';
 import { onCursorTilt, tiltCSS } from './cursortilt.js';
 
+export { torn, tornDepths };
+
 const CSS = `
-.st-btn { position: fixed; top: 3.4vh; right: 2.2vw; z-index: 6; pointer-events: none; perspective: 900px; perspective-origin: 80% 50%;
-  font-family: var(--sienna-font); color: ${PAPER}; font-size: 26px; line-height: 1; user-select: none; opacity: 0; transition: opacity .6s ease; }
+.st-btn { position: fixed; top: 3.4vh; right: 2.2vw; z-index: var(--sienna-z-chrome); pointer-events: none; perspective: 900px; perspective-origin: 80% 50%;
+  font-family: var(--sienna-font); color: var(--sienna-paper); font-size: var(--sienna-text-lg); line-height: 1; user-select: none; opacity: 0; transition: opacity var(--sienna-dur-slow) ease; }
 .st-btn.show { opacity: .94; }
-.st-btn-stack { display: flex; align-items: center; gap: 6px; transform-style: preserve-3d; transform-origin: 100% 50%; will-change: transform; }
+.st-btn-stack { display: flex; align-items: center; gap: var(--sienna-space-2); transform-style: preserve-3d; transform-origin: 100% 50%; will-change: transform; }
 .st-btn .st-w { pointer-events: auto; }
 .st-btn:not(.show) .st-w { pointer-events: none; }
-.st-btn .st-w:hover { transform: translateX(-6px) translateZ(18px) rotate(1deg); }
+.st-btn .st-w:hover { transform: translateX(-6px) translateZ(18px) rotate(calc(var(--sienna-tilt-md) * -1)); }
 .st-btn .st-w:active { transform: translateZ(4px) scale(.97); }
 .st-btn .st-w[disabled] { cursor: default; opacity: .92; }
 .st-w { position: relative; display: inline-block; border: 0; padding: 0; background: none; cursor: pointer; font-family: var(--sienna-font);
-  font-size: inherit; color: ${PAPER}; line-height: 1; transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
-.st-w .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity .25s; filter: drop-shadow(0 2px 3px rgba(28,20,16,.24)); }
+  font-size: inherit; color: var(--sienna-paper); line-height: 1; transition: transform var(--sienna-dur-fast) var(--sienna-ease-pop); }
+.st-w .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity var(--sienna-dur-mid); filter: drop-shadow(var(--sienna-shadow-rest)); }
 .st-w .plate.hot { opacity: 0; }
 .st-w:hover .plate.hot, .st-w.on .plate.hot { opacity: 1; }
-.st-w:hover { transform: translateY(-2px) rotate(-1deg); }
-.st-w span { position: relative; display: block; padding: .16em 1em .1em .7em; white-space: nowrap; text-shadow: 0 0 1px rgba(251,245,232,.7); }
+.st-w:hover { transform: translateY(-2px) rotate(var(--sienna-tilt-md)); }
+.st-w span { position: relative; display: block; padding: .16em 1em .1em .7em; white-space: nowrap; text-shadow: 0 0 1px rgba(248,241,226,.7); }
 .st-btn .st-w span { padding: .16em .7em .1em 1em; }
-.st-veil { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
-  background: rgba(60,45,35,.18); perspective: 1600px; opacity: 0; visibility: hidden; transition: opacity .26s ease, visibility 0s .32s; }
-.st-veil.show { opacity: 1; visibility: visible; transition: opacity .26s ease; }
-.st-veil.closing { opacity: 0; visibility: visible; pointer-events: none; transition: opacity .26s ease; }
+.st-veil { position: fixed; inset: 0; z-index: var(--sienna-z-modal); display: flex; align-items: center; justify-content: center;
+  background: var(--sienna-veil); perspective: 1600px; opacity: 0; visibility: hidden; transition: opacity var(--sienna-dur-mid) ease, visibility 0s var(--sienna-dur-mid); }
+.st-veil.show { opacity: 1; visibility: visible; transition: opacity var(--sienna-dur-mid) ease; }
+.st-veil.closing { opacity: 0; visibility: visible; pointer-events: none; transition: opacity var(--sienna-dur-mid) ease; }
 /* the card leans toward the cursor (cursortilt.js); a wrapper carries the lean so the card's own open/close unfold stays */
 .st-lean { display: flex; justify-content: center; will-change: transform; transform-style: preserve-3d; }
-.st-card { position: relative; width: min(940px, 94vw); height: min(640px, 92vh); box-sizing: border-box; display: flex; flex-direction: column; padding: 30px 40px 22px; color: #2b2436;
-  font-family: var(--sienna-font); filter: drop-shadow(0 6px 10px rgba(50,35,25,.25));
-  transform-style: preserve-3d; transform-origin: 50% 54%; transform: rotate(-.5deg); }
-.st-veil.show .st-card { animation: st-unfold .64s cubic-bezier(.22,.82,.28,1) both; }
-.st-veil.closing .st-card { animation: st-fold .26s ease-in both; }
+.st-card { position: relative; width: min(940px, 94vw); height: min(640px, 92vh); box-sizing: border-box; display: flex; flex-direction: column; padding: var(--sienna-space-8) var(--sienna-space-10) var(--sienna-space-6); color: var(--sienna-ink);
+  font-family: var(--sienna-font); filter: drop-shadow(var(--sienna-shadow-lift));
+  transform-style: preserve-3d; transform-origin: 50% 54%; transform: rotate(var(--sienna-tilt-sm)); }
+.st-veil.show .st-card { animation: st-unfold var(--sienna-dur-slow) var(--sienna-ease-out) both; }
+.st-veil.closing .st-card { animation: st-fold var(--sienna-dur-mid) var(--sienna-ease-in) both; }
 @keyframes st-unfold {
   0%   { opacity: 0; transform: translateY(34px) translateZ(-95px) rotateX(64deg) rotateY(-9deg) rotateZ(-3deg) scaleY(.48) scaleX(.93); filter: drop-shadow(0 22px 28px rgba(50,35,25,.36)); }
   38%  { opacity: 1; transform: translateY(-6px) translateZ(18px) rotateX(-14deg) rotateY(3.2deg) rotateZ(.85deg) scaleY(1.028) scaleX(1.008); filter: drop-shadow(0 13px 18px rgba(50,35,25,.3)); }
   68%  { opacity: 1; transform: translateY(2px) translateZ(3px) rotateX(4.4deg) rotateY(-1.2deg) rotateZ(-.9deg) scaleY(.995) scaleX(1); }
   86%  { opacity: 1; transform: translateY(0) translateZ(0) rotateX(-1.3deg) rotateY(.35deg) rotateZ(-.3deg) scale(1); }
-  100% { opacity: 1; transform: rotate(-.5deg); filter: drop-shadow(0 6px 10px rgba(50,35,25,.25)); }
+  100% { opacity: 1; transform: rotate(var(--sienna-tilt-sm)); filter: drop-shadow(var(--sienna-shadow-lift)); }
 }
 @keyframes st-fold {
-  0%   { opacity: 1; transform: rotate(-.5deg); }
+  0%   { opacity: 1; transform: rotate(var(--sienna-tilt-sm)); }
   100% { opacity: 0; transform: translateY(26px) translateZ(-75px) rotateX(-50deg) rotateY(6deg) rotateZ(2.2deg) scaleY(.52) scaleX(.93); }
 }
-.st-paper { position: absolute; inset: 0; background: #f4ead6; }
+.st-paper { position: absolute; inset: 0; background: var(--sienna-paper); }
 /* transient 3D unfolding flap: vanishes completely once the sheet settles flat */
-.st-flap { position: absolute; left: 0; right: 0; top: 0; height: 50%; background: linear-gradient(180deg, #f6eedc 0%, #efe2c8 100%);
+.st-flap { position: absolute; left: 0; right: 0; top: 0; height: 50%; background: linear-gradient(180deg, var(--sienna-paper) 0%, var(--sienna-paper-lo) 100%);
   transform-origin: 50% 100%; backface-visibility: visible; pointer-events: none; opacity: 0; z-index: 4; }
-.st-veil.show .st-flap { animation: st-flap-open .58s cubic-bezier(.22,.82,.3,1) both; }
-.st-veil.closing .st-flap { animation: st-flap-close .24s ease-in both; }
+.st-veil.show .st-flap { animation: st-flap-open var(--sienna-dur-slow) var(--sienna-ease-out) both; }
+.st-veil.closing .st-flap { animation: st-flap-close var(--sienna-dur-mid) var(--sienna-ease-in) both; }
 @keyframes st-flap-open {
   0%   { opacity: .95; transform: rotateX(-165deg); box-shadow: 0 12px 24px rgba(55,38,24,.26); }
   55%  { opacity: .58; transform: rotateX(-14deg); box-shadow: 0 4px 10px rgba(55,38,24,.1); }
@@ -76,104 +80,54 @@ const CSS = `
   35%  { opacity: .55; transform: rotateX(-55deg); }
   100% { opacity: .9; transform: rotateX(-145deg); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .st-veil.show .st-card, .st-veil.closing .st-card,
-  .st-veil.show .st-flap, .st-veil.closing .st-flap { animation: none !important; }
-  .st-flap { display: none; }
-}
-.st-head { position: relative; flex: none; font-size: 42px; margin: 0 0 12px; color: ${INK}; }
+.st-head { position: relative; flex: none; font-size: var(--sienna-text-2xl); margin: 0 0 var(--sienna-space-3); color: var(--sienna-indigo); }
 /* the rail on the left, the page on the right; a painted line between them */
-.st-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; gap: 0 30px; }
-.st-side { position: relative; flex: none; width: 190px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding-top: 8px; font-size: 27px; overflow-y: auto; scrollbar-width: none; }
+.st-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; gap: 0 var(--sienna-space-8); }
+.st-side { position: relative; flex: none; width: 190px; display: flex; flex-direction: column; align-items: flex-start; gap: var(--sienna-space-2); padding-top: var(--sienna-space-2); font-size: var(--sienna-text-lg); overflow-y: auto; scrollbar-width: none; }
 .st-side::-webkit-scrollbar { display: none; }
 .st-side .st-w:not(.on) .plate:not(.hot) { opacity: 0; }
-.st-side .st-w:not(.on) span { color: ${INK}; text-shadow: none; }
-.st-side .st-w:not(.on):hover span { color: ${PAPER}; }
-.st-rule { flex: none; width: 4px; align-self: stretch; margin: 6px 0; background-size: 100% 100%; opacity: .55; }
+.st-side .st-w:not(.on) span { color: var(--sienna-indigo); text-shadow: none; }
+.st-side .st-w:not(.on):hover span { color: var(--sienna-paper); }
+.st-rule { flex: none; width: 4px; align-self: stretch; margin: var(--sienna-space-2) 0; background-size: 100% 100%; opacity: .55; }
 /* only the page scrolls: the paper, the title, the rail and DONE stay put, so the card is always whole */
 .st-scroll { position: relative; flex: 1 1 auto; min-width: 0; overflow-y: auto; overflow-x: hidden; margin-right: -14px; padding-right: 14px; perspective: 900px;
   -webkit-mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 10px), transparent); mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 10px), transparent);
-  padding-top: 8px; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: rgba(122,90,64,.45) transparent; }
+  padding-top: var(--sienna-space-2); padding-bottom: var(--sienna-space-2); scrollbar-width: thin; scrollbar-color: rgba(112,87,66,.45) transparent; }
 .st-scroll::-webkit-scrollbar { width: 8px; }
 .st-scroll::-webkit-scrollbar-track { background: transparent; }
-.st-scroll::-webkit-scrollbar-thumb { background: rgba(122,90,64,.45); border-radius: 4px; }
+.st-scroll::-webkit-scrollbar-thumb { background: rgba(112,87,66,.45); border-radius: 4px; }
 .st-page { display: none; transform-origin: 0% 45%; }
-.st-page.on { display: block; animation: st-in .36s cubic-bezier(.22,.82,.3,1); }
+.st-page.on { display: block; animation: st-in var(--sienna-dur-mid) var(--sienna-ease-out); }
 @keyframes st-in {
   0%   { opacity: 0; transform: translateX(14px) rotateY(-18deg) rotateZ(-.6deg); }
   65%  { opacity: 1; transform: translateX(-1px) rotateY(2deg) rotateZ(.15deg); }
   100% { opacity: 1; transform: none; }
 }
-.st-row { position: relative; margin: 0 0 18px; }
-.st-label { font-size: 30px; }
-.st-hint { font-size: 19px; color: #7a5a40; margin: 2px 0 10px; }
-.st-opts { display: flex; flex-wrap: wrap; gap: 6px 4px; font-size: 27px; }
-.st-keys .st-opts { align-items: center; gap: 6px 4px; }
-.st-kpair { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; margin-right: 14px; }
-.st-kname { font-size: 24px; color: #5a4636; margin: 0 2px 0 0; }
-.st-keys .st-msg { min-height: 1.2em; color: #a0442c; }
+.st-row { position: relative; margin: 0 0 var(--sienna-space-5); }
+.st-label { font-size: var(--sienna-text-lg); }
+.st-hint { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.4; color: var(--sienna-ink-2); margin: var(--sienna-space-1) 0 var(--sienna-space-3); }
+.st-opts { display: flex; flex-wrap: wrap; gap: var(--sienna-space-2) var(--sienna-space-1); font-size: var(--sienna-text-lg); }
+.st-keys .st-opts { align-items: center; gap: var(--sienna-space-2) var(--sienna-space-1); }
+.st-kpair { display: inline-flex; align-items: center; gap: var(--sienna-space-1); white-space: nowrap; margin-right: var(--sienna-space-4); }
+.st-kname { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); font-weight: 600; color: var(--sienna-ink-2); margin: 0 var(--sienna-space-1) 0 0; }
+.st-keys .st-msg { min-height: 1.2em; color: var(--sienna-danger); }
 /* Settings > Account */
-.st-who { display: flex; align-items: center; gap: 18px; margin: 4px 0 6px; }
+.st-who { display: flex; align-items: center; gap: var(--sienna-space-4); margin: var(--sienna-space-1) 0 var(--sienna-space-2); }
 .st-face { flex: none; width: 74px; height: 74px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center;
-  background: ${HOT}; color: ${PAPER}; font-size: 40px; box-shadow: 0 0 0 3px #f4ead6, 0 0 0 5px rgba(45,49,88,.55); }
-.st-face.small { width: 34px; height: 34px; font-size: 19px; box-shadow: 0 0 0 2px #f4ead6, 0 0 0 3px rgba(45,49,88,.4); }
+  background: var(--sienna-terracotta); color: var(--sienna-paper); font-size: var(--sienna-text-xl); box-shadow: 0 0 0 3px var(--sienna-paper), 0 0 0 5px rgba(45,49,88,.55); }
+.st-face.small { width: 34px; height: 34px; font-size: var(--sienna-text-sm); box-shadow: 0 0 0 2px var(--sienna-paper), 0 0 0 3px rgba(45,49,88,.4); }
 .st-face img { width: 100%; height: 100%; object-fit: cover; }
-.st-name { font-size: 36px; color: ${INK}; line-height: 1.05; }
-.st-handle { font-size: 21px; color: #7a5a40; }
-.st-alt { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font-size: 25px; }
+.st-name { font-size: var(--sienna-text-xl); color: var(--sienna-indigo); line-height: 1.05; }
+.st-handle { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.35; color: var(--sienna-ink-2); }
+.st-alt { display: flex; align-items: center; gap: var(--sienna-space-3); margin: 0 0 var(--sienna-space-2); font-size: var(--sienna-text-lg); }
 .st-alt .st-hint { margin: 0; }
 .st-confirm { display: none; }
 .st-confirm.on { display: block; }
-.st-confirm .st-hint { color: #a0442c; }
-.st-small { font-size: 17px; color: #8c6c50; margin-top: 18px; max-width: 36em; }
-.st-foot { position: relative; flex: none; display: flex; padding-top: 6px; justify-content: flex-end; font-size: 28px; }
-@media (max-width: 720px) { .st-side { width: 130px; font-size: 22px; } .st-body { gap: 0 14px; } .st-card { padding: 24px 22px 18px; } }
+.st-confirm .st-hint { color: var(--sienna-danger); }
+.st-small { font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); line-height: 1.45; color: var(--sienna-ink-3); margin-top: var(--sienna-space-4); max-width: 44em; }
+.st-foot { position: relative; flex: none; display: flex; padding-top: var(--sienna-space-2); justify-content: flex-end; font-size: var(--sienna-text-lg); }
+@media (max-width: 720px) { .st-side { width: 130px; font-size: var(--sienna-text-md); } .st-body { gap: 0 var(--sienna-space-4); } .st-card { padding: var(--sienna-space-6) var(--sienna-space-5) var(--sienna-space-5); } }
 `;
-
-// A hand-torn outline as a CSS polygon (same idea as the search slips). Each edge tears its own way:
-// uneven spacing, a slow wander, calm stretches and rough ones, the odd bite, and a chipped corner or two.
-// Nothing ever goes deeper than `cap` px into the paper, so keep `cap` below the card's smallest padding
-// and the tear can never reach the text. tornDepths() is the same tear as numbers, for the checks.
-export function tornDepths(seed, amp = 5, cap = amp * 2) {
-  const r = rng(seed);
-  const edge = (n) => {
-    // uneven spacing: steps between 40% and 160% of the even step, rescaled to end at exactly 1
-    const steps = Array.from({ length: n }, () => 0.4 + r() * 1.2);
-    const sum = steps.reduce((a, b) => a + b, 0);
-    const f1 = 1 + r() * 1.5, f2 = 3 + r() * 4, p1 = r() * 6.3, p2 = r() * 6.3;
-    const lean = r() * 0.5; // how far this edge sits in overall
-    const pts = [];
-    let t = 0;
-    for (let i = 0; i <= n; i++) {
-      // slow wander (0..1) and a roughness that also wanders, so some stretches are calm and some ragged
-      const wander = 0.5 + 0.3 * Math.sin(t * f1 * 6.28 + p1) + 0.2 * Math.sin(t * f2 * 6.28 + p2);
-      const rough = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(t * f2 * 3.1 + p1 * 1.7));
-      let d = amp * (lean + 0.55 * wander) + (r() - 0.5) * amp * 1.3 * rough;
-      if (r() < 0.1) d += amp * (0.7 + r() * 0.8); // a bite
-      pts.push([t, Math.max(0, Math.min(cap, d))]);
-      if (i < n) t += steps[i] / sum;
-    }
-    pts[n][0] = 1;
-    return pts;
-  };
-  const count = (lo, hi) => lo + Math.floor(r() * (hi - lo + 1));
-  // corner chips (px along each side from the corner); about half the corners get one
-  const chips = [0, 1, 2, 3].map(() => (r() < 0.5 ? cap * (0.4 + r() * 0.6) : 0));
-  return { top: edge(count(14, 22)), right: edge(count(5, 9)), bottom: edge(count(14, 22)), left: edge(count(5, 9)), chips, cap };
-}
-
-export function torn(seed, amp = 5, cap = amp * 2) {
-  const { top, right, bottom, left, chips: [tl, tr, br, bl] } = tornDepths(seed, amp, cap);
-  const f = (v) => v.toFixed(1);
-  // a point t of the way along an edge of length 100%, moved in by `a` px from its start and `b` px from its end
-  const along = (t, a, b) => `calc(${f(t * 100)}% + ${f(a * (1 - t) - b * t)}px)`;
-  const pts = [];
-  for (const [t, d] of top) pts.push(`${along(t, tl, tr)} ${f(d)}px`);
-  for (const [t, d] of right) pts.push(`calc(100% - ${f(d)}px) ${along(t, tr, br)}`);
-  for (const [t, d] of bottom) pts.push(`${along(1 - t, bl, br)} calc(100% - ${f(d)}px)`);
-  for (const [t, d] of left) pts.push(`${f(d)}px ${along(1 - t, tl, bl)}`);
-  return `polygon(${pts.join(',')})`;
-}
 
 // A word in an oil-dab plate. Plates are painted once the word has its real size (after fonts load).
 export function word(text, seed, onClick, { flipX = false } = {}) {
@@ -189,8 +143,8 @@ export function word(text, seed, onClick, { flipX = false } = {}) {
     if (!w || !h || painted === `${w}x${h}`) return;
     painted = `${w}x${h}`;
     const [cold, hot] = el.querySelectorAll('.plate');
-    cold.style.backgroundImage = `url(${brushStroke(w, h, INK, seed, { flipX })})`;
-    hot.style.backgroundImage = `url(${brushStroke(w, h, HOT, seed, { flipX })})`;
+    cold.style.backgroundImage = `url(${brushStroke(w, h, COLORS.indigo, seed, { flipX })})`;
+    hot.style.backgroundImage = `url(${brushStroke(w, h, COLORS.terracotta, seed, { flipX })})`;
   };
   return el;
 }
@@ -205,7 +159,7 @@ function paintRule(el, seed) {
   c.width = 8; c.height = h;
   const g = c.getContext('2d');
   const r = rng(seed);
-  g.fillStyle = INK;
+  g.fillStyle = COLORS.indigo;
   for (let pass = 0; pass < 6; pass++) {
     g.globalAlpha = 0.18;
     g.beginPath();
@@ -219,6 +173,7 @@ function paintRule(el, seed) {
 }
 
 export function createSettingsPanel({ music = null, onTour = null, onRestock = null } = {}) {
+  injectTokens();
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);

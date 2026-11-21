@@ -27,6 +27,9 @@ import { createTimeOfDay } from './timeofday.js';
 import { registerLamp, glowMesh } from './env.js';
 import { LISTENING_TABLE, LOUNGE_LAMP, buildLoungeCore, buildCourtyardVista } from './loungecorner.js';
 import { showWebGLError } from './liner.js';
+import { injectTokens } from './ui/tokens.js';
+
+injectTokens();
 
 const params = new URLSearchParams(location.search);
 const shot = params.has('shot');

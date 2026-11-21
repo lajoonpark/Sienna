@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { rng } from '../rand.js';
 import { coat, mark, dabClusterCanvas, canvasWeavePattern, LEAN, TONES } from '../brushpaint.js';
+import { COLORS } from '../ui/tokens.js';
 
 export const COL = {
   leather: '#c98c57',
@@ -17,9 +18,9 @@ export const COL = {
   vinyl: '#2d262c',
   cloth: '#d6c08a',
   steel: '#cfc3ab',       // the arm: pale warm metal, oil-painted rather than chrome
-  ink: '#2d3158',         // indigo, matching the shop's oil-dab buttons
-  hot: '#b4503a',         // terracotta on hover / liked
-  paper: '#fbf5e8',
+  ink: COLORS.indigo,     // indigo, matching the shop's oil-dab buttons
+  hot: COLORS.terracotta, // terracotta on hover / liked
+  paper: COLORS.paper,
 };
 
 function canvas(w, h) {
