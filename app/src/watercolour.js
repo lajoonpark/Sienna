@@ -211,23 +211,6 @@ void main() {
   float aspect = resolution.x / resolution.y;
   vec2 q = vUv * vec2(aspect, 1.0);
 
-#ifdef OIL_CARD
-  // Full-bleed oil-painted canvas card for the mini suitcase window: crisp textures (with oil dabs
-  // already baked onto the backdrop and case) + subtle canvas weave, up to the ragged card edge.
-  vec3 col = sceneAt(vUv);
-  vec2 cq = gl_FragCoord.xy + paperOffset * 512.0;
-  float weave = (sin(cq.x * 1.9) * sin(cq.y * 1.9 + 1.3)) * 0.5 + 0.5;
-  float tooth = texture2D(tPaper, gl_FragCoord.xy / 512.0 + paperOffset).r;
-  float crisp = clamp(1.0 - texture2D(tScene, vUv).a, 0.0, 1.0);
-  col *= mix(0.968, 1.02, mix(tooth, weave, 0.35)) * mix(1.0, 0.985 + 0.03 * tooth, crisp);
-  vec2 e = min(vUv, 1.0 - vUv) * vec2(aspect, 1.0);
-  float sheet = min(e.x, e.y) + (fbm(q * 13.0 + 5.0) - 0.5) * 0.038 + (noise(q * 75.0) - 0.5) * 0.008 - 0.018;
-  float a = smoothstep(0.0, 0.006, sheet);
-  float rim = (1.0 - smoothstep(0.004, 0.014, sheet)) * a;
-  col = mix(col, vec3(0.92, 0.86, 0.75) * (0.94 + 0.06 * tooth), rim * 0.65);
-  gl_FragColor = vec4(col * a, a);
-#else
-
   // 1. hand wobble: displace where we read the scene with slow noise that boils at BOIL_FPS
   vec2 wob = vec2(fbm(q * 7.0 + seed), fbm(q * 7.0 + seed + 31.7)) - 0.5;
   vec2 uv = vUv + wob * px * 5.0;
@@ -399,7 +382,6 @@ void main() {
 #else
   gl_FragColor = vec4(col, 1.0);
 #endif
-#endif
 }
 `;
 
@@ -447,8 +429,7 @@ export function createWatercolour(renderer, { card = false, unpainted = UNPAINTE
   function finalDefines() {
     return {
       ...(card ? { CARD: '' } : {}),
-      ...(L?.oilCard ? { OIL_CARD: '' } : {}),
-      ...(L && !L.oilCard ? { WASH: '' } : {}),
+      ...(L ? { WASH: '' } : {}),
       ...(L?.strokes ? { STROKES: '' } : {}),
     };
   }
@@ -614,7 +595,7 @@ void main() {
     oilFinal?.dispose();
     oilFinal = null;
     invalidate();
-    if (!L || L.oilCard) return;
+    if (!L) return;
     if (L.strokes) {
       brush = makeBrush();
       if (saved) brush.strokes.load(saved);
@@ -624,8 +605,6 @@ void main() {
       material.uniforms.tOver.value = null;
       return;
     }
-    ensureWash();
-    if (!card) makeLite(); // the card window has no camera to travel: it gets these only if it ever asks (setMotion)
   }
   function makeLite() {
     ensureWash();
@@ -933,7 +912,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       };
 
       // deep idle (pacer.js): the border holds its last shape, so a still shop draws nothing
-      const boil = (boilHeld || L?.oilCard || (L?.oil && !u.bars.value)) && lastBoil >= 0 ? lastBoil : Math.floor(t * BOIL_FPS) % 64;
+      const boil = (boilHeld || (L?.oil && !u.bars.value)) && lastBoil >= 0 ? lastBoil : Math.floor(t * BOIL_FPS) % 64;
       u.borderSeed.value = boil * 1.37;
       u.seed.value = brush || L?.still ? 0 : u.borderSeed.value; // dry paint does not boil, but the sheet's ragged border does
       u.near.value = camera.near;
