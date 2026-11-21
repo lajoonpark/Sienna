@@ -40,6 +40,3 @@ export function onCursorTilt(fn) {
 
 // same sense as the menu words: cursor right turns the paper's face to the right, cursor down tips it down
 export const tiltCSS = (x, y, deg) => `rotateY(${(x * deg).toFixed(2)}deg) rotateX(${(-y * deg * 0.8).toFixed(2)}deg)`;
-
-// the check scripts read the live values
-export const cursorTilt = t;
