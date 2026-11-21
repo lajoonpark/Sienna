@@ -200,6 +200,11 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 - **Mini player**: **⌃⌥K** anywhere opens the same suitcase at the cursor on a full-bleed oil-dabbed canvas card
   (`mini.html`, `electron/mini.cjs`); the lid flicks open on a physical hinge (`src/lid.js`). Esc,
   clicking away or ⌃⌥K again shuts it. The search shortcut works there too.
+  Its lounge lamp follows the time-of-day brightness ramps without warm-up flicker (`steady: true`
+  in `src/mini.js`); the shop lamps keep their flicker. From `app/`, run
+  `node scripts/mini-light-check.mjs <out_dir>` to compare 24 paused painted mini frames at 08:53
+  over the wall glow and check the lamp policy. It writes screenshots and `metrics.json`;
+  `SIENNA_ANGLE` overrides the renderer (Metal on macOS, SwiftShader elsewhere by default).
 - **Volume**: on macOS the knob, scroll and ↑ ↓ set the Mac's own output volume (`electron/sysvolume.cjs`,
   osascript) and the player stays at 100%, so you can turn it up past where the Mac was. Elsewhere it
   is the player's volume.
