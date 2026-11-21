@@ -232,6 +232,43 @@ try {
   await page.keyboard.press('Escape'); await wait(350); await tuck(false);
   pass('painting/idle: reopening does not repaint paper; open idle sheet has zero kit rAF/timeout/interval callbacks over 2 s');
 
+  await page.evaluate(() => fixture.liner.openLyrics(fixture.state)); await wait(650);
+  await page.locator('.ln-sheet .ui-sheet-head').getByRole('button', { name: 'Close', exact: true }).focus();
+  await page.keyboard.press('Control+Comma'); await wait(650);
+  assert.equal(await page.locator('.ln-sheet.show').count(), 1);
+  for (const key of ['Tab', 'Shift+Tab', 'Tab', 'Tab']) {
+    await page.evaluate(() => { fixture.tabFrom = document.activeElement; });
+    await page.keyboard.press(key);
+    assert.equal(await page.evaluate(() => document.activeElement !== fixture.tabFrom), true);
+    assert.equal(await dialog.evaluate(el => el.contains(document.activeElement)), true, 'older Lyrics cannot steal Settings focus');
+  }
+  await shot('settings-over-lyrics');
+  await page.keyboard.press('Escape'); await wait(350);
+  assert.equal(await page.evaluate(() => fixture.panel.isOpen()), false);
+  assert.equal(await page.locator('.ln-sheet.show').count(), 1, 'Escape closes only the top sheet');
+  assert.equal(await page.locator('.ln-sheet [role="dialog"]').evaluate(el => el.contains(document.activeElement)), true);
+  await page.keyboard.press('Escape'); await wait(350); await tuck(false);
+
+  await page.evaluate(() => fixture.tour.restart()); await wait(650);
+  await tourAction('Look around first').focus();
+  await page.keyboard.press('Control+Comma'); await wait(650);
+  for (const key of ['Tab', 'Tab', 'Shift+Tab']) {
+    await page.evaluate(() => { fixture.tabFrom = document.activeElement; });
+    await page.keyboard.press(key);
+    assert.equal(await page.evaluate(() => document.activeElement !== fixture.tabFrom), true);
+    assert.equal(await dialog.evaluate(el => el.contains(document.activeElement)), true, 'background tour defers Settings Tab');
+  }
+  await page.keyboard.press('Escape'); await wait(350);
+  assert.equal(await page.evaluate(() => fixture.panel.isOpen()), false);
+  assert.equal(await page.evaluate(() => fixture.tour.step), 'welcome', 'Settings Escape preserves the tour');
+  assert.equal(await tourAction('Look around first').evaluate(el => document.activeElement === el), true);
+  await page.keyboard.press('Enter'); await wait(150);
+  assert.equal(await page.evaluate(() => fixture.tour.step), 'letters', 'tour keyboard activation resumes');
+  await page.keyboard.press('Escape'); await wait(650);
+  assert.equal(await page.evaluate(() => fixture.tour.active), false);
+  await tuck(false);
+  pass('overlay keyboard order: Settings owns Tab/Escape above Lyrics or Tour; background focus and tour keys resume');
+
   await page.evaluate(() => { fixture.lyricsMode = 'pending'; void fixture.liner.openLyrics(fixture.state); });
   await page.locator('.ln-sheet.show [role="dialog"]').waitFor(); await wait(650); await tuck(true);
   assert.match(await page.locator('.ln-sheet .ln-empty').innerText(), /Looking up/);

@@ -522,6 +522,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   // while the card is up.
   const mac = /Mac/.test(navigator.platform);
   addEventListener('keydown', (e) => {
+    if (openNow && !sheet.isTopmost()) return;
     if (openNow && recording) { e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) record(e); return; }
     if (e.key === ',' && (mac ? e.metaKey : e.ctrlKey) && !e.altKey) {
       e.preventDefault(); e.stopImmediatePropagation(); toggle(); return;

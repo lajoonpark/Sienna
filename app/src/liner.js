@@ -1,4 +1,4 @@
-import { createSheet, setOverlayOpen } from './ui/sheet.js';
+import { createSheet, setOverlayOpen, sheetOpen } from './ui/sheet.js';
 // Torn-paper overlay sheets matching Sienna's Settings & Tour aesthetic:
 //   - Lyrics sheet with 3D paper-unfold animation (pulled from YouTube Music's `next` -> Lyrics tab)
 //   - Up Next Queue list that emerges directly from the open suitcase bottom drawer
@@ -324,7 +324,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   }
 
   addEventListener('keydown', (e) => {
-    if (!mode) return;
+    if (mode !== 'queue' || sheetOpen()) return;
     if (mode === 'queue' && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
     if (mode === 'queue' && ['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Enter'].includes(e.key)) {
       if (e.key === 'Enter' && e.target.closest?.('button')) return;

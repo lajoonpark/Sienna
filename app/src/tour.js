@@ -1,4 +1,4 @@
-import { setOverlayOpen } from './ui/sheet.js';
+import { setOverlayOpen, sheetOpen } from './ui/sheet.js';
 // The first-run tour: torn paper notes in the shop, with brush-stroke words floating under them, the same
 // paper and words as the Settings card. It starts once the intro reaches home on a new install, and each
 // step ends when you have done the thing it is about (signed in, played a record, pressed a shortcut).
@@ -585,7 +585,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   // Control / Option / Command pass, so the search key and Settings still work. The record step is a
   // hint over a usable shop, so it leaves every key alone.
   addEventListener('keydown', (e) => {
-    if (at < 0 || shortcuts.recording || isSearchOpen()) return;
+    if (at < 0 || shortcuts.recording || isSearchOpen() || sheetOpen()) return;
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;

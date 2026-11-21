@@ -9,6 +9,11 @@ import { onCursorTilt, tiltCSS } from '../cursortilt.js';
 // ---- Shared overlay signal (sheets, search, lists, queue) ----
 const openOverlays = new Set();
 const overlayListeners = new Set();
+const openSheets = [];
+
+export function sheetOpen() {
+  return openSheets.length > 0;
+}
 
 export function overlayOpen() {
   return openOverlays.size > 0;
@@ -228,7 +233,7 @@ export function createSheet({
   }
 
   function handleWindowKeyDown(e) {
-    if (!openNow) return;
+    if (!openNow || !isTopmost()) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -261,11 +266,17 @@ export function createSheet({
     }
   }
 
+  function isTopmost() {
+    return openSheets.at(-1) === veil;
+  }
+
   function open({ returnFocusTo = null } = {}) {
     if (destroyed || openNow) return;
     clearTimeout(closeTimer);
     opener = returnFocusTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     openNow = true;
+    openSheets.push(veil);
+    host.appendChild(veil);
     setOverlayOpen(owner, true);
 
     veil.classList.remove('closing');
@@ -290,7 +301,9 @@ export function createSheet({
 
   function close() {
     if (!openNow) return;
+    const wasTopmost = isTopmost();
     openNow = false;
+    openSheets.splice(openSheets.indexOf(veil), 1);
     window.removeEventListener('keydown', handleWindowKeyDown, true);
     setOverlayOpen(owner, false);
 
@@ -305,9 +318,12 @@ export function createSheet({
     unlean?.();
     unlean = null;
 
-    const restore = opener;
+    const top = openSheets.at(-1);
+    const restore = top && !top.contains(opener)
+      ? getFocusables(top)[0] ?? top.querySelector('.ui-sheet-card')
+      : opener;
     opener = null;
-    if (restore && restore.isConnected && typeof restore.focus === 'function') {
+    if (wasTopmost && restore && restore.isConnected && typeof restore.focus === 'function') {
       restore.focus({ preventScroll: true });
     }
     onClose?.();
@@ -346,6 +362,7 @@ export function createSheet({
     open,
     close,
     isOpen: () => openNow,
+    isTopmost,
     setTitle,
     setDescription,
     destroy,
