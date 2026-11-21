@@ -93,6 +93,8 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
   cover on its label and the tonearm creeps in as the song plays. Turn the knob for volume, or drag
   the record to scrub. Its torn-paper tag shows elapsed/total time, **Mute**, **Shuffle**, **Repeat**,
   **Up Next Queue**, and a **folded liner-note Lyrics sheet**.
+  The shop and mini player share a paper now-playing tag with a seekable progress line and stamped
+  controls with painted tooltips. The tag steps aside while a list, sheet or tour note is open.
 - **Mini player & System Tray.** Press **⌃⌥K** anywhere to open the suitcase at your cursor, without
   opening the shop. Closing the shop window frees GPU memory while Sienna stays in the menu bar /
   system tray (macOS, Windows, and Linux) with now-playing info and playback controls.
@@ -101,6 +103,14 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
 - **Richer Search.** Press **⌃⌥J** to search **Songs**, **Albums**, **Playlists**, or **Artists**
   (`Tab` switches tabs). Songs slide out of the suitcase drawer; albums and playlists fan open into
   records; artists open into their top songs and releases.
+- **Shared paper lists.** Search, collection songs and Up next use aligned torn slips: terracotta
+  marks the keyboard cursor and indigo marks the playing song. Collections filter as you type;
+  **Play** starts the first filtered song and **Shuffle** uses the filtered pool. Up next pins the
+  playing song first. Loading, empty and error notes stay in the list, with Retry on fetch errors.
+- **Paper sheets & notes.** Settings and Lyrics open as folding paper dialogs with a Close stamp,
+  keyboard focus kept inside and returned to the opener on close. Settings has a page rail and
+  painted choice chips; long pages show a scroll hint. Lyrics and tour body text use a book serif
+  for reading, while titles keep your chosen hand lettering. Lyrics offers Retry if loading fails.
 - **Privacy-first extras.** Settings lets macOS users choose between **Mac system volume** and
   **Sienna only**, toggle **Start at login**, opt in to **Discord Rich Presence** (off by default,
   local Discord IPC only), manually **Check for updates** on GitHub Releases (never phones home in
@@ -151,7 +161,8 @@ Casks/sienna.rb             Homebrew Cask (auto-clears macOS quarantine via xatt
 archive/swift-prototype/    shelved early Swift macOS prototype (not part of the app)
 ```
 
-[`app/README.md`](app/README.md) has the rendering, performance, and dev-flag details.
+[`app/README.md`](app/README.md) has the shared UI kit, revamp phases, rendering, performance,
+and dev-flag details.
 
 ## Develop & Package
 

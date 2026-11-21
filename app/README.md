@@ -35,6 +35,17 @@ URL options: `?hour=20.5` freezes the clock, `?speed=600` runs it faster, `?cam=
 
 ## Music (YouTube Music)
 
+### UI revamp phases
+
+The shared tokens and serif small text (phase 1), then the UI kit and `ui-lab.html` (phase 2),
+are now used by these surfaces merged into `dev`:
+
+| Phase | Surfaces | Implementation and focused check (run from `app/`) |
+| --- | --- | --- |
+| [3 — player and home](https://github.com/lajoonpark/Sienna/pull/3) | Shop/mini now-playing tag, shelf plates, Restock/Settings words and FPS ticket | `src/controls.js`, `src/menu.js`, `src/main.js`; `node scripts/home-check.mjs <out_dir>` |
+| [4 — lists](https://github.com/lajoonpark/Sienna/pull/4) | Search, collection songs and Up next | `src/ui/list.js`, `src/list-bar.js`, `src/search.js`, `src/collection-list.js`, `src/liner.js`; `node scripts/lists-check.mjs <out_dir>` |
+| [5 — sheets](https://github.com/lajoonpark/Sienna/pull/5) | Settings, Lyrics, tour notes, status banners and WebGL fallback | `src/ui/sheet.js`, `src/ui/scroll-cue.js`, `src/settings-panel.js`, `src/liner.js`, `src/tour.js`, `src/main.js`; `node scripts/sheets-check.mjs <out_dir>` |
+
 ### Shared slip lists
 
 Search, collection songs and Up next use `ui/list.js`: aligned torn slips, shared size-cached paint,
@@ -56,7 +67,9 @@ no native control titles and two seconds with no kit/shared-bar callbacks. Exist
 ### Sheets and notes
 
 Settings and Lyrics use `createSheet()`: labelled modal dialogs with the shared paper, lean,
-unfold/fold, Close stamp, Escape, focus trap and return to the opener. Settings retains its utilities,
+unfold/fold, Close stamp, Escape, focus trap and return to the opener. Only the topmost sheet handles
+Tab and Escape; opening Settings over Lyrics or a tour note leaves the underlying surface open.
+Tab-focused controls scroll into view clear of the bottom fade. Settings retains its utilities,
 account flow, shortcut recorder and persistent choices; its ink rail exposes `aria-current="page"`
 and its options are radio segmented chips. About groups version, manual updates and diagnostics.
 Lyrics uses a song · artist lettering title and reading-size Alegreya with loading, empty and
