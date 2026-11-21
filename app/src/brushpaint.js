@@ -89,8 +89,6 @@ export function oilDabShapes() {
   return shapes;
 }
 
-export const brushShapes = oilDabShapes;
-
 const toRGB = (color) => {
   if (Array.isArray(color)) return color;
   const n = parseInt(color.slice(1), 16);
@@ -312,8 +310,6 @@ export function dabClusterCanvas(w, h, opts) {
 }
 
 export const dabCluster = (w, h, opts) => dabClusterCanvas(w, h, opts).toDataURL();
-export const brushBandCanvas = (w, h, opts) => dabClusterCanvas(w, h, opts);
-export const brushBand = (w, h, opts) => dabCluster(w, h, opts);
 
 // The palettes of the 2D oil paint (primary swatches come from ui/tokens.js)
 export const TONES = {

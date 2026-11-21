@@ -50,8 +50,6 @@ export function controlLayout(big = false) {
   };
 }
 
-// What you can touch. Buttons are clicked; the knob and the record are dragged.
-export const CONTROLS = ['previous', 'playPause', 'next', 'like', 'knob', 'record'];
 export const isButton = (c) => c in BUTTONS;
 export const COMMANDS = { previous: 'previous', playPause: 'toggle', next: 'next', like: 'like' };
 
