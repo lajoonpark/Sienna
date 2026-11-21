@@ -7,7 +7,6 @@ import * as THREE from 'three';
 import { rng } from '../rand.js';
 import { createRackCore, addBox, WOOD, SLEEVE, THICK, springTo } from './common.js';
 
-export const RACK_POS = new THREE.Vector3(0, 0, -5.6);
 const TABLE_H = 0.78;
 const LEN = 2.1;               // trough length
 const BASE = TABLE_H + 0.03;   // sleeves stand on the trough floor
