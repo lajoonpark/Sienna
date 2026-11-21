@@ -28,6 +28,7 @@ import { registerLamp, glowMesh } from './env.js';
 import { LISTENING_TABLE, LOUNGE_LAMP, buildLoungeCore, buildCourtyardVista } from './loungecorner.js';
 import { showWebGLError } from './liner.js';
 import { injectTokens } from './ui/tokens.js';
+import { settings } from './settings.js';
 
 injectTokens();
 
@@ -227,6 +228,7 @@ function applyAppear() {
 }
 function summon() {
   if (phase === 'hidden') {
+    pointerIn = false;
     suitcase.close({ instant: true });
     appear = 0;
     applyAppear();
@@ -323,12 +325,40 @@ addEventListener('pointermove', (e) => {
   renderer.domElement.style.cursor = suitcase.cursor();
 });
 document.addEventListener('pointerleave', () => { suitcase.hover(null); parallax.tx = 0; parallax.ty = 0; });
+
+// Settings > Playback > Mini player: the card shuts when the cursor leaves the window, but only once the
+// cursor has been inside since it opened (a card summoned beside the cursor waits for it to come in).
+// Not during a drag (knob, record): that shuts on release if the cursor is still out.
+let pointerIn = false;
+let leftWhileDragging = false;
+const inWindow = (e) => e.clientX >= 0 && e.clientY >= 0 && e.clientX < innerWidth && e.clientY < innerHeight;
+function leaveWindow() {
+  if (!pointerIn) return;
+  pointerIn = false;
+  if (suitcase.dragging) { leftWhileDragging = true; return; }
+  if (settings.get('miniAutoClose')) dismiss();
+}
+function trackPointer(e) {
+  if (!inWindow(e)) leaveWindow();
+  else { pointerIn = true; leftWhileDragging = false; }
+}
+addEventListener('pointerover', trackPointer);   // a cursor jumping in may bring no move, only this
+addEventListener('pointermove', trackPointer);
+addEventListener('pointerout', (e) => { if (!e.relatedTarget) leaveWindow(); });
 addEventListener('pointerdown', (e) => {
   if (e.target.closest?.('.cad-tag, .cs')) return;
   toNdc(e);
   if (!suitcase.pointerDown(ndc, camera) && (Math.abs(ndc.x) > 0.93 || Math.abs(ndc.y) > 0.93)) dismiss();
 });
-addEventListener('pointerup', () => { suitcase.pointerUp(); renderer.domElement.style.cursor = suitcase.cursor(); });
+addEventListener('pointerup', (e) => {
+  suitcase.pointerUp();
+  renderer.domElement.style.cursor = suitcase.cursor();
+  if (!inWindow(e)) leaveWindow();
+  if (leftWhileDragging) {
+    leftWhileDragging = false;
+    if (settings.get('miniAutoClose')) dismiss();
+  }
+});
 addEventListener('blur', () => suitcase.pointerUp());
 addEventListener('wheel', (e) => {
   if (search.isOpen()) return;
@@ -384,5 +414,5 @@ const screenOf = (name, dx = 0, dz = 0) => {
   return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
 };
 if (!window.sienna || window.sienna.isDev) {
-  window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, tray, flights, get phase() { return phase; }, get appear() { return appear; } };
+  window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, tray, flights, get phase() { return phase; }, get appear() { return appear; }, get pointerIn() { return pointerIn; } };
 }

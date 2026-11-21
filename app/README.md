@@ -213,7 +213,9 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   and checks the inset utilities and FPS ticket stay clear of the frame and shelf words.
 - **Mini player**: **⌃⌥K** anywhere opens the same suitcase at the cursor on a full-bleed oil-dabbed canvas card
   (`mini.html`, `electron/mini.cjs`); the lid flicks open on a physical hinge (`src/lid.js`). Esc,
-  clicking away or ⌃⌥K again shuts it. The search shortcut works there too.
+  clicking away or ⌃⌥K again shuts it, and so does moving the cursor out of it once the cursor has been over it
+  (Settings > Playback > Mini player, on by default; `miniAutoClose` in `src/settings.js`, checked by
+  `node scripts/mini-leave-check.mjs`). The search shortcut works there too.
   Its lounge lamp follows the time-of-day brightness ramps without warm-up flicker (`steady: true`
   in `src/mini.js`); the shop lamps keep their flicker. From `app/`, run
   `node scripts/mini-light-check.mjs <out_dir>` to compare 24 paused painted mini frames at 08:53
