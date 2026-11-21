@@ -80,7 +80,9 @@ let listSeq = 0;
 
 const LIST_CSS = `
 .ui-list { display: flex; flex-direction: column; width: 100%; box-sizing: border-box; user-select: none; }
+.ui-list[hidden], .ui-list-rows[hidden], .ui-list-note-slot[hidden] { display: none; }
 .ui-list-scroll { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: var(--sienna-space-1) var(--sienna-space-2) var(--sienna-space-4);
   -webkit-mask-image: linear-gradient(#000 calc(100% - 14px), transparent);
   mask-image: linear-gradient(#000 calc(100% - 14px), transparent);
@@ -100,7 +102,7 @@ const LIST_CSS = `
   filter: drop-shadow(var(--sienna-shadow-rest));
   transition: transform var(--sienna-dur-fast) var(--sienna-ease-out), filter var(--sienna-dur-fast) var(--sienna-ease-out); }
 .ui-list-row.is-entering {
-  animation: ui-list-rise var(--sienna-dur-mid) var(--sienna-ease-out) calc(var(--i, 0) * 26ms) both; }
+  animation: ui-list-rise var(--sienna-dur-mid) var(--sienna-ease-out) calc(var(--list-lead, 0ms) + var(--i, 0) * 26ms) both; }
 @keyframes ui-list-rise {
   0%   { opacity: 0; transform: translateY(10px) scale(.985); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
@@ -149,6 +151,7 @@ const LIST_CSS = `
   color: var(--sienna-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ui-list-row.is-now .ui-list-title { color: var(--sienna-indigo); }
 .ui-list-row.is-active .ui-list-title { color: var(--sienna-terracotta); }
+.ui-list-row.is-now.is-active .ui-list-title { color: var(--sienna-indigo); }
 .ui-list-sub { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.28;
   color: var(--sienna-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 
@@ -179,9 +182,10 @@ const LIST_CSS = `
 
 /* ---- footer hints ---- */
 .ui-list-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sienna-space-3);
-  padding: var(--sienna-space-2) var(--sienna-space-3) 0;
+  padding: var(--sienna-space-2) var(--sienna-space-3); flex: none;
   font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); color: var(--sienna-ink-3); }
-.ui-list-foot:empty { display: none; }
+.ui-list-foot[hidden] { display: none; }
+.ui-list-foot-content { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sienna-space-3); }
 `;
 
 function injectListCss() {
@@ -218,6 +222,7 @@ export function createList({
   if (maxHeight) scroll.style.maxHeight = maxHeight;
 
   const listbox = document.createElement('ul');
+  listbox.id = `ui-list-${id}`;
   listbox.className = 'ui-list-rows';
   listbox.setAttribute('role', 'listbox');
   listbox.setAttribute('aria-label', label);
@@ -229,6 +234,10 @@ export function createList({
 
   const foot = document.createElement('div');
   foot.className = 'ui-list-foot';
+  const footContent = document.createElement('div');
+  footContent.className = 'ui-list-foot-content';
+  foot.appendChild(footContent);
+  const footPaper = paperSurface(foot, { seed: 213 });
 
   scroll.append(listbox, noteSlot);
   root.append(scroll, foot);
@@ -243,15 +252,16 @@ export function createList({
   let destroyed = false;
 
   const setHints = (hints) => {
-    foot.replaceChildren();
+    footContent.replaceChildren();
+    foot.hidden = !hints?.length;
     if (!hints || !hints.length) return;
     for (const h of hints) {
       const sp = document.createElement('span');
       sp.textContent = h;
-      foot.appendChild(sp);
+      footContent.appendChild(sp);
     }
   };
-  if (footerHints) setHints(footerHints);
+  setHints(footerHints);
 
   const paintSlips = (force = false) => {
     if (destroyed) return;
@@ -285,15 +295,15 @@ export function createList({
 
   const isNowItem = (item) => {
     if (!item) return false;
-    if (item.nowPlaying || item.selected) return true;
-    if (nowKey == null) return false;
-    return (item.id ?? item.videoId ?? item.play?.videoId) === nowKey;
+    if (nowKey != null) return (item.id ?? item.videoId ?? item.play?.videoId) === nowKey;
+    return !!(item.nowPlaying || item.selected);
   };
 
   const makeRow = (item, i, animate) => {
     const li = document.createElement('li');
     const isNow = isNowItem(item);
     li.id = `ui-list-${id}-opt-${i}`;
+    li.dataset.listIndex = String(i);
     li.className = `ui-list-row${animate ? ' is-entering' : ''}${isNow ? ' is-now' : ''}${isNow && pinNowPlaying ? ' is-pinned' : ''}`;
     li.setAttribute('role', 'option');
     li.setAttribute('aria-selected', String(i === activeIdx));
@@ -349,10 +359,11 @@ export function createList({
 
     const right = document.createElement('div');
     right.className = 'ui-list-right';
-    if (isNow && showNowBadge) {
+    if (showNowBadge) {
       const badge = document.createElement('span');
       badge.className = 'ui-list-now-tag';
       badge.textContent = '♪ Now';
+      badge.style.display = isNow ? '' : 'none';
       right.appendChild(badge);
     }
     if (showKind && item.kind) {
@@ -371,6 +382,7 @@ export function createList({
     li.appendChild(right);
 
     li.addEventListener('pointerenter', () => setActive(i, { scroll: false }));
+    li.addEventListener('pointermove', () => { if (activeIdx !== i) setActive(i, { scroll: false }); });
     li.addEventListener('click', () => pick(i));
 
     return li;
@@ -378,6 +390,7 @@ export function createList({
 
   listbox.addEventListener('animationend', (e) => {
     if (e.animationName === 'ui-list-rise') e.target.classList.remove('is-entering');
+    if (e.animationName === 'ui-list-drawer-in') e.target.classList.remove('is-drawer-in');
   });
 
   const appendBatch = (animate = false) => {
@@ -440,7 +453,7 @@ export function createList({
     return note;
   }
 
-  function setActive(idx, { scroll: reveal = true } = {}) {
+  function setActive(idx, { scroll: reveal = true, keyboard = false } = {}) {
     if (!data.length) {
       activeIdx = -1;
       listbox.removeAttribute('aria-activedescendant');
@@ -450,14 +463,16 @@ export function createList({
     while (clamped >= renderedCount && renderedCount < data.length) {
       appendBatch(false);
     }
-    if (activeIdx >= 0 && listbox.children[activeIdx]) {
-      listbox.children[activeIdx].classList.remove('is-active');
-      listbox.children[activeIdx].setAttribute('aria-selected', 'false');
+    const old = listbox.querySelector(`[data-list-index="${activeIdx}"]`);
+    if (old) {
+      old.classList.remove('is-active', 'is-focus');
+      old.setAttribute('aria-selected', 'false');
     }
     activeIdx = clamped;
-    const row = activeIdx >= 0 ? listbox.children[activeIdx] : null;
+    const row = activeIdx >= 0 ? listbox.querySelector(`[data-list-index="${activeIdx}"]`) : null;
     if (row) {
       row.classList.add('is-active');
+      row.classList.toggle('is-focus', keyboard);
       row.setAttribute('aria-selected', 'true');
       listbox.setAttribute('aria-activedescendant', row.id);
       if (reveal) row.scrollIntoView({ block: 'nearest' });
@@ -477,44 +492,51 @@ export function createList({
 
   function handleKeyDown(e) {
     if (!data.length || listbox.hidden) return false;
+    const order = data.map((_, i) => i);
+    if (pinNowPlaying) {
+      const now = data.findIndex(isNowItem);
+      if (now >= 0) { order.splice(now, 1); order.unshift(now); }
+    }
+    const position = order.indexOf(activeIdx);
+    const select = (i) => setActive(order[i], { scroll: true, keyboard: true });
     const pageStep = Math.max(1, Math.floor((scroll.clientHeight || ROW_H * 6) / ROW_H) - 1);
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      const next = activeIdx < 0 ? 0 : (activeIdx + 1) % data.length;
-      setActive(next, { scroll: true });
+      const next = position < 0 ? 0 : (position + 1) % data.length;
+      select(next);
       return true;
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      const next = activeIdx < 0 ? data.length - 1 : (activeIdx - 1 + data.length) % data.length;
-      setActive(next, { scroll: true });
+      const next = position < 0 ? data.length - 1 : (position - 1 + data.length) % data.length;
+      select(next);
       return true;
     }
     if (e.key === 'Home') {
       e.preventDefault();
-      setActive(0, { scroll: true });
+      select(0);
       return true;
     }
     if (e.key === 'End') {
       e.preventDefault();
-      setActive(data.length - 1, { scroll: true });
+      select(data.length - 1);
       return true;
     }
     if (e.key === 'PageDown') {
       e.preventDefault();
-      const next = activeIdx < 0 ? Math.min(data.length - 1, pageStep) : Math.min(data.length - 1, activeIdx + pageStep);
-      setActive(next, { scroll: true });
+      const next = position < 0 ? Math.min(data.length - 1, pageStep) : Math.min(data.length - 1, position + pageStep);
+      select(next);
       return true;
     }
     if (e.key === 'PageUp') {
       e.preventDefault();
-      const next = activeIdx < 0 ? 0 : Math.max(0, activeIdx - pageStep);
-      setActive(next, { scroll: true });
+      const next = position < 0 ? 0 : Math.max(0, position - pageStep);
+      select(next);
       return true;
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      pick(activeIdx >= 0 ? activeIdx : 0);
+      pick(activeIdx >= 0 ? activeIdx : order[0]);
       return true;
     }
     return false;
@@ -536,19 +558,32 @@ export function createList({
       return;
     }
     appendBatch(animate);
+    if (pinNowPlaying) setNowPlaying(nowKey);
     if (active >= 0 && active < data.length) setActive(active, { scroll: false });
   }
 
   function setNowPlaying(key) {
     nowKey = key;
+    const nowIndex = data.findIndex(isNowItem);
+    if (pinNowPlaying) while (nowIndex >= renderedCount && renderedCount < data.length) appendBatch(false);
     const rows = [...listbox.children];
-    rows.forEach((row, i) => {
+    rows.forEach((row) => {
+      const i = Number(row.dataset.listIndex);
       const isNow = isNowItem(data[i]);
       row.classList.toggle('is-now', isNow);
       row.classList.toggle('is-pinned', isNow && pinNowPlaying);
       const idxEl = row.querySelector('.ui-list-idx');
       if (idxEl) idxEl.textContent = isNow ? '♪' : String(data[i]?.track ?? data[i]?.displayIndex ?? (i + 1));
+      const badge = row.querySelector('.ui-list-now-tag');
+      if (badge) badge.style.display = isNow ? '' : 'none';
     });
+    if (pinNowPlaying) {
+      rows.sort((a, b) => Number(a.dataset.listIndex) - Number(b.dataset.listIndex));
+      const pinned = rows.find(row => row.classList.contains('is-now'));
+      if (pinned) rows.splice(rows.indexOf(pinned), 1);
+      if (pinned) rows.unshift(pinned);
+      rows.forEach(row => listbox.appendChild(row));
+    }
   }
 
   // Queue drawer-flight hook for Phase 4.
@@ -604,6 +639,7 @@ export function createList({
       ro?.disconnect();
       ro = null;
       clearNote();
+      footPaper.destroy();
     },
   };
 }

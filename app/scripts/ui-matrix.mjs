@@ -313,7 +313,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
       });
       await page.fill('.cs-input', '');
       await page.type('.cs-input', 'slowpoke', { delay: 10 });
-      await page.waitForFunction(() => document.querySelector('.cs-note')?.textContent?.includes('looking'), null, { timeout: 5000 });
+      await page.waitForFunction(() => document.querySelector('.cs .ui-list-note')?.textContent?.includes('looking'), null, { timeout: 5000 });
       await wait(250);
       await snap('search-typing');
       await page.evaluate(() => {
@@ -326,17 +326,17 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
     }
 
     if (want.has('search-songs')) {
-      await page.locator('.cs-tab', { hasText: 'Songs' }).click();
+      await page.locator('.cs [role="tab"]', { hasText: 'Songs' }).click();
       await page.fill('.cs-input', '');
       await page.fill('.cs-input', 'lemon');
       try {
-        await page.waitForFunction(() => document.querySelectorAll('.cs-slip').length > 0, null, { timeout: 5000 });
+        await page.waitForFunction(() => document.querySelectorAll('.cs .ui-list-row').length > 0, null, { timeout: 5000 });
       } catch (error) {
         console.error('Search fixture:', await page.evaluate(async () => ({
           input: document.querySelector('.cs-input')?.value,
-          note: document.querySelector('.cs-note')?.textContent,
-          rows: document.querySelectorAll('.cs-slip').length,
-          filter: document.querySelector('.cs-tab.on')?.textContent,
+          note: document.querySelector('.cs .ui-list-note')?.textContent,
+          rows: document.querySelectorAll('.cs .ui-list-row').length,
+          filter: document.querySelector('.cs [role="tab"][aria-selected="true"]')?.textContent,
           originalRestored: window.__siennaDebug.music.search === window.__origSearch,
           matches: (await window.__siennaDebug.music.search('lemon', 'songs')).length,
         })));
@@ -350,30 +350,30 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
     }
 
     if (want.has('search-albums')) {
-      await page.locator('.cs-tab', { hasText: 'Albums' }).click();
+      await page.locator('.cs [role="tab"]', { hasText: 'Albums' }).click();
       await page.fill('.cs-input', 'e');
-      await page.waitForFunction(() => document.querySelectorAll('.cs-slip').length > 0, null, { timeout: 5000 });
+      await page.waitForFunction(() => document.querySelectorAll('.cs .ui-list-row').length > 0, null, { timeout: 5000 });
       await wait(650);
       await snap('search-albums');
     }
 
     if (want.has('search-playlists')) {
-      await page.locator('.cs-tab', { hasText: 'Playlists' }).click();
+      await page.locator('.cs [role="tab"]', { hasText: 'Playlists' }).click();
       await page.fill('.cs-input', 'a');
-      await page.waitForFunction(() => document.querySelectorAll('.cs-slip').length > 0, null, { timeout: 5000 });
+      await page.waitForFunction(() => document.querySelectorAll('.cs .ui-list-row').length > 0, null, { timeout: 5000 });
       await wait(650);
       await snap('search-playlists');
     }
 
     if (want.has('search-artists')) {
-      await page.locator('.cs-tab', { hasText: 'Artists' }).click();
+      await page.locator('.cs [role="tab"]', { hasText: 'Artists' }).click();
       await page.fill('.cs-input', 'a');
-      await page.waitForFunction(() => document.querySelectorAll('.cs-slip').length > 0, null, { timeout: 5000 });
+      await page.waitForFunction(() => document.querySelectorAll('.cs .ui-list-row').length > 0, null, { timeout: 5000 });
       await wait(650);
       await snap('search-artists');
     }
 
-    await page.locator('.cs-tab', { hasText: 'Songs' }).click();
+    await page.locator('.cs [role="tab"]', { hasText: 'Songs' }).click();
     await page.fill('.cs-input', '');
     await page.evaluate(() => window.__siennaDebug.search.close());
     await wait(550);
@@ -383,13 +383,13 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
   if (want.has('collection-large')) {
     await page.evaluate(() => window.__siennaDebug.search.open());
     await wait(550);
-    await page.locator('.cs-tab', { hasText: 'Albums' }).click();
+    await page.locator('.cs [role="tab"]', { hasText: 'Albums' }).click();
     await page.fill('.cs-input', 'Ember Gold');
-    await page.waitForFunction(() => document.querySelectorAll('.cs-slip').length > 0, null, { timeout: 5000 });
+    await page.waitForFunction(() => document.querySelectorAll('.cs .ui-list-row').length > 0, null, { timeout: 5000 });
     await wait(450);
     await page.keyboard.press('Enter');
     await page.waitForFunction(
-      () => document.querySelector('.cl.show') && document.querySelectorAll('.cl-slip').length > 5,
+      () => document.querySelector('.cl.show') && document.querySelectorAll('.cl .ui-list-row').length > 5,
       null,
       { timeout: 10000 },
     );
@@ -409,18 +409,18 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
     });
     await page.evaluate(() => window.__siennaDebug.search.open());
     await wait(550);
-    await page.locator('.cs-tab', { hasText: 'Songs' }).click();
+    await page.locator('.cs [role="tab"]', { hasText: 'Songs' }).click();
     await page.fill('.cs-input', '__liked__');
-    await page.waitForFunction(() => document.querySelectorAll('.cs-slip').length > 0, null, { timeout: 5000 });
+    await page.waitForFunction(() => document.querySelectorAll('.cs .ui-list-row').length > 0, null, { timeout: 5000 });
     await wait(400);
     await page.keyboard.press('Enter');
     await page.waitForFunction(
-      () => document.querySelector('.cl.show') && document.querySelectorAll('.cl-slip').length > 5,
+      () => document.querySelector('.cl.show') && document.querySelectorAll('.cl .ui-list-row').length > 5,
       null,
       { timeout: 10000 },
     );
     await wait(700);
-    await page.locator('.cl-tab', { hasText: 'Title' }).click();
+    await page.locator('.cl [role="tab"]', { hasText: 'Title' }).click();
     await page.fill('.cl-input', 'l');
     await wait(300);
     await page.keyboard.press('ArrowDown');
@@ -444,7 +444,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
     await pinPlayingTrack(page);
     await domClick(page, '.cad-tag .tool, .cad-tag .ui-stamp', 'Queue');
     await page.waitForFunction(
-      () => document.querySelector('.ln-qveil.show') && document.querySelectorAll('.ln-qslip').length > 0,
+      () => document.querySelector('.ln-qveil.show') && document.querySelectorAll('.ln-qveil .ui-list-row').length > 0,
       null,
       { timeout: 10000 },
     );

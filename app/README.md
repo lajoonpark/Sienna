@@ -35,6 +35,24 @@ URL options: `?hour=20.5` freezes the clock, `?speed=600` runs it faster, `?cam=
 
 ## Music (YouTube Music)
 
+### Shared slip lists
+
+Search, collection songs and Up next use `ui/list.js`: aligned torn slips, shared size-cached paint,
+terracotta cursor bands, indigo now-playing marks, keyboard navigation and paper loading/empty/error notes.
+Search and collections share the stamped oil-dab input in `src/list-bar.js`, painted chips and a nonmodal
+veil; outside clicks still reach the shop. Typing retains focus, Tab/Shift+Tab cycles the chips, and Esc
+closes (in an artist search, Esc goes back first). Search keeps its debounce, cache, stale-answer guard
+and pending Enter. Collection lists filter locally and append 40 songs at a time; Play picks the first
+filtered song and Shuffle uses the filtered pool. `collection.open(collection, songsOrPromise)` remains
+supported; a loader function returning a promise enables genuine Retry. Up next pins the playing song,
+updates its mark without rebuilding rows, and retains the suitcase drawer flight. While it is open,
+arrows and Enter belong to the queue, never the shop; normal shop/mini Space and Tab ownership is unchanged.
+
+`node scripts/lists-check.mjs <out_dir>` checks all three real components against an isolated fake store:
+focus/ARIA/keys, notes and retries, 612-song batching/filtering/actions, live queue state, bounded painting,
+no native control titles and two seconds with no kit/shared-bar callbacks. Existing `search-check`,
+`search-anim-check` and `mini-suggest-check` retain their interaction, animation and prefetch coverage.
+
 A hidden `music.youtube.com` window plays the audio (`electron/ytm.cjs`). YouTube Music itself does
 the queue, radio, ads, history and likes; Sienna drives it through a small script injected into the
 page (`electron/ytm-page.js`) and reads your home shelves from the same internal API the page uses

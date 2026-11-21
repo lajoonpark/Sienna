@@ -110,9 +110,9 @@ ok('rests with its styles cleared');
 // Results fill in, then lose their masks.
 await page.keyboard.type('lemon');
 await wait(1100);
-assert.ok(await page.evaluate(() => { const s = [...document.querySelectorAll('.cs-slipwrap')]; return s.length > 1 && s.every((e) => e.classList.contains('set')); }), 'every slip finished arriving');
+assert.ok(await page.evaluate(() => { const s = [...document.querySelectorAll('.cs .ui-list-row')]; return s.length > 1 && s.every((e) => !e.classList.contains('is-entering')); }), 'every slip finished arriving');
 await page.screenshot({ path: `${out}/rest.png` });
-ok('slips finish arriving and drop their masks');
+ok('slips finish arriving and clear their entrance animations');
 
 // Closing: isOpen flips at once (keys go back to the shop straight away), the paint leaves after.
 const closing = page.evaluate(() => window.__watch(620));

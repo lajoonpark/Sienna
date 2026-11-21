@@ -18,7 +18,7 @@ const ok = (name) => console.log('ok  ', name);
 async function load({ failFirst = false, held = false } = {}) {
   const page = await browser.newPage({ viewport: { width: 540, height: 620 } });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-  await page.route('**/cover/*.png', (r) => r.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEAQH/7yMK/gAAAABJRU5ErkJggg==', 'base64') }));
+  await page.route('**/cover/*.png', (r) => r.fulfill({ contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEAQH/7yMK/gAAAABJRU5ErkJggg==', 'base64') }));
   await page.addInitScript(({ failFirst, held }) => {
     const now = performance.now.bind(performance);
     window.__skew = 0;
@@ -31,11 +31,12 @@ async function load({ failFirst = false, held = false } = {}) {
       get src() { return super.src; }
     };
     window.sienna = {
+      isDev: true,
       home: async () => {
         const n = ++window.__home;
         await (window.__gate ?? new Promise((r) => setTimeout(r, window.__delay)));
         if (failFirst && n === 1) throw new Error('offline');
-        const items = [1, 2, 3].map((i) => ({ kind: 'song', title: `Song ${n}.${i}`, subtitle: 'Artist', art: `/cover/${n}-${i}.png`, play: { videoId: `v${n}${i}` } }));
+        const items = [1, 2, 3].map((i) => ({ kind: 'song', title: `Song ${n}.${i}`, subtitle: 'Artist', art: `https://lh3.googleusercontent.com/cover/${n}-${i}.png`, play: { videoId: `v${n}${i}` } }));
         return { shelves: [{ title: 'Quick picks', items: [] }, { title: 'Listen again', items }], next: null };
       },
       playlistArt: async () => [], search: async () => [], play: async () => {}, command: async () => {}, signIn: async () => {},
@@ -47,18 +48,18 @@ async function load({ failFirst = false, held = false } = {}) {
     window.__pressSearch = async () => {
       dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyJ', altKey: true, ctrlKey: true, bubbles: true }));
       for (let i = 0; i < 5; i++) await null;
-      return { head: document.querySelector('.cs-head').textContent, slips: [...document.querySelectorAll('.cs-t')].map((e) => e.textContent) };
+      return { head: document.querySelector('.cs-head > span').textContent, slips: [...document.querySelectorAll('.cs .ui-list-title')].map((e) => e.textContent) };
     };
   }, { failFirst, held });
   await page.goto(`http://127.0.0.1:${port}/mini.html`);
-  await page.waitForFunction('!!window.__mini');
+  await page.waitForFunction(() => !!window.__mini);
   return page;
 }
 
 // hidden window: fetched and painted with no summon and no search
 let page = await load();
 assert.strictEqual(await page.evaluate('window.__home'), 1, 'one fetch at load');
-await page.waitForFunction('window.__art >= 3');
+await page.waitForFunction(() => window.__art >= 3);
 assert.strictEqual(await page.evaluate('window.__mini.phase'), 'hidden');
 ok('fetched and covers painted while the window is hidden');
 
@@ -76,7 +77,7 @@ const old = await page.evaluate('window.__pressSearch()');
 assert.deepStrictEqual(old.slips, ['Song 1.1', 'Song 1.2', 'Song 1.3'], 'the old copy shows at once');
 assert.strictEqual(await page.evaluate('window.__home'), 2, 'and a fresh one is on its way');
 await wait(600);
-assert.deepStrictEqual(await page.evaluate(() => [...document.querySelectorAll('.cs-t')].map((e) => e.textContent)), ['Song 1.1', 'Song 1.2', 'Song 1.3'], 'open slips do not jump under the cursor');
+assert.deepStrictEqual(await page.evaluate(() => [...document.querySelectorAll('.cs .ui-list-title')].map((e) => e.textContent)), ['Song 1.1', 'Song 1.2', 'Song 1.3'], 'open slips do not jump under the cursor');
 await page.evaluate('window.__pressSearch()');
 const fresh = await page.evaluate('window.__pressSearch()');
 assert.deepStrictEqual(fresh.slips, ['Song 2.1', 'Song 2.2', 'Song 2.3'], 'next open has the fresh copy');
@@ -95,8 +96,8 @@ await page.close();
 page = await load({ held: true });
 assert.deepStrictEqual((await page.evaluate('window.__pressSearch()')).slips, []);
 await page.evaluate('window.__release()');
-await page.waitForSelector('.cs-t', { state: 'attached', timeout: 15000 });
-assert.deepStrictEqual(await page.evaluate(() => [...document.querySelectorAll('.cs-t')].map((e) => e.textContent)), ['Song 1.1', 'Song 1.2', 'Song 1.3']);
+await page.waitForSelector('.cs .ui-list-title', { state: 'attached', timeout: 15000 });
+assert.deepStrictEqual(await page.evaluate(() => [...document.querySelectorAll('.cs .ui-list-title')].map((e) => e.textContent)), ['Song 1.1', 'Song 1.2', 'Song 1.3']);
 assert.strictEqual(await page.evaluate('window.__home'), 1);
 ok('search during the first fetch fills in when it lands');
 await page.close();

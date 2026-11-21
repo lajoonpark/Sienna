@@ -4,13 +4,13 @@ import { setOverlayOpen } from './ui/sheet.js';
 //   - Up Next Queue list that emerges directly from the open suitcase bottom drawer
 //   - Offline / load-error status banner with Retry button
 //   - WebGL initialization fallback screen
-import { injectTokens } from './ui/tokens.js';
-import { torn } from './ui/paper.js';
+import { injectTokens, MOTION } from './ui/tokens.js';
+import { torn, paperSurface } from './ui/paper.js';
+import { createList } from './ui/list.js';
+import { stamp } from './ui/inputs.js';
 import { word } from './settings-panel.js';
 import { onCursorTilt, tiltCSS } from './cursortilt.js';
 import { onLettering } from './style.js';
-import { paintedCoverURL } from './coverpaint.js';
-import { rng } from './rand.js';
 
 const CSS = `
 .ln-veil { position: fixed; inset: 0; z-index: var(--sienna-z-sheet); display: flex; align-items: center; justify-content: center;
@@ -66,61 +66,23 @@ const CSS = `
 .ln-foot { position: relative; flex: none; display: flex; justify-content: flex-end; gap: var(--sienna-space-3); padding-top: var(--sienna-space-3); font-size: var(--sienna-text-lg); }
 .ln-empty { font-family: var(--sienna-serif); font-size: var(--sienna-text-md); color: var(--sienna-ink-2); padding: var(--sienna-space-5) 0; }
 
-/* ---- Queue overlay: songs emerge physically from the open suitcase bottom drawer ---- */
-.ln-qveil { position: fixed; inset: 0; z-index: calc(var(--sienna-z-list) + 4); pointer-events: none; visibility: hidden; opacity: 0;
-  transition: opacity var(--sienna-dur-mid) ease, visibility 0s var(--sienna-dur-mid); font-family: var(--sienna-font); user-select: none; }
-.ln-qveil.show { pointer-events: auto; visibility: visible; opacity: 1; transition: opacity var(--sienna-dur-mid) ease; }
-.ln-qveil.closing { pointer-events: none; visibility: visible; opacity: 0; transition: opacity var(--sienna-dur-mid) ease .08s; }
-.ln-qbackdrop { position: absolute; inset: 0; background: var(--sienna-veil); }
-.ln-qbox { position: fixed; left: 50%; top: 7vh; transform: translateX(-50%); width: min(560px, 90vw);
-  max-height: min(68vh, 620px); display: flex; flex-direction: column; pointer-events: auto; }
-.ln-qtop { display: flex; align-items: center; justify-content: space-between; gap: var(--sienna-space-3); margin: 0 var(--sienna-space-2) var(--sienna-space-2);
-  opacity: 0; transform: translateY(18px) scale(.94); transition: opacity var(--sienna-dur-mid) ease, transform var(--sienna-dur-mid) var(--sienna-ease-out); }
-.ln-qveil.show .ln-qtop { opacity: 1; transform: none; }
-.ln-qveil.closing .ln-qtop { opacity: 0; transform: translateY(14px) scale(.94); transition: opacity var(--sienna-dur-fast) ease, transform var(--sienna-dur-fast) ease; }
-.ln-qtitle { position: relative; padding: var(--sienna-space-2) var(--sienna-space-6) var(--sienna-space-2) var(--sienna-space-5); font-size: var(--sienna-text-xl); line-height: 1; color: var(--sienna-indigo);
-  background: var(--sienna-paper); transform: rotate(var(--sienna-tilt-md)); filter: drop-shadow(var(--sienna-shadow-rest)); }
-.ln-qclose { font-size: var(--sienna-text-lg); }
-.ln-qscroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: visible; padding: var(--sienna-space-2) var(--sienna-space-4) var(--sienna-space-5);
-  scrollbar-width: thin; scrollbar-color: rgba(45,49,88,.45) transparent; }
-.ln-qscroll::-webkit-scrollbar { width: 6px; }
-.ln-qscroll::-webkit-scrollbar-thumb { background: rgba(45,49,88,.45); border-radius: 3px; }
-.ln-qlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sienna-space-2); }
-.ln-qslip { position: relative; display: flex; align-items: center; gap: var(--sienna-space-3); padding: var(--sienna-space-3) var(--sienna-space-5) var(--sienna-space-3) var(--sienna-space-4);
-  background: var(--sienna-paper); color: var(--sienna-ink); cursor: pointer; filter: drop-shadow(var(--sienna-shadow-rest));
-  transform: rotate(var(--r, 0deg)); transition: background var(--sienna-dur-fast) ease, color var(--sienna-dur-fast) ease, transform var(--sienna-dur-fast) var(--sienna-ease-pop);
-  will-change: transform, opacity; }
-.ln-qslip.emerging {
-  animation: ln-q-out var(--sienna-dur-slow) var(--sienna-ease-out) var(--delay, 0ms) both;
-}
-.ln-qslip.tucking {
-  animation: ln-q-in var(--sienna-dur-mid) var(--sienna-ease-in) var(--cdelay, 0ms) both;
-}
-@keyframes ln-q-out {
-  0%   { opacity: 0; transform: translate(var(--fx, -220px), var(--fy, 320px)) scale(.24) rotate(-14deg); }
-  22%  { opacity: 1; }
-  72%  { opacity: 1; transform: translate(calc(var(--fx, -220px) * -.03), -7px) scale(1.025) rotate(calc(var(--r, 0deg) + 1.2deg)); }
-  100% { opacity: 1; transform: translate(0, 0) scale(1) rotate(var(--r, 0deg)); }
-}
-@keyframes ln-q-in {
-  0%   { opacity: 1; transform: translate(0, 0) scale(1) rotate(var(--r, 0deg)); }
-  100% { opacity: 0; transform: translate(var(--fx, -220px), var(--fy, 320px)) scale(.24) rotate(-12deg); }
-}
-.ln-qslip:hover { background: var(--sienna-terracotta); color: var(--sienna-paper); transform: translateX(6px) scale(1.015) rotate(0deg); z-index: 2; }
-.ln-qslip.now { background: var(--sienna-indigo); color: var(--sienna-paper); }
-.ln-qslip.now:hover { background: var(--sienna-terracotta); color: var(--sienna-paper); }
-.ln-qslip:hover .ln-qa, .ln-qslip:hover .ln-qd, .ln-qslip:hover .ln-qn,
-.ln-qslip.now .ln-qa, .ln-qslip.now .ln-qd, .ln-qslip.now .ln-qn { color: var(--sienna-paper-lo); }
-.ln-qcov { flex: none; width: 42px; height: 42px; background: var(--sienna-paper-lo); transform: rotate(var(--sienna-tilt-lg)); overflow: hidden;
-  box-shadow: var(--sienna-shadow-rest); }
-.ln-qcov img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.ln-qn { flex: none; width: 22px; text-align: right; font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); font-variant-numeric: lining-nums tabular-nums; color: var(--sienna-ink-3); }
-.ln-qtxt { flex: 1; min-width: 0; }
-.ln-qt { font-size: var(--sienna-text-lg); line-height: 1.06; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ln-qa { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.25; color: var(--sienna-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-.ln-qd { flex: none; font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); font-variant-numeric: lining-nums tabular-nums; color: var(--sienna-ink-3); }
-.ln-qempty { padding: var(--sienna-space-5) var(--sienna-space-6); background: var(--sienna-paper); color: var(--sienna-ink-2); font-family: var(--sienna-serif); font-size: var(--sienna-text-md); text-align: center;
-  filter: drop-shadow(var(--sienna-shadow-rest)); transform: rotate(var(--sienna-tilt-sm)); }
+/* ---- Queue overlay ---- */
+.ln-qveil { position: fixed; inset: 0; z-index: var(--sienna-z-list); pointer-events: none; visibility: hidden; opacity: 0;
+  transition: opacity var(--sienna-dur-mid), visibility var(--sienna-dur-mid); font-family: var(--sienna-font); }
+.ln-qveil.show { pointer-events: auto; visibility: visible; opacity: 1; }
+.ln-qveil.closing { visibility: visible; opacity: 1; }
+.ln-qveil.closing .ln-qbackdrop { opacity: 0; transition: opacity var(--sienna-dur-mid); }
+.ln-qbackdrop { position: absolute; inset: 0; background: var(--sienna-veil); backdrop-filter: var(--sienna-veil-filter); }
+.ln-qbox { position: fixed; left: 50%; top: var(--sienna-space-10); transform: translateX(-50%);
+  width: min(calc(var(--sienna-space-10) * 14), 90vw); max-height: calc(100dvh - var(--sienna-space-10) * 2);
+  display: flex; flex-direction: column; }
+.ln-qtop { display: flex; align-items: center; justify-content: space-between; gap: var(--sienna-space-3);
+  margin: 0 var(--sienna-space-2) var(--sienna-space-2); }
+.ln-qtitle { padding: var(--sienna-space-2) var(--sienna-space-5); font-size: var(--sienna-text-xl);
+  display: flex; align-items: center; gap: var(--sienna-space-3);
+  line-height: 1; color: var(--sienna-indigo); transform: rotate(var(--sienna-tilt-md)); }
+.ln-qbox > .ui-list { min-height: 0; flex: 1; }
+.ln-qbox .ui-list-scroll { min-height: 0; }
 
 /* offline / error banner at top centre */
 .ln-banner { position: fixed; top: 3vh; left: 50%; z-index: var(--sienna-z-banner); transform: translateX(-50%) rotate(var(--sienna-tilt-sm));
@@ -189,17 +151,26 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   const qveil = document.createElement('div');
   qveil.className = 'ln-qveil';
   qveil.innerHTML = `<div class="ln-qbackdrop"></div><div class="ln-qbox">
-    <div class="ln-qtop"><div class="ln-qtitle">Up next</div><div class="ln-qclose"></div></div>
-    <div class="ln-qscroll"><ul class="ln-qlist"></ul></div>
+    <div class="ln-qtop"><div class="ln-qtitle"><span>Up next</span><div class="ln-qclose"></div></div></div>
   </div>`;
   document.body.appendChild(qveil);
   const qBackdrop = qveil.querySelector('.ln-qbackdrop');
   const qBox = qveil.querySelector('.ln-qbox');
   const qTitle = qveil.querySelector('.ln-qtitle');
   const qCloseWrap = qveil.querySelector('.ln-qclose');
-  const qScroll = qveil.querySelector('.ln-qscroll');
-  const qList = qveil.querySelector('.ln-qlist');
-  qTitle.style.clipPath = torn(61, 3, 6);
+  const queueList = createList({ label: 'Up next', pinNowPlaying: true, showNowBadge: true, showIndex: true, showKind: true,
+    onPick: (item, idx) => {
+      if (onPickQueue) { close({ keepDrawer: true }); onPickQueue(item, idx); }
+      else {
+        if (item.videoId) music.play({ videoId: item.videoId, ...(item.playlistId ? { playlistId: item.playlistId } : {}), ...(item.params ? { params: item.params } : {}) });
+        else music.command('queueIndex', item.index ?? idx);
+        close();
+      }
+    },
+  });
+  qBox.appendChild(queueList.el);
+  const qScroll = queueList.scrollEl;
+  paperSurface(qTitle, { seed: 61 });
 
   let mode = null; // null | 'lyrics' | 'queue'
   let unlean = null;
@@ -212,7 +183,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
 
   const closeBtn = word('Close', 73, () => close());
   foot.appendChild(closeBtn);
-  const qCloseBtn = word('Close', 79, () => close());
+  const qCloseBtn = stamp('close', { label: 'Close', tooltip: 'Close (Esc)', onClick: () => close() });
   qCloseWrap.appendChild(qCloseBtn);
 
   card.addEventListener('click', (e) => e.stopPropagation());
@@ -251,27 +222,13 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     clearTimeout(qCloseTimer);
     clearTimeout(qRefreshTimer);
     clearTimeout(qRetryTimer);
-    const origin = drawerOrigin();
-    const slips = [...qList.querySelectorAll('.ln-qslip')];
-    const scrollBox = qScroll.getBoundingClientRect();
-    const visible = slips.filter((el) => {
-      const r = el.getBoundingClientRect();
-      return r.bottom >= scrollBox.top - 20 && r.top <= scrollBox.bottom + 20;
-    });
-    visible.forEach((el, k) => {
-      const r = el.getBoundingClientRect();
-      el.style.setProperty('--fx', `${Math.round(origin.x - (r.left + r.width / 2))}px`);
-      el.style.setProperty('--fy', `${Math.round(origin.y - (r.top + r.height / 2))}px`);
-      el.style.setProperty('--cdelay', `${Math.min(110, (visible.length - 1 - k) * 18)}ms`);
-      el.classList.remove('emerging');
-      el.classList.add('tucking');
-    });
+    queueList.playDrawerFlight(drawerOrigin(), { entering: false });
     qveil.classList.remove('show');
     qveil.classList.add('closing');
     qCloseTimer = setTimeout(() => {
       qveil.classList.remove('closing');
       if (!keepDrawer) onQueueClose?.();
-    }, keepDrawer ? 220 : 210);
+    }, MOTION.dur.mid + MOTION.dur.fast);
   }
 
   function close({ keepDrawer = false } = {}) {
@@ -318,19 +275,8 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     return true;
   }
 
-  function applySelectedToDom(selectedIdx, { smoothScroll = false } = {}) {
-    const slips = [...qList.querySelectorAll('.ln-qslip')];
-    let activeEl = null;
-    slips.forEach((li, idx) => {
-      const isNow = idx === selectedIdx;
-      li.classList.toggle('now', isNow);
-      const num = li.querySelector('.ln-qn');
-      if (num) num.textContent = isNow ? '♪' : String(renderedItems[idx]?.displayIndex ?? (idx + 1));
-      if (isNow) activeEl = li;
-    });
-    if (activeEl) {
-      activeEl.scrollIntoView({ block: smoothScroll ? 'nearest' : 'center', ...(smoothScroll ? { behavior: 'smooth' } : {}) });
-    }
+  function applySelectedToDom(selectedIdx) {
+    queueList.setNowPlaying(`queue-${selectedIdx}`);
   }
 
   function syncQueueSelection(videoId) {
@@ -344,94 +290,12 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
 
   function renderQueueItems(items, { animate = false } = {}) {
     const prevScroll = qScroll.scrollTop;
-    renderedItems = Array.isArray(items) ? items.map((it) => ({ ...it })) : [];
-    qList.innerHTML = '';
-
-    if (!renderedItems.length) {
-      const empty = document.createElement('li');
-      empty.className = 'ln-qempty';
-      empty.style.clipPath = torn(55, 3, 6);
-      empty.textContent = 'Nothing in the queue yet — pick a record to start one.';
-      qList.appendChild(empty);
-      return;
-    }
-
-    const slips = [];
-    renderedItems.forEach((it, idx) => {
-      const r = rng(301 + idx * 19);
-      const li = document.createElement('li');
-      li.className = `ln-qslip${it.selected ? ' now' : ''}`;
-      if (it.videoId) li.dataset.videoId = it.videoId;
-      li.style.clipPath = torn(110 + (idx % 7) * 13, 3, 6);
-      li.style.setProperty('--r', `${((r() - 0.5) * 1.4).toFixed(2)}deg`);
-
-      const num = document.createElement('span');
-      num.className = 'ln-qn';
-      num.textContent = it.selected ? '♪' : String(it.displayIndex ?? (idx + 1));
-
-      const cov = document.createElement('div');
-      cov.className = 'ln-qcov';
-      if (it.art) {
-        const img = new Image();
-        img.alt = '';
-        img.decoding = 'async';
-        paintedCoverURL(it.art).then((src) => { if (src) { img.src = src; cov.replaceChildren(img); } });
-      }
-
-      const txt = document.createElement('div');
-      txt.className = 'ln-qtxt';
-      const t = document.createElement('div'); t.className = 'ln-qt'; t.textContent = it.title || 'Untitled';
-      const a = document.createElement('div'); a.className = 'ln-qa'; a.textContent = it.artist || '';
-      txt.append(t, a);
-
-      const d = document.createElement('span');
-      d.className = 'ln-qd';
-      d.textContent = it.durationText || mmss(it.duration);
-
-      li.append(num, cov, txt, d);
-      li.addEventListener('click', () => {
-        if (onPickQueue) {
-          close({ keepDrawer: true });
-          onPickQueue(it, idx);
-        } else {
-          if (it.videoId) {
-            music.play({
-              videoId: it.videoId,
-              ...(it.playlistId ? { playlistId: it.playlistId } : {}),
-              ...(it.params ? { params: it.params } : {}),
-            });
-          } else {
-            music.command('queueIndex', it.index ?? idx);
-          }
-          close();
-        }
-      });
-      qList.appendChild(li);
-      slips.push(li);
-    });
-
-    const activeEl = qList.querySelector('.now');
-    if (animate) {
-      if (activeEl) activeEl.scrollIntoView({ block: 'center' });
-      const origin = drawerOrigin();
-      const boxRect = qScroll.getBoundingClientRect();
-      let order = 0;
-      slips.forEach((li) => {
-        const rect = li.getBoundingClientRect();
-        const visible = rect.bottom >= boxRect.top - 40 && rect.top <= boxRect.bottom + 40;
-        const fx = Math.round(origin.x - (rect.left + rect.width / 2));
-        const fy = Math.round(origin.y - (rect.top + rect.height / 2));
-        li.style.setProperty('--fx', `${fx}px`);
-        li.style.setProperty('--fy', `${fy}px`);
-        if (visible) {
-          li.style.setProperty('--delay', `${Math.min(480, (order++) * 38)}ms`);
-          li.classList.add('emerging');
-        }
-      });
-    } else {
-      qScroll.scrollTop = prevScroll;
-      if (activeEl) activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
+    renderedItems = Array.isArray(items) ? items.map((it, i) => ({ ...it, kind: it.kind || 'song', id: `queue-${i}` })) : [];
+    queueList.setItems(renderedItems, { animate: false, emptyMessage: 'Nothing in the queue yet — pick a record to start one.' });
+    const selectedIdx = renderedItems.findIndex(it => it.selected);
+    applySelectedToDom(selectedIdx);
+    if (animate) queueList.playDrawerFlight(drawerOrigin(), { entering: true });
+    else qScroll.scrollTop = prevScroll;
   }
 
   async function refreshQueue({ retryIfStale = true, expectedVideoId = null } = {}) {
@@ -479,20 +343,15 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     const itemsPromise = music.queue?.().catch(() => []) ?? Promise.resolve([]);
     onQueueOpen?.();
 
-    qList.innerHTML = '';
+    queueList.setItems([], { animate: false });
     qScroll.scrollTop = 0;
     qveil.classList.remove('closing');
     qveil.classList.add('show');
-    requestAnimationFrame(() => qCloseBtn.paint());
 
     let loaded = false;
     const loadNoteTimer = setTimeout(() => {
       if (loaded || my !== seq || mode !== 'queue') return;
-      const loading = document.createElement('li');
-      loading.className = 'ln-qempty';
-      loading.style.clipPath = torn(55, 3, 6);
-      loading.textContent = 'Loading queue…';
-      qList.replaceChildren(loading);
+      queueList.setLoading('Loading queue…');
     }, 110);
 
     const items = await itemsPromise;
@@ -552,10 +411,15 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     requestAnimationFrame(() => retryBtn.paint());
   }
 
-  onLettering(veil, () => { closeBtn.paint(); qCloseBtn.paint(); retryBtn.paint(); });
+  onLettering(veil, () => { closeBtn.paint(); retryBtn.paint(); });
 
   addEventListener('keydown', (e) => {
     if (!mode) return;
+    if (mode === 'queue' && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
+    if (mode === 'queue' && ['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Enter'].includes(e.key)) {
+      if (e.key === 'Enter' && e.target.closest?.('button')) return;
+      queueList.handleKeyDown(e); e.preventDefault(); e.stopImmediatePropagation(); return;
+    }
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
   }, true);
 
