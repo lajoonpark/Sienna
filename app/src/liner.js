@@ -23,15 +23,19 @@ const CSS = `
 .ln-qveil.closing .ln-qbackdrop { opacity: 0; transition: opacity var(--sienna-dur-mid); }
 .ln-qbackdrop { position: absolute; inset: 0; background: var(--sienna-veil); backdrop-filter: var(--sienna-veil-filter); }
 .ln-qbox { position: fixed; left: 50%; top: var(--sienna-space-10); transform: translateX(-50%);
+  box-sizing: border-box; padding: var(--sienna-space-6) var(--sienna-space-8) var(--sienna-space-5);
   width: min(calc(var(--sienna-space-10) * 14), 90vw); max-height: calc(100dvh - var(--sienna-space-10) * 2);
   display: flex; flex-direction: column; }
 .ln-qtop { display: flex; align-items: center; justify-content: space-between; gap: var(--sienna-space-3);
   margin: 0 var(--sienna-space-2) var(--sienna-space-2); }
-.ln-qtitle { padding: var(--sienna-space-2) var(--sienna-space-5); font-size: var(--sienna-text-xl);
-  display: flex; align-items: center; gap: var(--sienna-space-3);
-  line-height: 1; color: var(--sienna-indigo); transform: rotate(var(--sienna-tilt-md)); }
+.ln-qtitle { font: 700 var(--sienna-text-2xl)/1.02 var(--sienna-font); width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sienna-space-3);
+  color: var(--sienna-indigo); }
 .ln-qbox > .ui-list { min-height: 0; flex: 1; }
 .ln-qbox .ui-list-scroll { min-height: 0; }
+@media (max-width: 720px) {
+  .ln-qbox { padding: var(--sienna-space-5) var(--sienna-space-5) var(--sienna-space-4); }
+}
 
 /* WebGL fallback */
 .ln-fatal { position: fixed; inset: 0; z-index: var(--sienna-z-fatal); display: flex; align-items: center; justify-content: center;
@@ -91,9 +95,8 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   document.body.appendChild(qveil);
   const qBackdrop = qveil.querySelector('.ln-qbackdrop');
   const qBox = qveil.querySelector('.ln-qbox');
-  const qTitle = qveil.querySelector('.ln-qtitle');
   const qCloseWrap = qveil.querySelector('.ln-qclose');
-  const queueList = createList({ label: 'Up next', pinNowPlaying: true, showNowBadge: true, showIndex: true, showKind: true,
+  const queueList = createList({ label: 'Up next', pinNowPlaying: true, showNowBadge: true, showIndex: true, showKind: true, lines: true,
     onPick: (item, idx) => {
       if (onPickQueue) { close({ keepDrawer: true }); onPickQueue(item, idx); }
       else {
@@ -105,7 +108,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   });
   qBox.appendChild(queueList.el);
   const qScroll = queueList.scrollEl;
-  paperSurface(qTitle, { seed: 61 });
+  paperSurface(qBox, { seed: 61, elevation: 'lift', amp: 5, cap: 10 });
 
   let mode = null; // null | 'lyrics' | 'queue'
   let qCloseTimer = 0;

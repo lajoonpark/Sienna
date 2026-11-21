@@ -19,6 +19,7 @@ const CSS = `
   caret-color: var(--sienna-terracotta); }
 .list-bar input::placeholder { color: var(--sienna-ink-3); opacity: 1; }
 .list-overlay { position: fixed; top: var(--sienna-space-6); left: 50%; transform: translateX(-50%);
+  box-sizing: border-box; padding: var(--sienna-space-6) var(--sienna-space-8) var(--sienna-space-5);
   font-family: var(--sienna-font);
   width: min(calc(var(--sienna-space-10) * 16), 92vw); max-height: calc(100dvh - var(--sienna-space-6) - var(--sienna-space-10) - var(--sienna-space-2));
   z-index: var(--sienna-z-list); display: flex; flex-direction: column; visibility: hidden; pointer-events: none; }
@@ -32,6 +33,9 @@ const CSS = `
   backdrop-filter: var(--sienna-veil-filter); visibility: hidden; opacity: 0; pointer-events: none;
   transition: opacity var(--sienna-dur-mid), visibility var(--sienna-dur-mid); }
 .list-veil.show { visibility: visible; opacity: 1; }
+@media (max-width: 720px) {
+  .list-overlay { padding: var(--sienna-space-5) var(--sienna-space-5) var(--sienna-space-4); }
+}
 `;
 
 function inject() {

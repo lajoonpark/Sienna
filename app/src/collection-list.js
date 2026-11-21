@@ -26,7 +26,7 @@ export function createCollectionList({ onPlay, onShuffle = null, music = null } 
   const play = brushButton('Play', { onClick: () => pick(0) });
   const shuffle = inkButton('Shuffle', { icon: 'shuffle', onClick: triggerShuffle });
   const closeBtn = stamp('close', { label: 'Close', tooltip: 'Close (Esc)', onClick: () => close() });
-  header.append(cover, text, play, shuffle, closeBtn); paperSurface(header, { seed: 83 });
+  header.append(cover, text, play, shuffle, closeBtn);
   const bar = createListBar({ prefix: 'cl', label: 'Filter collection', placeholder: 'filter songs', seed: 29,
     onClosed: () => root.classList.remove('closing') });
   const input = bar.input;
@@ -35,7 +35,7 @@ export function createCollectionList({ onPlay, onShuffle = null, music = null } 
       field = next; input.placeholder = field === 'all' ? `filter ${collection?.title?.toLowerCase() || 'songs'}` : `filter by ${field}`; applyFilter();
     },
   });
-  const list = createList({ label: 'Collection songs', showIndex: true, showKind: false, batchSize: 40,
+  const list = createList({ label: 'Collection songs', showIndex: true, showKind: false, batchSize: 40, lines: true,
     footerHints: ['↑↓ choose · Enter play · Tab field · Esc close'], onPick: (_, i) => pick(i),
     onActiveChange: () => {
       const id = list.listboxEl.getAttribute('aria-activedescendant');
@@ -45,6 +45,7 @@ export function createCollectionList({ onPlay, onShuffle = null, music = null } 
   input.setAttribute('role', 'combobox'); input.setAttribute('aria-controls', list.listboxEl.id);
   input.setAttribute('aria-expanded', 'false');
   root.append(header, bar.el, tabs.el, list.el); document.body.appendChild(root);
+  paperSurface(root, { seed: 83, elevation: 'lift', amp: 5, cap: 10 });
   root.addEventListener('pointerdown', e => { if (e.target !== input) e.preventDefault(); });
   root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
   let isOpen = false, seq = 0, collection = null, allSongs = [], filtered = [], field = 'all', source = null, playing = null;
