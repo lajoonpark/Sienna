@@ -29,7 +29,8 @@ import { createSpread } from './spread.js';
 import { createCollectionList } from './collection-list.js';
 import { isLikedCollection, shouldUseCollectionList } from './collection-filter.js';
 import { createLiner, showWebGLError } from './liner.js';
-import { injectTokens } from './ui/tokens.js';
+import { SPACE, injectTokens } from './ui/tokens.js';
+import { paperSurface } from './ui/paper.js';
 import './fonts.js';
 
 injectTokens();
@@ -884,8 +885,13 @@ let trayDone = false;
 let pickDone = false;
 // ---- frame-rate readout (Settings > Frame rate, or ?fps=1): average fps and the slowest frame ----
 const fpsBox = document.createElement('div');
-fpsBox.style.cssText = 'position:fixed;left:8px;top:8px;z-index:var(--sienna-z-banner);font:var(--sienna-text-xs)/1.3 ui-monospace,monospace;font-variant-numeric:lining-nums tabular-nums;color:var(--sienna-paper);background:rgba(27,20,16,.72);padding:3px 6px;border-radius:4px;pointer-events:none;display:none';
+fpsBox.className = 'fps-ticket';
+fpsBox.style.cssText = 'position:fixed;right:var(--sienna-space-8);bottom:var(--sienna-space-6);z-index:var(--sienna-z-chrome);width:calc(var(--sienna-space-10) * 4);height:calc(var(--sienna-space-8) + var(--sienna-space-1));box-sizing:border-box;font:var(--sienna-text-xs)/1.3 var(--sienna-serif);font-variant-numeric:lining-nums tabular-nums;white-space:nowrap;color:var(--sienna-ink);padding:var(--sienna-space-2) var(--sienna-space-3);pointer-events:none;display:none';
+const fpsText = document.createElement('span');
+fpsText.textContent = '— fps · worst — ms';
+fpsBox.appendChild(fpsText);
 document.body.appendChild(fpsBox);
+paperSurface(fpsBox, { seed: 89, amp: SPACE[1] / 2, cap: SPACE[1] });
 const fpsOn = () => params.get('fps') === '1' || !!settings.get('fps');
 fpsBox.style.display = fpsOn() ? 'block' : 'none';
 settings.on('fps', () => { fpsBox.style.display = fpsOn() ? 'block' : 'none'; });
@@ -897,7 +903,7 @@ function tickFps() {
   fpsStat.worst = Math.max(fpsStat.worst, now - fpsStat.last);
   fpsStat.last = now; fpsStat.n++;
   if (now - fpsStat.since < 500) return;
-  fpsBox.textContent = `${Math.round(fpsStat.n * 1000 / (now - fpsStat.since))} fps · worst ${Math.round(fpsStat.worst)} ms · ${quality.level}${quality.reason ? ' (cooling)' : ''}`;
+  fpsText.textContent = `${Math.round(fpsStat.n * 1000 / (now - fpsStat.since))} fps · worst ${fpsStat.worst.toFixed(1)} ms`;
   fpsStat.n = 0; fpsStat.since = now; fpsStat.worst = 0;
 }
 

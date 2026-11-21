@@ -1,3 +1,4 @@
+import { setOverlayOpen } from './ui/sheet.js';
 // Collection List overlay: styled like the oil-dab Search list (search.js), used when pressing the
 // "Liked music" vinyl or any playlist / album with more than 15 songs.
 //
@@ -390,6 +391,7 @@ export function createCollectionList({ onPlay, onShuffle = null } = {}) {
 
     if (!isOpen) {
       isOpen = true;
+      setOverlayOpen(root, true);
       root.classList.remove('closing');
       root.classList.add('show');
       paintStrokes();
@@ -421,6 +423,7 @@ export function createCollectionList({ onPlay, onShuffle = null } = {}) {
   function close() {
     if (!isOpen) return;
     isOpen = false;
+    setOverlayOpen(root, false);
     seq++;
     const box = list.getBoundingClientRect();
     const seen = [...list.children].filter((el) => { const b = el.getBoundingClientRect(); return b.bottom > box.top && b.top < box.bottom; });

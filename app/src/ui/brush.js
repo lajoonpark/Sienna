@@ -101,6 +101,7 @@ const BRUSH_CSS = `
 .ui-brush.is-disabled { cursor: not-allowed; opacity: var(--sienna-disabled); transform: none; }
 .ui-brush-label { position: relative; z-index: 1; display: block; white-space: nowrap;
   padding: .24em 1.25em .2em .9em; text-shadow: 0 0 1px rgba(248, 241, 226, 0.7); }
+.ui-brush-line { display: block; }
 .ui-brush--flip .ui-brush-label { padding: .24em .9em .2em 1.25em; }
 .ui-brush--lg .ui-brush-label { padding: .22em 1.3em .18em .95em; }
 .ui-brush--lg.ui-brush--flip .ui-brush-label { padding: .22em .95em .18em 1.3em; }
@@ -116,7 +117,7 @@ function injectBrushCss() {
 }
 
 // One brush-plate button replacing .mn button, .st-w / word(), and .cad-tag button.
-// Returns the real focusable <button> element with { setLabel, setPressed, setDisabled, repaint, destroy }.
+// Returns the real focusable <button> element with { setLabel, setPressed, setCurrent, setDisabled, repaint, destroy }.
 export function brushButton(label, {
   size = 'md',
   tone = 'ink',
@@ -142,7 +143,13 @@ export function brushButton(label, {
   hot.setAttribute('aria-hidden', 'true');
   const span = document.createElement('span');
   span.className = 'ui-brush-label';
-  span.textContent = String(label ?? '');
+  const labelLines = (next) => (Array.isArray(next) ? next : [next]).map((line) => String(line ?? ''));
+  const renderLabel = (lines) => {
+    span.replaceChildren(...lines.map((textContent) => Object.assign(document.createElement('span'), { className: 'ui-brush-line', textContent })));
+    el.setAttribute('aria-label', ariaLabel ?? lines.join(' '));
+  };
+  let lines = labelLines(label);
+  renderLabel(lines);
   el.append(cold, hot, span);
 
   const coldColor = tone === 'hot' ? COLORS.terracotta : tone === 'danger' ? COLORS.danger : COLORS.indigo;
@@ -158,6 +165,8 @@ export function brushButton(label, {
   let lastH = 0;
   let destroyed = false;
   let ro = null;
+  let queued = false, forceQueued = false;
+  let current = false, pressedOn = !!pressed;
 
   const paint = (force = false) => {
     if (destroyed) return false;
@@ -179,6 +188,18 @@ export function brushButton(label, {
     return true;
   };
 
+  const schedulePaint = (force = false) => {
+    forceQueued ||= force;
+    if (queued) return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      const force = forceQueued;
+      forceQueued = false;
+      if (fontsLoaded) paint(force);
+    });
+  };
+
   if (onClick) {
     el.addEventListener('click', (e) => {
       if (el.disabled) return;
@@ -196,14 +217,7 @@ export function brushButton(label, {
   // Repaint once when the lettering setting changes live.
   onLettering(el, () => {
     if (destroyed) return;
-    // Measure immediately in the newly loaded font (style.js sets --sienna-font before firing).
-    // If width/height changed (or even if unchanged), paint once per lettering switch.
-    const w = Math.ceil(el.offsetWidth);
-    const h = Math.ceil(el.offsetHeight);
-    if (!w || !h) return;
-    lastW = 0;
-    lastH = 0;
-    paint(true);
+    schedulePaint(true);
   });
 
   // Catch late mount / visibility reveal (e.g. inside a sheet or hidden container) without double-painting.
@@ -219,17 +233,28 @@ export function brushButton(label, {
     ro.observe(el);
   }
 
-  el.setLabel = (next) => {
-    const text = String(next ?? '');
-    if (span.textContent === text) return;
-    span.textContent = text;
-    if (fontsLoaded) paint(false);
+  el.setLabel = (next, { fontPx } = {}) => {
+    const nextLines = labelLines(next);
+    const nextFont = fontPx === undefined ? el.style.fontSize : fontPx == null ? '' : `${fontPx}px`;
+    if (JSON.stringify(lines) === JSON.stringify(nextLines) && el.style.fontSize === nextFont) return;
+    lines = nextLines;
+    renderLabel(lines);
+    el.style.fontSize = nextFont;
+    schedulePaint();
   };
 
   el.setPressed = (on) => {
     const val = !!on;
+    pressedOn = val;
     el.setAttribute('aria-pressed', String(val));
-    el.classList.toggle('is-on', val);
+    el.classList.toggle('is-on', val || current);
+  };
+
+  el.setCurrent = (on) => {
+    current = !!on;
+    if (current) el.setAttribute('aria-current', 'true');
+    else el.removeAttribute('aria-current');
+    el.classList.toggle('is-on', current || pressedOn);
   };
 
   el.setDisabled = (on) => {

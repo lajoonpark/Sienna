@@ -1,3 +1,4 @@
+import { setOverlayOpen } from './ui/sheet.js';
 // Settings: a SETTINGS word top-right (like HOME top-left) and Cmd+, (Ctrl+, elsewhere) open a
 // torn paper card in the middle of the screen. A side rail of brush-stroke words on the left picks a
 // page (Account, Look, Playback, Performance, Shortcuts, Tour); the page shows on the right. Each
@@ -15,6 +16,7 @@
 import { FONTS, onLettering } from './style.js';
 import { COLORS, injectTokens } from './ui/tokens.js';
 import { brushStroke } from './ui/brush.js';
+import { inkButton } from './ui/inputs.js';
 import { torn, tornDepths } from './ui/paper.js';
 import { settings } from './settings.js';
 import { shortcuts, fromEvent } from './shortcuts.js';
@@ -24,15 +26,12 @@ import { onCursorTilt, tiltCSS } from './cursortilt.js';
 export { torn, tornDepths };
 
 const CSS = `
-.st-btn { position: fixed; top: 3.4vh; right: 2.2vw; z-index: var(--sienna-z-chrome); pointer-events: none; perspective: 900px; perspective-origin: 80% 50%;
+.st-btn { position: fixed; top: max(calc(var(--sienna-space-8) + var(--sienna-space-6)), 7vh); right: max(calc(var(--sienna-space-10) * 2), 8vw); z-index: var(--sienna-z-chrome); pointer-events: none; perspective: 900px; perspective-origin: 80% 50%;
   font-family: var(--sienna-font); color: var(--sienna-paper); font-size: var(--sienna-text-lg); line-height: 1; user-select: none; opacity: 0; transition: opacity var(--sienna-dur-slow) ease; }
 .st-btn.show { opacity: .94; }
 .st-btn-stack { display: flex; align-items: center; gap: var(--sienna-space-2); transform-style: preserve-3d; transform-origin: 100% 50%; will-change: transform; }
-.st-btn .st-w { pointer-events: auto; }
-.st-btn:not(.show) .st-w { pointer-events: none; }
-.st-btn .st-w:hover { transform: translateX(-6px) translateZ(18px) rotate(calc(var(--sienna-tilt-md) * -1)); }
-.st-btn .st-w:active { transform: translateZ(4px) scale(.97); }
-.st-btn .st-w[disabled] { cursor: default; opacity: .92; }
+.st-btn .ui-ink { pointer-events: auto; }
+.st-btn:not(.show) .ui-ink { pointer-events: none; }
 .st-w { position: relative; display: inline-block; border: 0; padding: 0; background: none; cursor: pointer; font-family: var(--sienna-font);
   font-size: inherit; color: var(--sienna-paper); line-height: 1; transition: transform var(--sienna-dur-fast) var(--sienna-ease-pop); }
 .st-w .plate { position: absolute; inset: 0; background-size: 100% 100%; transition: opacity var(--sienna-dur-mid); filter: drop-shadow(var(--sienna-shadow-rest)); }
@@ -40,7 +39,6 @@ const CSS = `
 .st-w:hover .plate.hot, .st-w.on .plate.hot { opacity: 1; }
 .st-w:hover { transform: translateY(-2px) rotate(var(--sienna-tilt-md)); }
 .st-w span { position: relative; display: block; padding: .16em 1em .1em .7em; white-space: nowrap; text-shadow: 0 0 1px rgba(248,241,226,.7); }
-.st-btn .st-w span { padding: .16em .7em .1em 1em; }
 .st-veil { position: fixed; inset: 0; z-index: var(--sienna-z-modal); display: flex; align-items: center; justify-content: center;
   background: var(--sienna-veil); perspective: 1600px; opacity: 0; visibility: hidden; transition: opacity var(--sienna-dur-mid) ease, visibility 0s var(--sienna-dur-mid); }
 .st-veil.show { opacity: 1; visibility: visible; transition: opacity var(--sienna-dur-mid) ease; }
@@ -184,23 +182,22 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   const btnStack = document.createElement('div');
   btnStack.className = 'st-btn-stack';
   btnWrap.appendChild(btnStack);
-  const topWords = [];
   let restockBtn = null;
   let restocking = false;
   let restockResetTimer = 0;
 
   function setRestockLabel(text, hot = false) {
     if (!restockBtn) return;
-    restockBtn.querySelector('span').textContent = text;
-    restockBtn.classList.toggle('on', hot);
-    requestAnimationFrame(() => restockBtn.paint());
+    restockBtn.setLabel(text);
+    restockBtn.setSelected(hot);
   }
 
   async function runRestock() {
     if (!onRestock || restocking) return;
     clearTimeout(restockResetTimer);
     restocking = true;
-    if (restockBtn) restockBtn.disabled = true;
+    restockBtn?.setDisabled(true);
+    restockBtn?.setSpinning(true);
     setRestockLabel('Restocking…', true);
     const t0 = performance.now();
     let ok = true;
@@ -213,7 +210,8 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     const elapsed = performance.now() - t0;
     if (elapsed < 400) await new Promise((r) => setTimeout(r, 400 - elapsed));
     restocking = false;
-    if (restockBtn) restockBtn.disabled = false;
+    restockBtn?.setDisabled(false);
+    restockBtn?.setSpinning(false);
     setRestockLabel(ok ? 'Done!' : 'Restock', ok);
     if (ok) {
       restockResetTimer = setTimeout(() => {
@@ -223,14 +221,16 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   }
 
   if (onRestock) {
-    restockBtn = word('Restock', 13, () => runRestock(), { flipX: true });
-    restockBtn.title = 'Refresh shelves from YouTube Music';
+    restockBtn = inkButton('Restock', { icon: 'restock', seed: 13, onClick: () => runRestock() });
+    restockBtn.setAttribute('aria-description', 'Refresh shelves from YouTube Music');
     btnStack.appendChild(restockBtn);
-    topWords.push(restockBtn);
   }
-  const btn = word('Settings', 17, () => toggle(), { flipX: true });
+  const btn = inkButton('Settings', { icon: 'settings', seed: 17, onClick: () => toggle() });
   btnStack.appendChild(btn);
-  topWords.push(btn);
+  btnStack.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (e.detail) e.target.closest('button')?.blur();
+  });
   document.body.appendChild(btnWrap);
 
   const veil = document.createElement('div');
@@ -607,7 +607,6 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   card.querySelector('.st-foot').appendChild(done);
 
   const paintAll = () => {
-    for (const w of topWords) w.paint();
     if (!openNow) return;
     for (const w of [...Object.values(railWords), ...optWords, done]) w.paint();
     paintRule(rule, 5);
@@ -621,6 +620,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   function open(page = null) {
     clearTimeout(closeTimer);
     openNow = true;
+    setOverlayOpen(veil, true);
     veil.classList.remove('closing');
     veil.classList.remove('show');
     void card.offsetWidth;
@@ -636,6 +636,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     if (!openNow) return;
     stopRecording();
     openNow = false;
+    setOverlayOpen(veil, false);
     clearTimeout(closeTimer);
     veil.classList.remove('show');
     veil.classList.add('closing');

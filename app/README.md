@@ -120,14 +120,27 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 - **The suitcase** (`src/suitcase/`): the player, bottom left. An oil-painted leather case on woven canvas with a
   record player: the record spins with the cover on its label, the tonearm creeps in as the song
   plays, the knob is volume (drag it or scroll; scrolling down is quieter), the buttons are back / play / skip / like, and
-  dragging the record scrubs. A canvas-dabbed tag beside it shows the song with a seekable progress line
-  (`createCaption` in `src/controls.js`, also used in the mini window). Long names never run off it: the
-  title steps down from 26 to 20 px, then wraps onto a second line (cut with … only past that), and the
+  dragging the record scrubs. A genuine hit on the tucked strip holds it awake while the pointer stays still, even as
+  the case rises out from under it; moving away or onto an overlay releases it.
+  A shared torn-paper tag beside it shows the song with a painted seekable progress slider
+  (`createCaption` in `src/controls.js`, also used in the mini window), with Mute, Shuffle, Repeat, Queue and Lyrics stamps.
+  Its Sign in brush plate hides with the tag while search, collections, Settings, Lyrics, Queue or the tour is open,
+  so the tour welcome never duplicates Sign in. Pointer-clicked controls release keyboard focus back to the shop.
+  `node scripts/home-check.mjs <out_dir>` checks the shop/mini captions, stamp state and painted tooltips,
+  200 paint-free position ticks, overlay tucking/restoration, one Sign in during the tour welcome,
+  shelf fitting and lettering repaints, shop keyboard ownership, one FPS paper paint during 2 s of text updates,
+  and zero kit rAF/timer callbacks for 2 s with the pointer still (the shop render pacer is excluded).
+  Long names never run off it: the title steps down from 26 to 20 px, then wraps onto a second line (cut with … only past that), and the
   artist · album line (in the serif) steps from 16 to 14 px before it is cut; the full text is in the hover tooltip.
   It gets only a light touch of the paint (canvas weave, glazed darks) and
   no wobble or wash inside, since its own textures are already painted with oil dabs: washed, it went blurry and its
   sharp button icons slid off their caps. `?overwash=0..1` gives it that share of the shop's wash back
   (its own wash pass then runs in its box again, ~1 ms).
+- **Home chrome**: shelf words and Home share kit brush plates, with fitted multi-line labels and `aria-current` on the active shelf.
+  The top-right Restock and Settings controls are ink words with icons; Restock spins while busy and reports Done! on success.
+  The FPS readout is a fixed 160 px serif paper ticket at bottom right, clear of Home and the shelves.
+  `home-check` also checks Restock success/failure, captures all four letterings at 1280×720 and 1024×640,
+  and checks the inset utilities and FPS ticket stay clear of the frame and shelf words.
 - **Mini player**: **⌃⌥K** anywhere opens the same suitcase at the cursor on a full-bleed oil-dabbed canvas card
   (`mini.html`, `electron/mini.cjs`); the lid flicks open on a physical hinge (`src/lid.js`). Esc,
   clicking away or ⌃⌥K again shuts it. The search shortcut works there too.
@@ -241,7 +254,7 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   frames take far longer than the cap allows while things move (one step lighter after 4 s; back up after 45 s of easy
   frames, twice as long each time it had to drop again within a minute). It never goes sharper than the setting.
   `SIENNA_THERMAL=serious npm run dev` or `?thermal=serious` pretends a warm Mac; test runs (`navigator.webdriver`) leave
-  it off unless `?cool=1`. The fps readout shows the level in use and *(cooling)* while it is lowered. *Lettering* picks the font
+  it off unless `?cool=1`. The fps ticket shows frames per second and the worst frame time. *Lettering* picks the font
   (each choice is written in itself); it applies at once in both windows, without a reload (tags, signs and buttons repaint in place).
   *Frame rate* shows an fps readout. *Tour* > SHOW IT AGAIN starts the first-run tour from the door.
 - **First-run tour** (`src/tour.js`): on a new install, once the intro reaches home, torn paper notes in the shop
