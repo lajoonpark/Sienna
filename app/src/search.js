@@ -21,11 +21,10 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
   const heading = document.createElement('span');
   const back = inkButton('Back', { icon: 'back', onClick: () => goBack() });
   head.append(back, heading);
-  paperSurface(head, { seed: 71 });
   const tabs = segmented(FILTERS.map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })), {
     value: 'songs', role: 'tabs', label: 'Search for', onChange: setFilter,
   });
-  const list = createList({ label: 'Search results', showKind: true,
+  const list = createList({ label: 'Search results', showKind: true, lines: true,
     footerHints: ['↑↓ choose · Enter play · Tab type · Esc close'], onPick: (_, i) => pick(i),
     onActiveChange: () => syncActive(),
   });
@@ -33,6 +32,7 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
   input.setAttribute('role', 'combobox'); input.setAttribute('aria-controls', list.listboxEl.id);
   input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false');
   root.append(bar.el, tabs.el, head, list.el); document.body.appendChild(root);
+  paperSurface(root, { seed: 71, elevation: 'lift', amp: 5, cap: 10 });
   root.addEventListener('pointerdown', e => { if (e.target !== input) e.preventDefault(); });
   root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
   let isOpen = false, seq = 0, timer = 0, shown = [], shownFor = null, filter = 'songs', artistView = null, pendingEnter = false;

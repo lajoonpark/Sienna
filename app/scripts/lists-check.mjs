@@ -85,8 +85,12 @@ try {
   assert.equal(await page.locator('.cs [role="tab"][aria-selected="true"]').innerText(), 'Playlists');
   await page.getByRole('tab', { name: 'Songs', exact: true }).click();
   assert.equal(await page.locator('.cs-input').evaluate(el => el === document.activeElement), true);
-  assert.equal(await page.locator('.cs .ui-list-foot.ui-paper').count(), 1);
-  assert.equal(await page.locator('.cs .ui-list-foot-content').evaluate(el => getComputedStyle(el).zIndex), '1');
+  assert.equal(await page.locator('.cs.ui-paper--lift > .ui-paper-layer').count(), 1);
+  assert.equal(await page.locator('.cs .ui-list-foot.ui-paper').count(), 0);
+  assert.equal(await page.locator('.cs .ui-list--lines').count(), 1);
+  assert.equal(await page.locator('.cs .ui-list-row').first().evaluate(el => el.style.backgroundImage), '');
+  assert.equal(await page.locator('.cs .ui-list').evaluate(el => el.style.getPropertyValue('--ui-slip-0')), '');
+  assert.equal(await page.locator('.cs .ui-list-row').first().evaluate(el => getComputedStyle(el).filter), 'none');
   pass('search tabs: aria-selected, Tab/Shift+Tab cycle, pointer chips retain input focus');
   await page.mouse.move(0, 0); await wait(700);
   const boxes = await page.locator('.cs .ui-list-row').evaluateAll(rows => rows.map(row => {
@@ -120,7 +124,9 @@ try {
   pass('pending Enter: loading note, then top result plays as soon as the held answer arrives');
   await page.evaluate(() => fixture.search.open()); await page.locator('.cs-input').fill('none');
   await page.waitForSelector('.cs .ui-list-note--empty');
+  assert.equal(await page.locator('.cs .ui-list-note.ui-paper').count(), 0);
   await page.locator('.cs-input').fill('fail'); await page.waitForSelector('.cs .ui-list-note--error');
+  assert.equal(await page.locator('.cs .ui-list-note.ui-paper').count(), 0);
   await page.locator('.cs').getByRole('button', { name: 'Retry', exact: true }).click();
   await page.waitForSelector('.cs .ui-list-row');
   await page.getByRole('tab', { name: 'Artists', exact: true }).click();
@@ -205,8 +211,9 @@ try {
   await page.waitForSelector('.ln-qveil .ui-list-row', { state: 'visible' });
   await wait(800);
   assert.equal(await page.locator('.ln-qtitle > span').innerText(), 'Up next');
-  assert.equal(await page.locator('.ln-qtitle > span').evaluate(el => getComputedStyle(el).zIndex), '1');
-  assert.equal(await page.locator('.ln-qclose').evaluate(el => el.closest('.ui-paper')?.classList.contains('ln-qtitle')), true);
+  assert.equal(await page.locator('.ln-qbox.ui-paper--lift > .ui-paper-layer').count(), 1);
+  assert.equal(await page.locator('.ln-qclose').evaluate(el => el.closest('.ui-paper')?.classList.contains('ln-qbox')), true);
+  assert.equal(await page.locator('.ln-qveil .is-pinned').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(248, 241, 226)');
   assert.equal(await page.locator('.ln-qveil .ui-list-kind').count(), 3, 'queue songs without kind metadata retain Search row anatomy');
   assert.match(await page.locator('.ln-qveil .ui-list-row').first().innerText(), /Song 001/);
   assert.equal(await page.locator('.ln-qveil .ui-list-row').first().evaluate(el => el.classList.contains('is-now') && el.classList.contains('is-pinned')), true);

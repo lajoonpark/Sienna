@@ -186,6 +186,20 @@ const LIST_CSS = `
   font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); color: var(--sienna-ink-3); }
 .ui-list-foot[hidden] { display: none; }
 .ui-list-foot-content { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sienna-space-3); }
+.ui-list--lines .ui-list-rows { gap: 0; }
+.ui-list--lines .ui-list-row { height: 62px; flex: none; filter: none;
+  border-bottom: 1px solid var(--sienna-hairline);
+  transition: background-color var(--sienna-dur-fast); }
+.ui-list--lines .ui-list-row.is-active,
+.ui-list--lines .ui-list-row.is-hover { transform: none; filter: none;
+  background-color: var(--sienna-paper-lo); }
+.ui-list--lines .ui-list-row.is-now.is-pinned { background-color: var(--sienna-paper); }
+.ui-list--lines .ui-list-row.is-now.is-pinned.is-active,
+.ui-list--lines .ui-list-row.is-now.is-pinned.is-hover { background-color: var(--sienna-paper-lo); }
+.ui-list--lines .ui-list-row.is-hover .ui-list-title { color: var(--sienna-terracotta); }
+.ui-list--lines .ui-list-row.is-now.is-hover .ui-list-title { color: var(--sienna-indigo); }
+.ui-list--lines .ui-list-foot { margin-top: auto; border-top: 1px solid var(--sienna-hairline); }
+.ui-list--lines .ui-list-scroll { flex: 1 1 auto; min-height: 0; }
 `;
 
 function injectListCss() {
@@ -205,6 +219,7 @@ export function createList({
   showKind = true,
   showNowBadge = true,
   pinNowPlaying = false,
+  lines = false,
   footerHints = null,
   seed = 200,
   maxHeight = null,
@@ -215,7 +230,7 @@ export function createList({
   const id = ++listSeq;
 
   const root = document.createElement('div');
-  root.className = 'ui-list';
+  root.className = `ui-list${lines ? ' ui-list--lines' : ''}`;
 
   const scroll = document.createElement('div');
   scroll.className = 'ui-list-scroll';
@@ -237,7 +252,7 @@ export function createList({
   const footContent = document.createElement('div');
   footContent.className = 'ui-list-foot-content';
   foot.appendChild(footContent);
-  const footPaper = paperSurface(foot, { seed: 213 });
+  const footPaper = lines ? null : paperSurface(foot, { seed: 213 });
 
   scroll.append(listbox, noteSlot);
   root.append(scroll, foot);
@@ -269,7 +284,7 @@ export function createList({
     if (!w) return;
     if (!force && lastW > 0 && Math.abs(w - lastW) < PAPER_STEP) return;
     lastW = w;
-    for (let i = 0; i < SLIP_SEEDS; i++) {
+    for (let i = 0; !lines && i < SLIP_SEEDS; i++) {
       root.style.setProperty(`--ui-slip-${i}`, `url(${getSlipUrl(w, seed + i * 13)})`);
     }
     root.style.setProperty('--ui-band-sel', `url(${getEdgeBandUrl('sel')})`);
@@ -308,7 +323,7 @@ export function createList({
     li.setAttribute('role', 'option');
     li.setAttribute('aria-selected', String(i === activeIdx));
     if (i === activeIdx) li.classList.add('is-active');
-    li.style.backgroundImage = `var(--ui-slip-${i % SLIP_SEEDS})`;
+    if (!lines) li.style.backgroundImage = `var(--ui-slip-${i % SLIP_SEEDS})`;
     if (animate) li.style.setProperty('--i', String(Math.min(i, 10)));
 
     const bandSel = document.createElement('span');
@@ -449,7 +464,7 @@ export function createList({
     }
 
     noteSlot.appendChild(note);
-    notePaper = paperSurface(note, { seed: seed + 51, elevation: 'rest', amp: 4, cap: 8 });
+    if (!lines) notePaper = paperSurface(note, { seed: seed + 51, elevation: 'rest', amp: 4, cap: 8 });
     return note;
   }
 
@@ -639,7 +654,7 @@ export function createList({
       ro?.disconnect();
       ro = null;
       clearNote();
-      footPaper.destroy();
+      footPaper?.destroy();
     },
   };
 }
