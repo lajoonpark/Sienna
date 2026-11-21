@@ -10,8 +10,6 @@ import { createTallRack } from './tall.js';
 import { createSpinnerRack } from './spinner.js';
 import { createCratesRack } from './crates.js';
 
-export const RACK_STYLES = ['trough', 'cubby', 'floorlean', 'easel', 'wall', 'tall', 'spinner', 'crates'];
-
 const BUILDERS = {
   trough: createTroughRack,
   cubby: createCubbyRack,
