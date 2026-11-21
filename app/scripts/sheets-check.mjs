@@ -219,6 +219,25 @@ try {
   }
   pass('Settings rail/pages: selected ink/aria-current, titles/serif descriptions; all pages fit or cue/scroll to an unfaded last row at both sizes');
 
+  await page.evaluate(() => fixture.panel.open('performance')); await wait(650);
+  const lastPerformanceChoice = active().getByRole('radiogroup', { name: 'Frame rate', exact: true }).getByRole('radio', { name: 'On', exact: true });
+  assert.equal(await lastPerformanceChoice.evaluate(el => el.getBoundingClientRect().bottom > document.querySelector('.st-scroll').getBoundingClientRect().bottom), true, 'last control starts below the fold at 1024x640');
+  await rail('performance').focus();
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press('Tab');
+    if (await lastPerformanceChoice.evaluate(el => document.activeElement === el)) break;
+  }
+  assert.equal(await lastPerformanceChoice.evaluate(el => document.activeElement === el), true, 'Tab reaches the last Performance control');
+  await page.waitForFunction(() => document.querySelector('.st-settings .ui-scroll-cue').getAttribute('aria-hidden') === 'true');
+  const revealed = await lastPerformanceChoice.evaluate(el => {
+    const scroller = document.querySelector('.st-scroll');
+    const control = el.getBoundingClientRect(), bounds = scroller.getBoundingClientRect();
+    return { visible: control.top >= bounds.top && control.bottom <= bounds.bottom, scrolled: scroller.scrollTop > 0, faded: scroller.classList.contains('ui-scroll-more') };
+  });
+  assert.deepEqual(revealed, { visible: true, scrolled: true, faded: false });
+  await shot('settings-performance-keyboard-last-row-1024x640');
+  pass('Settings keyboard scroll: Tab reveals the below-fold Performance control at 1024x640 and clears the cue/fade');
+
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.evaluate(() => fixture.panel.open('performance')); await wait(800);
   const beforePaper = await page.evaluate(() => fixture.stats().paper.paints);

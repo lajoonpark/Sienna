@@ -256,7 +256,7 @@ export function createSheet({
       } else {
         nextIdx = idx < 0 || idx >= list.length - 1 ? 0 : idx + 1;
       }
-      list[nextIdx].focus({ preventScroll: true });
+      list[nextIdx].focus();
       return;
     }
     // If focus is somehow outside the sheet while open, swallow keys so nothing reaches the shop.
