@@ -259,6 +259,7 @@ const spread = createSpread({
 });
 // Liked music & playlists/albums with >15 songs open the searchable, filterable list view with Shuffle
 const collectionList = createCollectionList({
+  music,
   onPlay: (item) => {
     startSong(music, suitcase.suitcase, item);
     suitcase.dispense(getCover(item.art, 512).tex);
@@ -274,7 +275,7 @@ async function openCollection(item, sleeve = null) {
   const my = ++openColSeq;
   if (isLikedCollection(item)) {
     spread.close();
-    collectionList.open(item, spread.fetch(item));
+    collectionList.open(item, () => music.albumSongs(item));
     return;
   }
   const songs = await spread.fetch(item);

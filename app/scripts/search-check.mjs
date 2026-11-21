@@ -65,7 +65,7 @@ await page.keyboard.press('ArrowDown');
 await page.keyboard.press('ArrowDown');
 await wait(300);
 await page.screenshot({ path: `${out}/highlight.png` });
-const second = await page.evaluate(() => document.querySelectorAll('.cs-t')[1].textContent);
+const second = await page.evaluate(() => document.querySelectorAll('.cs .ui-list-title')[1].textContent);
 await page.keyboard.press('Enter');
 await wait(500);
 let played = await page.evaluate('window.__played.map((i) => i.title)');
@@ -95,7 +95,7 @@ await page.keyboard.type('nday', { delay: 30 });
 await wait(2500); // long enough for the late "su" answer to have arrived
 const calls = await page.evaluate('window.__calls');
 assert.ok(calls.length >= 2 && calls.at(-1) === 'sunday', 'slow searches were sent first: ' + calls);
-const slips = await page.evaluate(() => [...document.querySelectorAll('.cs-slip')].map((e) => e.textContent));
+const slips = await page.evaluate(() => [...document.querySelectorAll('.cs .ui-list-row')].map((e) => e.textContent));
 assert.ok(slips.length > 0 && slips.every((t) => /sunday/i.test(t)), 'only "sunday" results on screen: ' + slips.join(' | '));
 ok('stale answers ignored (sent: ' + calls.join(', ') + '; only "sunday" shown)');
 

@@ -3,7 +3,6 @@
 //          lands, throwing thick flecks of paint), followed by the cream dabs on top, then the
 //          magnifying glass and typed text.
 //   Close: the dabs flick and lift off to the right one after another.
-// Results use chunky dab footprints as a stop-motion mask (slipMasks), so 20 slips cost no canvas each.
 //
 // Everything hangs off one clock, so a hotkey pressed halfway just runs that clock backwards.
 import { rng } from './rand.js';
@@ -12,7 +11,6 @@ import { prefersReducedMotion } from './ui/tokens.js';
 
 export const IN_MS = 620, OUT_MS = 460;
 export const MARGIN = 64;    // room around the bar for droplets (the canvas is this much larger on every side)
-export const SLIP_FRAMES = 10;
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const span = (t, a, b) => clamp01((t - a) / (b - a));
@@ -20,51 +18,6 @@ const smooth = (x) => x * x * (3 - 2 * x);
 const flick = (x) => x * x;
 const backOut = (x) => 1 + 2.7 * (x - 1) ** 3 + 1.7 * (x - 1) ** 2;
 const spring = (x) => 1 - Math.exp(-5.5 * x) * Math.cos(11 * x);
-
-// One sprite per dab direction: frame 0 is bare (hides the slip while it waits), each subsequent
-// frame presses down another chunky oil-dab footprint across the slip until the final frame is solid.
-export function slipMasks() {
-  const W = 240, H = 24;
-  const make = (mirror) => {
-    const c = document.createElement('canvas');
-    c.width = W; c.height = H * SLIP_FRAMES;
-    const g = c.getContext('2d');
-    const r = rng(mirror ? 18 : 7);
-    const dabs = Array.from({ length: 6 }, (_, i) => {
-      const u = (i + 0.5) / 6;
-      const x = (mirror ? 1 - u : u) * W + (r() - 0.5) * 10;
-      const y = H * (0.45 + (r() - 0.5) * 0.24);
-      return { x, y, rx: 32 + r() * 12, ry: H * (0.58 + r() * 0.2), a: (r() - 0.5) * 0.24 };
-    });
-    for (let k = 1; k < SLIP_FRAMES; k++) {
-      g.save();
-      g.beginPath();
-      g.rect(0, k * H, W, H);
-      g.clip();
-      g.translate(0, k * H);
-      if (k === SLIP_FRAMES - 1) {
-        g.fillRect(0, 0, W, H);
-      } else {
-        const p = k / (SLIP_FRAMES - 1);
-        dabs.forEach((d, idx) => {
-          const dp = span(p, idx * 0.1, idx * 0.1 + 0.38);
-          if (dp <= 0) return;
-          const s = backOut(dp);
-          g.save();
-          g.translate(d.x, d.y);
-          g.rotate(d.a);
-          g.beginPath();
-          g.ellipse(0, 0, d.rx * s, d.ry * (0.75 + 0.25 * dp), 0, 0, Math.PI * 2);
-          g.fill();
-          g.restore();
-        });
-      }
-      g.restore();
-    }
-    return `url(${c.toDataURL()})`;
-  };
-  return { fromLeft: make(false), fromRight: make(true) };
-}
 
 //   const paint = createBarPaint({ canvas, bar, glass, input, onClosed });
 //   paint.setLayers({ w, h, inkDabs, paperDabs, paperRect });
