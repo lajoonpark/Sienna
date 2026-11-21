@@ -42,8 +42,8 @@ const LAMP_OFF = new THREE.Color('#5a4c40');
 const LAMP_ON = new THREE.Color('#ffd58a');
 
 // glass: MeshBasicMaterial(s) of the lamp panes; halo: optional additive sprite mesh; light: optional PointLight.
-export function registerLamp({ glass, glows = [], light = null, order = Math.random() }) {
-  const entry = { glass: [].concat(glass), glows, light, order, baseIntensity: light ? light.intensity : 0, level: 0 };
+export function registerLamp({ glass, glows = [], light = null, order = Math.random(), steady = false }) {
+  const entry = { glass: [].concat(glass), glows, light, order, steady, baseIntensity: light ? light.intensity : 0, level: 0 };
   lamps.push(entry);
   return entry;
 }
@@ -76,14 +76,14 @@ export function updateLamps(lampsOn, t) {
     // each lamp has its own moment inside the wave, then warms up over ~0.08 of it with a flicker
     const local = THREE.MathUtils.clamp((lampsOn - l.order * 0.8) / 0.12, 0, 1);
     let k = local;
-    if (local > 0 && local < 1) {
+    if (!l.steady && local > 0 && local < 1) {
       k = local * flicker(t, l.order);
     }
     // intro wake-up (see lampWake)
     if (lampWake.camZ !== null && lampZ(l) !== null && k > 0) {
       // by distance, not by a clock, so a screenshot at any second shows the same thing
       const w = THREE.MathUtils.clamp((WAKE_DIST - (lampWake.camZ - l.z)) / WAKE_RAMP, 0, 1);
-      k *= w < 1 ? w * flicker(t, l.order) : 1;
+      k *= w < 1 ? w * (l.steady ? 1 : flicker(t, l.order)) : 1;
     }
     l.level = k;
     for (const g of l.glass) g.color.copy(LAMP_OFF).lerp(LAMP_ON, k);
