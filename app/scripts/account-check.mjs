@@ -69,7 +69,7 @@ console.log('ok   Up/Down move through the rail');
 
 await page.keyboard.press('Escape');
 await wait(400);
-await page.keyboard.press('Control+Comma');
+await page.keyboard.press('ControlOrMeta+Comma');
 await wait(600);
 assert.strictEqual(await at(), 'performance', 'opens where it was left');
 console.log('ok   reopens on the same page');

@@ -17,6 +17,7 @@ const app = await electron.launch({
 let failed = 0;
 const ok = (cond, what) => { console.log(cond ? 'ok  ' : 'FAIL', what); if (!cond) failed++; };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const label = (k) => (process.platform === 'darwin' ? `Control + Option + ${k}` : `Ctrl + Alt + ${k}`);
 const registered = () => app.evaluate(({ globalShortcut }) => ['Control+Alt+K', 'Control+Alt+L', 'Control+Alt+M', 'Control+Shift+L'].filter((a) => globalShortcut.isRegistered(a)));
 let page;
 for (let i = 0; i < 40 && !page; i++) {
@@ -31,13 +32,13 @@ ok(st.search === 'Control+Alt+J' && st.app === 'Control+Alt+L' && st.mini === 'C
 ok(JSON.stringify(await registered()) === JSON.stringify(['Control+Alt+K', 'Control+Alt+L']), `global registered: ${await registered()}`);
 
 // open the card and read the row
-await page.keyboard.press('Control+Comma');
+await page.keyboard.press('ControlOrMeta+Comma');
 await wait(600);
 await page.locator('.st-side .ui-ink[data-page="shortcuts"]').click();   // the Shortcuts page on the rail
 await wait(400);
 const words = () => page.evaluate(() => [...document.querySelectorAll('.st-keys .ui-ink .ui-ink-label')].map((e) => e.textContent));
 console.log('     row:', (await words()).join(' | '));
-ok((await words())[0] === 'Ctrl + Alt + J', 'search shown as Ctrl + Alt + J');
+ok((await words())[0] === label('J'), `search shown as ${label('J')}`);
 await page.screenshot({ path: `${S}/settings-shortcuts.png` });
 
 // record the mini player shortcut: click it, globals let go, press Ctrl+Alt+M
@@ -67,7 +68,7 @@ ok(JSON.stringify(await registered()) === JSON.stringify(['Control+Alt+L', 'Cont
 await page.locator('.st-keys .ui-ink').nth(1).click();
 await page.keyboard.press('Escape');
 await wait(200);
-ok((await words())[1] === 'Ctrl + Alt + L' && await page.evaluate(() => document.querySelector('.st-settings').classList.contains('show')), 'Esc cancels recording, card stays');
+ok((await words())[1] === label('L') && await page.evaluate(() => document.querySelector('.st-settings').classList.contains('show')), 'Esc cancels recording, card stays');
 
 // search: record Ctrl+Shift+F, then it opens the bar (and the old Ctrl+Alt+J does not)
 await page.locator('.st-keys .ui-ink').nth(0).click();
