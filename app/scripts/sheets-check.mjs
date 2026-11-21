@@ -253,7 +253,7 @@ try {
 
   await page.evaluate(() => fixture.liner.openLyrics(fixture.state)); await wait(650);
   await page.locator('.ln-sheet .ui-sheet-head').getByRole('button', { name: 'Close', exact: true }).focus();
-  await page.keyboard.press('Control+Comma'); await wait(650);
+  await page.keyboard.press('ControlOrMeta+Comma'); await wait(650);
   assert.equal(await page.locator('.ln-sheet.show').count(), 1);
   for (const key of ['Tab', 'Shift+Tab', 'Tab', 'Tab']) {
     await page.evaluate(() => { fixture.tabFrom = document.activeElement; });
@@ -270,7 +270,7 @@ try {
 
   await page.evaluate(() => fixture.tour.restart()); await wait(650);
   await tourAction('Look around first').focus();
-  await page.keyboard.press('Control+Comma'); await wait(650);
+  await page.keyboard.press('ControlOrMeta+Comma'); await wait(650);
   for (const key of ['Tab', 'Tab', 'Shift+Tab']) {
     await page.evaluate(() => { fixture.tabFrom = document.activeElement; });
     await page.keyboard.press(key);

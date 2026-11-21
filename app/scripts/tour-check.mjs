@@ -121,7 +121,7 @@ assert.strictEqual(await step(), null);
 ok('not again after it was finished');
 
 // Settings > Tour > Show it again
-await page.keyboard.press('Control+Comma');
+await page.keyboard.press('ControlOrMeta+Comma');
 await wait(500);
 await page.locator('.st-side .ui-ink[data-page="tour"]').click();   // the Tour page on the rail
 await wait(300);
