@@ -107,7 +107,7 @@ lampLight.position.set(LOUNGE_LAMP.x, LOUNGE_LAMP.y + 1.40, LOUNGE_LAMP.z);
 const lampHalo = glowMesh('sprite', 1.5, 0.65);
 lampHalo.position.set(LOUNGE_LAMP.x, LOUNGE_LAMP.y + 1.48, LOUNGE_LAMP.z);
 scene.add(lampLight, lampHalo);
-registerLamp({ glass: lampBulb.material, glows: [lampHalo], light: lampLight, order: 0.05 });
+registerLamp({ glass: lampBulb.material, glows: [lampHalo], light: lampLight, order: 0.05, steady: true });
 
 // Subtle daytime bounce inside the sheltered lounge (tapers down at night so lamp warmth dominates)
 const roomFill = new THREE.PointLight('#fff0d8', 1.15, 7, 1.4);
