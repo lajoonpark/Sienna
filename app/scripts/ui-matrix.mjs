@@ -79,7 +79,34 @@ const ALL_SURFACES = [
   'shop-3d-spread',
   // Mini window
   'mini-tag',
+  // UI kit lab (Phase 2)
+  'lab-tokens',
+  'lab-paper',
+  'lab-brush',
+  'lab-ink',
+  'lab-segmented',
+  'lab-stamps',
+  'lab-icons',
+  'lab-list',
+  'lab-sheet',
+  'lab-banners',
+  'lab-tag',
+  'lab-compare',
 ];
+
+const LAB_SECTION_SURFACES = [
+  'lab-tokens',
+  'lab-paper',
+  'lab-brush',
+  'lab-ink',
+  'lab-segmented',
+  'lab-stamps',
+  'lab-icons',
+  'lab-list',
+  'lab-banners',
+  'lab-tag',
+];
+const LAB_SURFACES = [...LAB_SECTION_SURFACES, 'lab-sheet', 'lab-compare'];
 
 function matchSurfaces(filter) {
   if (!filter) return ALL_SURFACES;
@@ -95,7 +122,9 @@ if (!SURFACES.length) {
 const want = new Set(SURFACES);
 const wantAny = (list) => list.some((s) => want.has(s));
 
-const HOME_SURFACES = ALL_SURFACES.filter((s) => !['shop-3d-tag', 'shop-3d-spread', 'mini-tag'].includes(s));
+const HOME_SURFACES = ALL_SURFACES.filter(
+  (s) => !['shop-3d-tag', 'shop-3d-spread', 'mini-tag', ...LAB_SURFACES].includes(s),
+);
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -638,6 +667,69 @@ async function captureMini(browser, baseUrl, vw, vh) {
   await ctx.close();
 }
 
+async function captureLabSurfaces(browser, baseUrl, vw, vh) {
+  const sizeKey = `${vw}x${vh}`;
+  const wantSections = LAB_SECTION_SURFACES.filter((s) => want.has(s));
+  const wantSheet = want.has('lab-sheet');
+
+  if (wantSections.length || wantSheet) {
+    const ctx = await browser.newContext({ viewport: { width: vw, height: vh } });
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => console.log(`[ui-lab ${sizeKey} pageerror]`, e.message));
+    await page.goto(`${baseUrl}/ui-lab.html`, { timeout: 60000 });
+    await page.waitForFunction(() => window.__uiLab?.ready === true, null, { timeout: 30000 });
+    await wait(200);
+
+    for (const fontKey of FONTS) {
+      const dir = join(out, 'shots', sizeKey, fontKey);
+      mkdirSync(dir, { recursive: true });
+      await setFontLive(page, fontKey);
+
+      for (const surface of wantSections) {
+        const loc = page.locator(`#${surface}`);
+        await loc.scrollIntoViewIfNeeded();
+        await raf(page, 2);
+        await loc.screenshot({ path: join(dir, `${surface}.png`), timeout: 60000 });
+        process.stdout.write(`  ${surface}\n`);
+      }
+
+      if (wantSheet) {
+        await page.evaluate(() => window.__uiLab.components.sheet.open());
+        await wait(650);
+        await raf(page, 2);
+        await page.screenshot({ path: join(dir, 'lab-sheet.png'), timeout: 60000 });
+        process.stdout.write('  lab-sheet\n');
+        await page.evaluate(() => window.__uiLab.components.sheet.close());
+        await wait(340);
+      }
+      console.log(`done  lab surfaces ${sizeKey} ${fontKey}`);
+    }
+    await ctx.close();
+  }
+
+  if (want.has('lab-compare')) {
+    const ctx = await browser.newContext({ viewport: { width: vw, height: vh } });
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => console.log(`[ui-lab compare ${sizeKey} pageerror]`, e.message));
+    await page.goto(`${baseUrl}/ui-lab.html?compare`, { timeout: 60000 });
+    await page.waitForFunction(() => window.__uiLab?.ready === true, null, { timeout: 30000 });
+    await raf(page, 3);
+    await wait(200);
+    const firstDir = join(out, 'shots', sizeKey, FONTS[0]);
+    mkdirSync(firstDir, { recursive: true });
+    const firstPath = join(firstDir, 'lab-compare.png');
+    await page.screenshot({ path: firstPath, fullPage: true, timeout: 60000 });
+    const bytes = readFileSync(firstPath);
+    for (const fontKey of FONTS.slice(1)) {
+      const dir = join(out, 'shots', sizeKey, fontKey);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'lab-compare.png'), bytes);
+    }
+    await ctx.close();
+    console.log(`done  lab-compare ${sizeKey}`);
+  }
+}
+
 // Serve out_dir over a temporary local HTTP server to render crisp PNG contact sheets via Playwright.
 async function startStaticServer(rootDir) {
   const mime = { '.png': 'image/png', '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.json': 'application/json' };
@@ -789,6 +881,10 @@ try {
     if (want.has('mini-tag')) {
       await captureMini(browser, baseUrl, vw, vh);
       console.log(`done  mini-tag ${sizeKey}`);
+    }
+
+    if (wantAny(LAB_SURFACES)) {
+      await captureLabSurfaces(browser, baseUrl, vw, vh);
     }
   }
 

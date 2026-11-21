@@ -147,6 +147,11 @@ export const CSS_VARS = Object.freeze({
 
   '--sienna-shadow-rest': ELEVATION.rest,
   '--sienna-shadow-lift': ELEVATION.lift,
+  '--sienna-focus-ring': `0 0 0 2px ${COLORS.paper}, 0 0 0 4.5px ${COLORS.terracotta}`,
+  '--sienna-hairline': 'rgba(112, 87, 66, 0.28)',
+  '--sienna-scroll-thumb': 'rgba(112, 87, 66, 0.45)',
+  '--sienna-disabled': '0.44',
+  '--sienna-veil-filter': 'saturate(0.76) brightness(0.94)',
 
   '--sienna-dur-fast': `${MOTION.dur.fast}ms`,
   '--sienna-dur-mid': `${MOTION.dur.mid}ms`,
@@ -167,7 +172,7 @@ export const CSS_VARS = Object.freeze({
 
 export const TOKENS_CSS = `:root {\n${
   Object.entries(CSS_VARS).map(([k, v]) => `  ${k}: ${v};`).join('\n')
-}\n}\n@media (prefers-reduced-motion: reduce) {\n  :root {\n    --sienna-dur-fast: 0ms;\n    --sienna-dur-mid: 0ms;\n    --sienna-dur-slow: 0ms;\n  }\n  *, *::before, *::after {\n    animation-duration: 0.01ms !important;\n    animation-delay: 0ms !important;\n    animation-iteration-count: 1 !important;\n    transition-duration: 0ms !important;\n    scroll-behavior: auto !important;\n  }\n  .st-flap, .ln-flap, .tr-amb { display: none !important; }\n  .cs .cs-slipwrap, .cl .cl-slipwrap { mask-image: none !important; }\n}\n`;
+}\n}\n@media (prefers-reduced-motion: reduce) {\n  :root {\n    --sienna-dur-fast: 0ms;\n    --sienna-dur-mid: 0ms;\n    --sienna-dur-slow: 0ms;\n  }\n  *, *::before, *::after {\n    animation-duration: 0.01ms !important;\n    animation-delay: 0ms !important;\n    animation-iteration-count: 1 !important;\n    transition-duration: 0ms !important;\n    scroll-behavior: auto !important;\n  }\n  .st-flap, .ln-flap, .tr-amb, .ui-sheet-flap { display: none !important; }\n  .cs .cs-slipwrap, .cl .cl-slipwrap { mask-image: none !important; }\n}\n`;
 
 export function injectTokens(doc = globalThis.document) {
   if (!doc?.head || doc.getElementById('sienna-tokens')) return;
