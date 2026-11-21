@@ -780,7 +780,8 @@ function hoverAnchor(core, pointer) {
 // (hoverAnchor), so the record never follows the cursor about. Worked out afresh from the rack's pose
 // every frame, so it is exact mid-animation and lets go as soon as the pose itself comes back under the cursor; when the hover
 // ends the slide eases back out (PULL_RATE) so the record goes home along its normal path.
-const CURSOR_INSET = 0.15, PULL_RATE = 10, EDGE_ON = 0.25; // share of size; per second; area / longest side² below which the inset fades (edge-on)
+export const CURSOR_INSET = 0.15;
+const PULL_RATE = 10, EDGE_ON = 0.25; // CURSOR_INSET: share of size; per second; area / longest side² below which the inset fades (edge-on)
 const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]], _quad = CORNERS.map(() => [0, 0]);
 const _pR = new THREE.Vector3(), _pU = new THREE.Vector3(), _pA = new THREE.Vector3(), _pB = new THREE.Vector3(), _pV = new THREE.Vector3();
 function keepUnderCursor(core, camera, dt, pointer) {
@@ -851,6 +852,7 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
     tagFlip: null,                 // is the tag above the record? null: not decided yet this hover
     tagBaseY: 0,
     anchor: { i: -1, x: 0, y: 0 }, // the cursor when this hover began (hoverAnchor)
+    holdHover: false,              // the lifted record under the cursor beats the rest spots (camera slid to frame it)
     control: -1,
     shelf: null,
     camLocal: new THREE.Vector3(), // the camera in the root's space, refreshed before layout()
@@ -914,7 +916,10 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
           // every record keeps its own patch of screen (its rest spot), so a lifted record that has
           // grown over a neighbour never hides it. The lifted one only catches the cursor where no
           // other record is (the bit sticking out above the rack): you click the song, not the rack.
-          want = base();
+          // the camera has slid to frame the lifted record (main.js): the other records' rest spots moved
+          // under the cursor, so while it is over the lifted record that one keeps the hover
+          if (core.holdHover) want = heldUnder(core, pointer, camera);
+          if (want < 0) want = base();
           if (want < 0) want = heldUnder(core, pointer, camera);
         }
         // picks >= 1000 are controls of the rack itself (page arrows...): def.control(core, id) on click
@@ -970,6 +975,7 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
         return true;
       },
       set forceHover(i) { forced = Number.isFinite(i) ? i : null; },
+      set holdHover(on) { core.holdHover = !!on; },
       get core() { return core; }, // debug / checks (scripts/cover-check.mjs)
       // make this rack's hover covers now (in idle time); upload(tex) puts each on the GPU early
       prewarm(upload) { prewarmCovers(core.sleeves.map((s) => s.art), upload); },

@@ -11,7 +11,8 @@ import { createSky } from './sky.js';
 import { toon, crisp, unpinned, GLOW_LAYER } from './materials.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
-import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
+import { getCover, setCoverUploader, restoreCovers, CURSOR_INSET } from './racks/common.js';
+import { frameShift } from './framing.js';
 import { warmUp } from './warmup.js';
 import { STATIONS, HOME, assignShelves } from './stations.js';
 import { createNav, AT_HOME, paintViews, introBars, BASE_FOV } from './nav.js';
@@ -653,6 +654,7 @@ if (!window.sienna || window.sienna.isDev) window.__siennaDebug = {
   get stations() { return STATIONS.map((s, i) => ({ index: i, id: s.id, style: s.style, shelf: placed.get(i)?.title ?? null })); },
   get state() { return { phase: nav.phase, at: nav.at, settled: nav.settled, flying: nav.flying, progress: nav.progress, introDone: nav.introDone, sections: nav.sections }; },
   get focus() { return { ...focus }; },
+  get frame() { return { ...frameDebug, pan: focus.pan.toArray(), panTo: focus.panTo.toArray() }; }, // framing slide (frameHovered)
   get camOffset() { return focus.offP.toArray(); },
   get tucked() { return suitcase.tucked; },
   // the swing about the hovered record; pivotPx = where the pivot is on screen (it should not move)
@@ -687,7 +689,8 @@ const pointerPx = { x: 0, y: 0 };
 // the turn runs on a critically damped spring, so it starts gently, never overshoots, and a new record
 // mid-turn just bends the motion instead of restarting it. Pivoting on the
 // record keeps it on the same spot on screen, so it stays under the cursor; only the room around it
-// swings. The camera never slides left / right / up / down on its own.
+// swings. The one slide it makes is framing (FRAME, frameHovered): a lifted record cut off by the
+// window edge or hidden under the menu words slides clear, but only as far as keeps it under the cursor.
 // Only the cursor changes what is hovered: whenever the camera starts a swing (toward a record, or back
 // when you leave the records), the hover is frozen until the cursor actually moves. Otherwise the swing
 // moves a neighbouring record under a still cursor, the camera swings to that one, and so on.
@@ -698,12 +701,19 @@ const pointerPx = { x: 0, y: 0 };
 // zoomRate: how quickly it gets there.
 const FOCUS = { dwell: 0.03, share: 0.35, maxYaw: 0.14, maxPitch: 0.09, omega: 11, rate: 6, settle: 2, release: 0.35, unfreezePx: 4,
   zoomTo: 1.6, zoomMax: 0.5, zoomRate: 4 };
+// Framing: once a record is up (lift), the camera slides sideways / up / down so the record and its tag
+// clear the window edge (margin px; bottom: the painted edge and the tucked suitcase, as a share of the
+// height) and the menu words (pad px round them). The cursor stays inside the record by inset of its
+// size (a bit more than keepUnderCursor's, so that never has to pull it back). rate: how quickly it slides.
+const FRAME = { lift: 0.9, margin: 14, bottom: 0.91, pad: 8, inset: CURSOR_INSET + 0.05, rate: 5, maxPan: 0.8, deadPx: 1.5 };
 const focus = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0, vyaw: 0, vpitch: 0, key: -1, aimed: -1, rack: -1, on: 0, off: 0, freeze: null,
   pivot: new THREE.Vector3(), // rig-local point the camera orbits about
   // the camera's pose in the rig without the cursor tilt; each frame's step of the swing is applied to it
   // as a rotation about the pivot, so the pivot stays put on screen even when it changes mid-swing
-  offP: new THREE.Vector3(), offQ: new THREE.Quaternion() };
-const _fp = new THREE.Vector3();
+  offP: new THREE.Vector3(), offQ: new THREE.Quaternion(),
+  // framing slide along the camera's right and up (m), and where it is heading (frameHovered)
+  pan: new THREE.Vector2(), panTo: new THREE.Vector2() };
+const _fp = new THREE.Vector3(), _v = new THREE.Vector3();
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ');
 const orbitQ = (yaw, pitch, out) => out.setFromEuler(_e.set(pitch, yaw, 0));
 // exact critically damped spring step toward target (stable at any frame time); returns [x, v]
@@ -721,7 +731,11 @@ function updateFocus(dt) {
   const rack = at >= 0 ? racks[at] : null;
   if (at !== focus.rack) {
     focus.rack = at; focus.key = focus.aimed = -1; focus.tyaw = focus.tpitch = 0; focus.vyaw = focus.vpitch = 0; focus.freeze = null;
+    focus.pan.set(0, 0); focus.panTo.set(0, 0);
   }
+  if (focus.aimed === -1 || !rack || rack.turning) focus.panTo.set(0, 0);
+  focus.pan.lerp(focus.panTo, 1 - Math.exp(-dt * FRAME.rate));
+  if (focus.pan.distanceTo(focus.panTo) < 1e-5) focus.pan.copy(focus.panTo);
   // moving the cursor (a few px, not a twitch) lets the hover follow it again; turning the rack drops it
   const fz = focus.freeze;
   if (fz && (Math.hypot(pointerPx.x - fz.x, pointerPx.y - fz.y) > FOCUS.unfreezePx || rack?.turning)) focus.freeze = null;
@@ -778,7 +792,66 @@ function updateFocus(dt) {
   finishFocus(rack);
 }
 function finishFocus(rack) {
+  if (rack) rack.holdHover = focus.pan.lengthSq() > 1e-6;
   if (hoverArg === null) for (const r of racks) if (r) r.forceHover = r === rack && focus.freeze && !r.turning ? focus.freeze.key : null;
+}
+// ---- framing: slide the camera so the lifted record is not cut off (FRAME) ----
+// the words drawn over the picture, in CSS px; read a few times a second, not every frame (layout)
+let obstacleCache = { at: -1e9, list: [] };
+function screenObstacles(now) {
+  if (now - obstacleCache.at < 150) return obstacleCache.list;
+  const list = [];
+  for (const el of document.querySelectorAll('.mn.show button, .st-btn.show .st-w')) {
+    const r = el.getBoundingClientRect();
+    if (r.width > 1 && r.height > 1) list.push({ l: r.left - FRAME.pad, t: r.top - FRAME.pad, r: r.right + FRAME.pad, b: r.bottom + FRAME.pad });
+  }
+  if (!suitcase.tucked) {
+    const r = suitcase.avoidRect();
+    if (r && r.right > r.left) list.push({ l: r.left - FRAME.pad, t: r.top - FRAME.pad, r: r.right + FRAME.pad, b: r.bottom + FRAME.pad });
+  }
+  obstacleCache = { at: now, list };
+  return list;
+}
+const _fq = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+const frameDebug = { box: null, shift: [0, 0], obstacles: [] };
+// where the record + tag sit on screen now -> how far the camera should slide (focus.panTo)
+function frameHovered(rack) {
+  const core = rack?.core, s = core?.sleeves[core.hovered];
+  frameDebug.box = null;
+  if (!s || focus.aimed === -1 || rack.turning || s.lift < FRAME.lift) return;
+  const W = innerWidth, H = innerHeight, p = camera.projectionMatrix.elements;
+  camera.updateMatrixWorld();
+  const toPx = (v) => { v.applyMatrix4(camera.matrixWorldInverse); const w = -v.z; return [((p[0] * v.x) / w + 1) / 2 * W, (1 - (p[5] * v.y) / w) / 2 * H, w]; };
+  s.mesh.updateWorldMatrix(true, false);
+  const rec = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, c], i) => toPx(_fq[i].set((a * s.size) / 2, (c * s.size) / 2, 0).applyMatrix4(s.mesh.matrixWorld)));
+  if (rec.some((q) => q[2] <= 0.05)) return;
+  const pts = rec.slice();
+  const tag = core.tag?.mesh;
+  if (tag?.parent && tag.visible && tag.scale.x > 0.5) {
+    tag.updateWorldMatrix(true, false);
+    tag.geometry.computeBoundingBox();
+    const bb = tag.geometry.boundingBox;
+    for (const [x, y] of [[bb.min.x, bb.min.y], [bb.max.x, bb.min.y], [bb.max.x, bb.max.y], [bb.min.x, bb.max.y]]) pts.push(toPx(_v.set(x, y, 0).applyMatrix4(tag.matrixWorld)));
+  }
+  const box = { l: Math.min(...pts.map((q) => q[0])), r: Math.max(...pts.map((q) => q[0])), t: Math.min(...pts.map((q) => q[1])), b: Math.max(...pts.map((q) => q[1])) };
+  // the cursor (where the hover began, and where it is now) must stay this far inside the record
+  const cx = rec.reduce((a, q) => a + q[0], 0) / 4, cy = rec.reduce((a, q) => a + q[1], 0) / 4;
+  const shrink = 1 - 2 * FRAME.inset;
+  const quad = rec.map(([x, y]) => [cx + (x - cx) * shrink, cy + (y - cy) * shrink]);
+  const cursors = [];
+  if (core.anchor.i === core.hovered) cursors.push([(core.anchor.x + 1) / 2 * W, (1 - core.anchor.y) / 2 * H]);
+  if (pointer) cursors.push([pointerPx.x, pointerPx.y]);
+  if (!cursors.length) return; // the cursor is off the picture (over a word): the hover is ending
+  const keep = cursors.map(([x, y]) => quad.map(([qx, qy]) => [x - qx, y - qy]));
+  const view = { l: FRAME.margin, t: FRAME.margin, r: W - FRAME.margin, b: H * FRAME.bottom };
+  const obstacles = screenObstacles(performance.now());
+  let [dx, dy] = frameShift({ box, view, obstacles, keep });
+  if (Math.hypot(dx, dy) < FRAME.deadPx) dx = dy = 0;
+  Object.assign(frameDebug, { box, shift: [dx, dy], obstacles });
+  // px on screen at the record's depth -> metres; the camera slides the other way
+  const z = rec.reduce((a, q) => a + q[2], 0) / 4;
+  focus.panTo.set(focus.pan.x - ((2 * dx) / W) * z / p[0], focus.pan.y + ((2 * dy) / H) * z / p[5]);
+  if (focus.panTo.length() > FRAME.maxPan) focus.panTo.setLength(FRAME.maxPan);
 }
 document.addEventListener('pointerleave', () => { pointer = null; cursorX01 = null; });
 const currentRack = () => (nav.settled && nav.at !== AT_HOME ? racks[nav.at] : null);
@@ -947,7 +1020,7 @@ function frame(t, dtOverride, draw = true) {
   const k = nav.tilt;
   updateFocus(dt);
   // the swing about the hovered record, then the cursor tilt on top
-  camera.position.copy(focus.offP);
+  camera.position.copy(focus.offP).add(_v.set(focus.pan.x, focus.pan.y, 0).applyQuaternion(focus.offQ));
   camera.quaternion.copy(focus.offQ).multiply(_qa.setFromEuler(_e.set(-tilt.y * 0.09 * k, -tilt.x * 0.2 * k, 0)));
   rig.updateMatrixWorld();
 
@@ -965,6 +1038,7 @@ function frame(t, dtOverride, draw = true) {
     // the cursor over the suitcase or collection list does not pick records through them
     rack.update(dt, camera, active && !suitcase.over && !spread.isOpen && !collectionList.isOpen() ? pointer : null, active);
   });
+  frameHovered(currentRack());
   // an album or playlist under the cursor: fetch its songs now, so pressing it opens the spread at once
   const hovItem = currentRack()?.core.sleeves[currentRack().hovered]?.item;
   if (canSpread(hovItem)) spread.prefetch(hovItem);
