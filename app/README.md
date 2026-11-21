@@ -91,6 +91,14 @@ callbacks. It never authenticates. Existing `account-check`, `tour-check`, `shor
 `tear-check` retain their integration coverage; browser checks accept `SIENNA_ANGLE=swiftshader`
 on Linux.
 
+On macOS, run the browser checks directly, for example `node scripts/sheets-check.mjs <out_dir>`.
+For the Electron shortcut check, use `npm run build && node scripts/shortcuts-check.mjs <out_dir>`
+without Linux's `xvfb-run`. Account, sheets, tour and shortcut checks use Cmd+, for Settings on
+macOS (Ctrl+, elsewhere); shortcut labels are Control + Option on macOS and Ctrl + Alt elsewhere.
+These checks default to Metal on macOS and SwiftShader elsewhere; `SIENNA_ANGLE` overrides that.
+`node scripts/search-anim-check.mjs <out_dir>` instead defaults to Metal on macOS and Vulkan
+elsewhere, and requires a real GPU (it rejects SwiftShader and llvmpipe).
+
 A hidden `music.youtube.com` window plays the audio (`electron/ytm.cjs`). YouTube Music itself does
 the queue, radio, ads, history and likes; Sienna drives it through a small script injected into the
 page (`electron/ytm-page.js`) and reads your home shelves from the same internal API the page uses
