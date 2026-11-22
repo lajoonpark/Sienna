@@ -26,7 +26,7 @@ import { createSky } from './sky.js';
 import { createTimeOfDay } from './timeofday.js';
 import { registerLamp, glowMesh } from './env.js';
 import { LISTENING_TABLE, LOUNGE_LAMP, buildLoungeCore, buildCourtyardVista } from './loungecorner.js';
-import { showWebGLError } from './liner.js';
+import { createLiner, showWebGLError } from './liner.js';
 import { injectTokens } from './ui/tokens.js';
 import { settings } from './settings.js';
 
@@ -153,19 +153,56 @@ timeOfDay.update(0);
 updateLod(camera);
 painter?.bakeStrokes(scene, [{ pos: BASE_POS.clone(), target: BASE_TARGET.clone(), fov: Math.min(100, BASE_FOV * 1.2) }]);
 
-const caption = createCaption({
-  parent: stage,
-  variant: 'mini',
-  onSeek: (s) => music.command('seek', s),
-  onCommand: (name, arg) => music.command(name, arg),
-});
-
 // ---- search (the search shortcut, as in the shop): a pick slides out of the drawer and flies onto the platter ----
 scene.add(camera);
 const hud = new THREE.Group();
 camera.add(hud);
 const flights = createFlights({ scene: hud, suitcase, camera, view: camera, worldCase: true });
 const tray = createRecordTray({ suitcase, kit: suitcase.recordKit, onDisc: (d) => flights.receive(d) });
+
+// ---- Up next queue (liner.js): the bottom drawer slides open and stays out while the torn-paper
+// list sits over the card; a pick flies the record out of the drawer onto the platter ----
+const _drawerPt = new THREE.Vector3();
+const drawerScreenPos = () => {
+  tray.centerPoint(_drawerPt).project(camera);
+  const r = renderer.domElement.getBoundingClientRect();
+  return { x: r.left + ((_drawerPt.x + 1) / 2) * r.width, y: r.top + ((1 - _drawerPt.y) / 2) * r.height };
+};
+const liner = createLiner({
+  music,
+  onQueueOpen: () => tray.openHold(lastState?.art ? [getCover(lastState.art, 256).tex] : []),
+  onQueueCovers: (items) => {
+    if (!items?.length) return;
+    const sel = items.findIndex((it) => it.selected);
+    const ordered = sel > 0 ? [...items.slice(sel), ...items.slice(0, sel)] : items;
+    const covers = ordered.slice(0, 5).map((it) => getCover(it.art, 256).tex);
+    if (covers.length) tray.setStackCovers(covers);
+  },
+  onQueueClose: () => tray.closeHold(),
+  getDrawerPos: drawerScreenPos,
+  onPickQueue: (it, idx) => {
+    if (it.videoId) {
+      const play = {
+        videoId: it.videoId,
+        ...(it.playlistId ? { playlistId: it.playlistId } : {}),
+        ...(it.params ? { params: it.params } : {}),
+        ...(it.fromLive ? { fromLive: true, queueIndex: it.index ?? idx } : {}),
+      };
+      startSong(music, suitcase, { play });
+    } else {
+      music.command('queueIndex', it.index ?? idx);
+    }
+    tray.run(getCover(it.art, 512).tex);
+  },
+});
+
+const caption = createCaption({
+  parent: stage,
+  variant: 'mini',
+  onSeek: (s) => music.command('seek', s),
+  onCommand: (name, arg) => music.command(name, arg),
+  onQueue: () => liner.openQueue(),
+});
 
 const LISTEN_AGAIN_MAX_AGE = 300000;
 let listenAgain = null;
@@ -250,6 +287,7 @@ function finishPick() {
 }
 function dismiss() {
   if (phase !== 'open') return;
+  liner.close();
   finishPick();
   phase = 'closing';
   suitcase.close();
@@ -260,7 +298,7 @@ const shadowSun = new THREE.Vector3(Infinity, Infinity, Infinity);
 let shadowSunOn = null, shadowLastAt = -10;
 function updateShadows(t) {
   const sunMoved = sun.position.distanceToSquared(shadowSun) > 0.05 * 0.05 || sun.castShadow !== shadowSunOn;
-  const moving = (suitcase.lidMoving || tray.active) && t - shadowLastAt >= 1 / 12;
+  const moving = (suitcase.lidMoving || tray.moving) && t - shadowLastAt >= 1 / 12;
   if (sunMoved || moving || shadowLastAt < 0) {
     leanShadowMap();
     renderer.shadowMap.needsUpdate = true;
@@ -321,7 +359,7 @@ addEventListener('pointermove', (e) => {
   parallax.tx = THREE.MathUtils.clamp(ndc.x, -1, 1);
   parallax.ty = THREE.MathUtils.clamp(ndc.y, -1, 1);
   if (suitcase.dragging) suitcase.pointerDrag(ndc, camera);
-  else suitcase.hover(ndc, camera);
+  else suitcase.hover(liner.isOpen() ? null : ndc, camera);   // the queue veil sits over the case
   renderer.domElement.style.cursor = suitcase.cursor();
 });
 document.addEventListener('pointerleave', () => { suitcase.hover(null); parallax.tx = 0; parallax.ty = 0; });
@@ -346,6 +384,7 @@ addEventListener('pointerover', trackPointer);   // a cursor jumping in may brin
 addEventListener('pointermove', trackPointer);
 addEventListener('pointerout', (e) => { if (!e.relatedTarget) leaveWindow(); });
 addEventListener('pointerdown', (e) => {
+  if (liner.isOpen()) return;                    // the queue veil handles its own clicks (backdrop shuts it)
   if (e.target.closest?.('.cad-tag, .cs')) return;
   toNdc(e);
   if (!suitcase.pointerDown(ndc, camera) && (Math.abs(ndc.x) > 0.93 || Math.abs(ndc.y) > 0.93)) dismiss();
@@ -361,7 +400,7 @@ addEventListener('pointerup', (e) => {
 });
 addEventListener('blur', () => suitcase.pointerUp());
 addEventListener('wheel', (e) => {
-  if (search.isOpen()) return;
+  if (search.isOpen() || liner.isOpen()) return;  // the wheel scrolls the slips then, never the volume
   e.preventDefault(); suitcase.wheel(e.deltaY, e.deltaMode);
 }, { passive: false });
 
@@ -414,5 +453,5 @@ const screenOf = (name, dx = 0, dz = 0) => {
   return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
 };
 if (!window.sienna || window.sienna.isDev) {
-  window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, tray, flights, get phase() { return phase; }, get appear() { return appear; }, get pointerIn() { return pointerIn; } };
+  window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, tray, flights, liner, get phase() { return phase; }, get appear() { return appear; }, get pointerIn() { return pointerIn; } };
 }
