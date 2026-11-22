@@ -13,97 +13,122 @@
     <script type="module" src="/src/main.js"></script>
   </head>
   <body>
-    <div class="sky" aria-hidden="true"><div class="sun"></div></div>
+    <div class="sky" aria-hidden="true"></div>
     <canvas id="vinyls" aria-hidden="true"></canvas>
     <div class="grain" aria-hidden="true"></div>
     <div class="cursor" aria-hidden="true"></div>
 
     <header class="nav">
-      <a class="brand" href="#top" data-magnet><span class="brand-disc"></span><span>Sienna</span></a>
-      <nav>
-        <a href="#shop">The shop</a>
-        <a href="#player">The player</a>
-        <a href="#more">What else</a>
-        <a href="#download">Download</a>
-        <a href="https://github.com/lajoonpark/Sienna" target="_blank" rel="noopener">GitHub</a>
+      <a class="brand" href="#top" data-magnet data-paper="41"><span class="brand-disc"></span><span>Sienna</span></a>
+      <nav aria-label="Sections">
+        <a href="#alley" data-brush="ink" data-seed="11">The shop</a>
+        <a href="#racks" data-brush="ink" data-seed="12">The racks</a>
+        <a href="#player" data-brush="ink" data-seed="13">The player</a>
+        <a href="#more" data-brush="ink" data-seed="14">What else</a>
+        <a href="#download" data-brush="ink" data-seed="15">Download</a>
+        <a href="https://github.com/lajoonpark/Sienna" target="_blank" rel="noopener" data-brush="ink" data-seed="16">GitHub</a>
       </nav>
     </header>
 
     <main id="top">
-      <section class="hero" data-mode="0">
-        <p class="stamp" data-tilt>Free and open source</p>
+      <section class="hero" data-mode="float">
+        <p class="stamp" data-brush="ink" data-seed="21" data-tilt>Free and open source</p>
         <h1 data-letters>Sienna</h1>
         <p class="lede" data-words>Your YouTube Music, kept in a hand-painted record shop.</p>
         <div class="actions">
-          <a class="btn primary" href="#download" data-magnet>Get Sienna</a>
-          <a class="btn" href="https://github.com/lajoonpark/Sienna" target="_blank" rel="noopener" data-magnet>Read the code</a>
+          <a class="btn" href="#download" data-magnet data-brush="hot" data-hot="ink" data-seed="22">Get Sienna</a>
+          <a class="btn" href="https://github.com/lajoonpark/Sienna" target="_blank" rel="noopener" data-magnet data-brush="ink" data-seed="23">Read the code</a>
         </div>
         <p class="hint" data-words>Move the cursor through the records. Click to scatter them.</p>
       </section>
 
-      <section class="scene-section" id="shop" data-mode="1">
+      <section class="alley" id="alley" data-mode="alley" aria-label="The shop">
+        <div class="alley-stage">
+          <canvas id="alley-canvas" aria-hidden="true"></canvas>
+          <div class="alley-fallback" aria-hidden="true"></div>
+          <i class="bar top" aria-hidden="true"></i>
+          <i class="bar bottom" aria-hidden="true"></i>
+          <div class="alley-notes">
+            <article class="note-card" data-from="0" data-to="0.2" data-paper="51">
+              <p class="stamp" data-brush="ink" data-seed="52">The shop</p>
+              <h2>Down a Tuscan alley</h2>
+              <p>Sienna opens on a narrow street of brick and stucco houses. You pass under an arch, across a little piazza, to the record shop.</p>
+            </article>
+            <article class="note-card" data-from="0.24" data-to="0.48" data-paper="53">
+              <h3>Lemon trees by the door</h3>
+              <p>A record hangs over it for a sign, with crates of records under the windows. Everything you see is built in code, then painted in thick dabs of oil paint.</p>
+            </article>
+            <article class="note-card" data-from="0.52" data-to="0.72" data-paper="54">
+              <h3>The doors swing open</h3>
+              <p>They open on their own and you walk in. The sky outside is the sky where you are, and the lamps come on one by one at dusk.</p>
+            </article>
+            <article class="note-card" data-from="0.78" data-to="1.01" data-paper="55">
+              <h3>Eight sections, four floors</h3>
+              <p>A hall of crate tables under a gallery, a sunken lounge, the stacks, a glasshouse and a garden courtyard. Each of your shelves gets its own kind of rack.</p>
+            </article>
+          </div>
+          <p class="scroll-cue" aria-hidden="true">Scroll to walk in</p>
+        </div>
+      </section>
+
+      <section class="scene-section" id="racks" data-mode="rack">
         <div class="copy">
-          <p class="stamp" data-tilt>The shop</p>
+          <p class="stamp" data-brush="ink" data-seed="31" data-tilt>The racks</p>
           <h2 data-letters>Flip through your shelves</h2>
-          <p data-words>You walk down a Tuscan alley and into the shop. Your Home shelves and your library are racks of records, in eight sections over four floors.</p>
-          <p data-words>Hover a record and it comes out toward you with a paper name tag. Try it on the rack below.</p>
+          <p data-words>Your Home shelves and your library are racks of records, each record in its own painted sleeve.</p>
+          <p data-words>Run the cursor along the crate below. The record under it lifts out with a neighbour each side, wearing a paper name tag. Click one to play it.</p>
         </div>
-        <div class="rack-tag" aria-hidden="true"><span class="rack-tag-title"></span><span class="rack-tag-sub"></span></div>
+        <div class="rack-tag" aria-hidden="true" data-paper="33"><span class="rack-tag-title"></span><span class="rack-tag-sub"></span></div>
       </section>
 
-      <section class="scene-section" id="player" data-mode="2">
+      <section class="scene-section" id="player" data-mode="player">
         <div class="copy narrow">
-          <p class="stamp" data-tilt>The suitcase player</p>
+          <p class="stamp" data-brush="ink" data-seed="35" data-tilt>The suitcase player</p>
           <h2 data-letters>Drop the needle</h2>
-          <p data-words>Pick a record and its vinyl flies out of the sleeve and lands on a little suitcase record player. The tonearm creeps in as the song plays.</p>
-          <p data-words>Drag the record to scrub, or click it to pause.</p>
-          <button class="player-tag" type="button" data-tilt aria-label="Play or pause the demo record">
-            <span class="player-state">Playing</span>
-            <span class="player-time">0:10 / 1:30</span>
-            <span class="player-line"><i></i></span>
-          </button>
+          <p data-words>Pick a record and its vinyl slides out of the sleeve and flies onto a little suitcase record player. The tonearm creeps in as the song plays.</p>
+          <p data-words>Drag the record to scrub, turn the knob, or press its buttons.</p>
         </div>
       </section>
 
-      <section class="features" id="more" data-mode="3">
-        <p class="stamp" data-tilt>What else</p>
+      <section class="features" id="more" data-mode="edge">
+        <p class="stamp" data-brush="ink" data-seed="37" data-tilt>What else</p>
         <h2 data-letters>Small things, painted by hand</h2>
 
         <div class="cards">
-          <article class="card wide" data-tilt>
+          <article class="card wide" data-tilt data-paper="61">
             <h3>The sky follows your clock</h3>
-            <p data-words>The sky outside the shop is the sky where you are, and the lanterns come on one by one at dusk. This page does the same. Drag the hour to see it.</p>
+            <p data-words>The sky outside the shop is the sky where you are, and the lanterns come on one by one at dusk. This page does the same, the shop above included. Drag the hour to see it.</p>
             <div class="lanterns" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
             <label class="clock">
               <span class="clock-time">12:00</span>
               <input type="range" min="0" max="24" step="0.05" value="12" aria-label="Hour of the day" />
-              <button type="button" class="chip" data-clock-now>Back to now</button>
+              <button type="button" class="chip" data-clock-now data-brush="track" data-hot="hot" data-seed="62">Back to now</button>
             </label>
           </article>
 
-          <article class="card" data-tilt>
+          <article class="card" data-tilt data-paper="63">
             <h3>A mini player at your cursor</h3>
             <p data-words>Open the suitcase from any app, without opening the shop. It closes when the cursor leaves it.</p>
-            <p class="keys"><kbd data-key="Control">Ctrl</kbd><kbd data-key="Alt">Alt</kbd><kbd data-key="k">K</kbd></p>
+            <p class="keys"><kbd data-key="Control" data-brush="track" data-hot="hot" data-seed="71">Ctrl</kbd><kbd data-key="Alt" data-brush="track" data-hot="hot" data-seed="72">Alt</kbd><kbd data-key="k" data-brush="track" data-hot="hot" data-seed="73">K</kbd></p>
           </article>
 
-          <article class="card" data-tilt>
+          <article class="card" data-tilt data-paper="64">
             <h3>Search without leaving the keys</h3>
-            <p data-words>Songs, albums, playlists and artists. Albums and playlists fan open into records.</p>
-            <p class="keys"><kbd data-key="Control">Ctrl</kbd><kbd data-key="Alt">Alt</kbd><kbd data-key="j">J</kbd></p>
+            <p data-words>Songs, albums, playlists and artists. Songs slide out of the suitcase drawer; albums and playlists fan open into records.</p>
+            <p class="keys"><kbd data-key="Control" data-brush="track" data-hot="hot" data-seed="74">Ctrl</kbd><kbd data-key="Alt" data-brush="track" data-hot="hot" data-seed="75">Alt</kbd><kbd data-key="j" data-brush="track" data-hot="hot" data-seed="76">J</kbd></p>
           </article>
 
-          <article class="card" data-tilt>
+          <article class="card" data-tilt data-paper="65">
             <h3>Keeps nothing about you</h3>
             <p data-words>No tracking and no background update checks. Discord Rich Presence is off until you turn it on.</p>
           </article>
 
-          <article class="card" data-tilt>
+          <article class="card" data-tilt data-paper="66">
             <h3>Runs cool</h3>
             <p data-words>Once the shop is still it stops redrawing the room, and it lowers its sharpness when the computer warms up.</p>
           </article>
 
-          <article class="card" data-tilt>
+          <article class="card" data-tilt data-paper="67">
             <h3>Yours to read and change</h3>
             <p data-words>Every line is public under the MIT license. It makes no money.</p>
             <p><a class="ink-link" href="https://github.com/lajoonpark/Sienna" target="_blank" rel="noopener">lajoonpark/Sienna on GitHub</a></p>
@@ -111,18 +136,27 @@
         </div>
       </section>
 
-      <section class="download" id="download" data-mode="4">
-        <p class="stamp" data-tilt>Not released yet</p>
+      <section class="download" id="download" data-mode="ring">
+        <p class="stamp" data-brush="ink" data-seed="81" data-tilt>Not released yet</p>
         <h2 data-letters>Take a record home</h2>
         <p class="lede" data-words>Sienna is still being painted. The downloads open here when the first release is out.</p>
         <div class="actions">
-          <button class="btn primary dl" type="button" aria-disabled="true" data-magnet data-os="macOS">macOS</button>
-          <button class="btn primary dl" type="button" aria-disabled="true" data-magnet data-os="Windows">Windows</button>
-          <button class="btn primary dl" type="button" aria-disabled="true" data-magnet data-os="Linux">Linux</button>
+          <button class="btn dl" type="button" aria-disabled="true" data-magnet data-os="macOS" data-brush="hot" data-hot="ink" data-seed="82">macOS<span class="soon" data-brush="mustard" data-seed="85">soon</span></button>
+          <button class="btn dl" type="button" aria-disabled="true" data-magnet data-os="Windows" data-brush="hot" data-hot="ink" data-seed="83">Windows<span class="soon" data-brush="mustard" data-seed="86">soon</span></button>
+          <button class="btn dl" type="button" aria-disabled="true" data-magnet data-os="Linux" data-brush="hot" data-hot="ink" data-seed="84">Linux<span class="soon" data-brush="mustard" data-seed="87">soon</span></button>
         </div>
         <p class="note" role="status" aria-live="polite"></p>
       </section>
     </main>
+
+    <div class="caption" aria-label="Now playing">
+      <div class="cap" data-paper="61">
+        <div class="t">Fig Echoes</div>
+        <div class="a">Sienna Lane</div>
+        <div class="bar" role="slider" tabindex="0" aria-label="Playback position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+        <div class="meta"><span class="time">0:00 / 0:00</span><span class="tools"></span></div>
+      </div>
+    </div>
 
     <footer>
       <p data-words>Sienna is an unofficial app, not affiliated with YouTube or Google.</p>

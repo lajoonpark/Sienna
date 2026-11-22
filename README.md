@@ -169,9 +169,18 @@ archive/swift-prototype/    shelved early Swift macOS prototype (not part of the
 [`app/README.md`](app/README.md) has the shared UI kit, revamp phases, rendering, performance,
 and dev-flag details.
 
-The landing page in `site/` is a standalone Vite + Three.js page with its own painted sky, a
-drifting field of vinyls you can brush and scatter with the cursor, and a demo rack and player.
-Run it with `cd site && npm install && npm run dev`, and test it with `npm test`.
+The landing page in `site/` is a standalone Vite + Three.js page painted the way the app is: it
+carries ports of the app's oil-dab painter (`site/src/paint/`: brush dabs, the cover painter, the
+suitcase textures, run in a worker), its torn paper and brush-plate words (`site/src/ui/`), and its
+suitcase player (`site/src/suitcase/`). Scrolling down the page, 24 painted records drift about
+(brush and scatter them with the cursor), lift away for a pinned section that walks down a live,
+lighter rebuild of the Tuscan alley into the shop with the app's intro camera move
+(`site/src/alley/`, lit by the visitor's clock), slip one by one into their painted sleeves in a
+crate-table rack you can hover through like the app's, send the picked record flying onto the
+suitcase player (its buttons, knob and record work), and finally slide out of their sleeves into a
+ring. `site/src/collide.js` keeps records, sleeves and the case from ever passing through each
+other. `?hour=20.5` freezes the clock. Run it with `cd site && npm install && npm run dev`, and
+test it with `npm test`.
 
 ## Develop & Package
 
