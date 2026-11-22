@@ -8,12 +8,12 @@ import { windowUnit, doorUnit, balcony, wallLantern, eaves, drainpipe, pottedPla
 import { registerLamp, glowMesh } from './env.js';
 import { scooter, bicycle, cafeSet, crate, stall, chalkboard, bench, lampPost, stringLights, washingLine, bunting } from './props.js';
 import { stickerTexture } from './textures.js';
-import { FONT, onLettering } from './style.js';
 import { toon, keepSharp, glass as flagGlass } from './materials.js';
 import { rng } from './rand.js';
 
 export const STREET_HALF = 3.4;
 const ALLEY = { z0: 4.6, z1: 28 };
+const PREVIEW_REAR = 21.5; // the intro starts at z 21.6, already facing down the alley
 const PIAZZA_HALF = 5.4;
 const SHOP_W = PIAZZA_HALF * 2;
 const DOOR = { w: 2.0, h: 3.0 }; // the door leaves; an arched fanlight sits above
@@ -159,7 +159,7 @@ function house(kit, M, spec) {
 }
 
 // A row of houses along one side of the alley, from z0 to z1. side: -1 left (x<0), +1 right.
-function row(kit, root, side, z0, z1, seed) {
+function row(kit, root, side, z0, z1, seed, rearLimit = Infinity) {
   const r = rng(seed);
   let z = z0;
   let i = 0;
@@ -172,6 +172,8 @@ function row(kit, root, side, z0, z1, seed) {
   }
   const houses = [];
   for (const [zs, w] of widths) {
+    // Keep the full row's widths so the houses in front of the camera don't shift.
+    if (zs >= rearLimit) break;
     const set = (r() - 0.5) * 0.16;
     const M = side < 0
       ? frame([-STREET_HALF + set, 0, zs + w], [0, 0, -1], [1, 0, 0])
@@ -195,7 +197,7 @@ function row(kit, root, side, z0, z1, seed) {
 
 // The Sienna shop: brick ground floor with two arched display windows and an arched door,
 // stucco above with a balcony. Faces +z at z = 0.
-function shopFront(kit, root) {
+function shopFront(kit, root, signFont, onLettering) {
   const M = frame([-PIAZZA_HALF, 0, 0], [1, 0, 0], [0, 0, 1]);
   const w = SHOP_W, cx = w / 2, h = rows(9.4);
   const top = rows(4.9);
@@ -261,8 +263,8 @@ function shopFront(kit, root) {
 
   // sign board above the door, sticker lettering in the app's cursive
   blk(kit, M, cx, top - 0.42, 0.04, 3.6, 0.62, 0.08, '#3f6e6a');
-  const signTex = stickerTexture('Sienna', { w: 1024, h: 256, size: 200, font: () => FONT });
-  onLettering(signTex, signTex.redraw);
+  const signTex = stickerTexture('Sienna', { w: 1024, h: 256, size: 200, font: signFont });
+  onLettering?.(signTex, signTex.redraw);
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 0.82), keepSharp(new THREE.MeshBasicMaterial({ map: signTex, alphaTest: 0.5 })) /* cut out, so it can flag itself sharp */);
   sign.applyMatrix4(mul(M, trs(cx, top - 0.4, 0.1, 0, 0, -0.03)));
   meshes.push(sign);
@@ -323,17 +325,17 @@ function shopFront(kit, root) {
   return leaves;
 }
 
-export function buildStreet() {
+export function buildStreet({ preview = false, signFont = '"Amatic SC", cursive', onLettering } = {}) {
   const root = new THREE.Group();
   const kit = createKit();
 
   // paving: alley and piazza
-  root.add(flagstones(kit, { x0: -STREET_HALF, x1: STREET_HALF, z0: ALLEY.z0 - 0.2, z1: ALLEY.z1 + 2, seed: 11 }));
+  root.add(flagstones(kit, { x0: -STREET_HALF, x1: STREET_HALF, z0: ALLEY.z0 - 0.2, z1: preview ? PREVIEW_REAR + 2 : ALLEY.z1 + 2, seed: 11 }));
   root.add(flagstones(kit, { x0: -PIAZZA_HALF, x1: PIAZZA_HALF, z0: -0.2, z1: ALLEY.z0, seed: 12, gutter: false, pal: PALETTES.rose }));
 
   // houses on both sides of the alley
-  row(kit, root, -1, ALLEY.z0, ALLEY.z1, 3);
-  row(kit, root, 1, ALLEY.z0, ALLEY.z1, 4);
+  row(kit, root, -1, ALLEY.z0, ALLEY.z1, 3, preview ? PREVIEW_REAR : Infinity);
+  row(kit, root, 1, ALLEY.z0, ALLEY.z1, 4, preview ? PREVIEW_REAR : Infinity);
 
   // piazza: side houses and the ends of the alley rows facing it
   for (const s of [-1, 1]) {
@@ -374,7 +376,7 @@ export function buildStreet() {
   // street life
   scooter(kit, trs(2.5, 0, 15.6, 0, -0.25, 0), '#d1342c');
   scooter(kit, trs(2.55, 0, 8.2, 0, -0.3, 0), '#e8d6b0');
-  scooter(kit, trs(2.45, 0, 22.5, 0, 2.9, 0), '#6a9ab0');
+  if (!preview) scooter(kit, trs(2.45, 0, 22.5, 0, 2.9, 0), '#6a9ab0');
   stall(kit, trs(-2.3, 0, 16.2, 0, Math.PI / 2, 0), 61, '#3f6e6a');
   bench(kit, trs(2.75, 0, 18.2, 0, -Math.PI / 2, 0));
   pottedPlant(kit, new THREE.Matrix4(), 2.85, 0, 19.4, 1.2, 70, 'lemon');
@@ -394,7 +396,7 @@ export function buildStreet() {
   bunting(kit, [-STREET_HALF, 5.6, 9.6], [STREET_HALF, 5.8, 9.9], 7);
   bunting(kit, [-STREET_HALF, 5.8, 15.5], [STREET_HALF, 5.6, 15.1], 8);
 
-  const leaves = shopFront(kit, root);
+  const leaves = shopFront(kit, root, signFont, onLettering);
   kit.flush(root);
   return { root, leaves };
 }

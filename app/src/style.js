@@ -1,9 +1,7 @@
 import { settings } from './settings.js';
 import { FONTS } from './fonts.js';
 
-// Which look to render. Watercolour is the look; `?style=flat` shows the old flat toon look for comparison.
-const style = new URLSearchParams(location.search).get('style') || '';
-export const WATERCOLOUR = style.toLowerCase() !== 'flat';
+export { WATERCOLOUR } from './look.js';
 
 // Hand lettering for buttons, tags and the shop sign. Settings > Lettering picks one (key 'font');
 // the faces and their sizing are in fonts.js. The choice changes LIVE, without a reload:

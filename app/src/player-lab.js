@@ -15,7 +15,7 @@
 import * as THREE from 'three';
 import { buildStreet } from './street.js';
 import { buildShop } from './shop.js';
-import { WATERCOLOUR, FONT } from './style.js';
+import { WATERCOLOUR, FONT, onLettering } from './style.js';
 import { createWatercolour, renderOverlay } from './watercolour.js';
 import { createSky } from './sky.js';
 import { createTimeOfDay } from './timeofday.js';
@@ -61,7 +61,7 @@ if (!bare) {
   scene.add(sun, sun.target);
   const sky = createSky();
   scene.add(sky.dome);
-  scene.add(buildStreet().root);
+  scene.add(buildStreet({ signFont: () => FONT, onLettering }).root);
   scene.add(buildShop());
   timeOfDay = createTimeOfDay({ scene, sun, hemi, sky });
 }

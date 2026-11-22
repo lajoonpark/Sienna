@@ -173,14 +173,13 @@ function loadAlley() {
   if (alley || alleyLoading || document.body.classList.contains('no-webgl')) return;
   alleyLoading = true;
   import('./alley/scene.js').then(({ createAlley }) => {
-    try {
-      alley = createAlley($('#alley-canvas'), { reduced, covers: scene?.covers });
-      alley.setHour(manualHour ?? hourNow());
-      alley.setProgress(alleyP, true);
-    } catch (err) {
-      console.warn('Sienna: the shop could not be drawn', err);
-      stage.classList.add('no-3d');
-    }
+    alley = createAlley($('#alley-canvas'), { reduced });
+    alley.setHour(manualHour ?? hourNow());
+    alley.setProgress(alleyP, true);
+    updateAlley();
+  }).catch((err) => {
+    console.warn('Sienna: the shop could not be drawn', err);
+    stage.classList.add('no-3d');
   });
 }
 function updateAlley() {

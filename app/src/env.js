@@ -71,25 +71,29 @@ const flicker = (t, o) => { const f = Math.sin(t * 37 + o * 50) * Math.sin(t * 1
 
 // Called every frame by the time-of-day system.
 // lampsOn: 0..1 how far through the switch-on wave we are; t: seconds (for flicker).
+// Returns whether a lamp is still flickering, for renderers that otherwise idle.
 export function updateLamps(lampsOn, t) {
+  let flickering = false;
   for (const l of lamps) {
     // each lamp has its own moment inside the wave, then warms up over ~0.08 of it with a flicker
     const local = THREE.MathUtils.clamp((lampsOn - l.order * 0.8) / 0.12, 0, 1);
     let k = local;
-    if (!l.steady && local > 0 && local < 1) {
-      k = local * flicker(t, l.order);
-    }
+    let warming = !l.steady && local > 0 && local < 1;
+    if (warming) k = local * flicker(t, l.order);
     // intro wake-up (see lampWake)
     if (lampWake.camZ !== null && lampZ(l) !== null && k > 0) {
       // by distance, not by a clock, so a screenshot at any second shows the same thing
       const w = THREE.MathUtils.clamp((WAKE_DIST - (lampWake.camZ - l.z)) / WAKE_RAMP, 0, 1);
       k *= w < 1 ? w * (l.steady ? 1 : flicker(t, l.order)) : 1;
+      warming = w > 0 && (warming || (!l.steady && w < 1));
     }
+    flickering ||= warming;
     l.level = k;
     for (const g of l.glass) g.color.copy(LAMP_OFF).lerp(LAMP_ON, k);
     for (const g of l.glows) { g.visible = k > 0.01; g.material.opacity = g.userData.glowOpacity * k; }
     if (l.light) l.light.intensity = l.baseIntensity * k;
   }
+  return flickering;
 }
 
 // lit: 0..1 evening fill (how many windows are on), late: 0..1 how far into the night (turning off).

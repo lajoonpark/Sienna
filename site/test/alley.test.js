@@ -1,13 +1,47 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cameraAt, DOOR_OPEN, clockAt, T, HOME } from '../src/alley/path.js';
+import { createServer } from 'vite';
 import { sunAt } from '../src/alley/sun.js';
+
+// Match the site's resolution of Three.js even when only site/ has been installed.
+const vite = await createServer({ server: { middlewareMode: true, ws: false } });
+let path, buildShop;
+try {
+  path = await vite.ssrLoadModule('/src/alley/path.js');
+  ({ buildShop } = await vite.ssrLoadModule('../app/src/shop.js'));
+} finally {
+  await vite.close();
+}
+const { cameraAt, DOOR_OPEN, clockAt, T, HOME } = path;
+
+test('the preview keeps the hall and lounge but builds fewer instances than the full shop', (t) => {
+  const context = {
+    createRadialGradient: () => ({ addColorStop() {} }),
+    fillRect() {},
+  };
+  globalThis.document = { createElement: () => ({ getContext: () => context }) };
+  t.after(() => { delete globalThis.document; });
+
+  const preview = buildShop({ preview: true });
+  const full = buildShop();
+  assert.ok(preview.getObjectByName('hall'));
+  assert.deepEqual(Object.keys(preview.userData.stationFurniture), ['gallery', 'cubby', 'lounge']);
+  for (const id of ['stacks', 'libPlaylists', 'libAlbums', 'courtyard']) {
+    assert.ok(full.userData.stationFurniture[id], `the full shop still has ${id}`);
+  }
+  const instances = (root) => {
+    let count = 0;
+    root.traverseVisible((o) => { if (o.isInstancedMesh) count += o.count; });
+    return count;
+  };
+  assert.ok(instances(preview) < instances(full) * 0.7, 'omitted rooms are not allocated for the web preview');
+});
 
 test('the walk starts in the alley behind the stall and ends inside the shop', () => {
   const a = cameraAt(0).pos;
   assert.ok(a.z > 20 && a.y < 1, `starts low in the alley (${a.z.toFixed(1)}, ${a.y.toFixed(2)})`);
   const b = cameraAt(0.9).pos;
-  assert.ok(Math.abs(b.z - HOME.pos[2]) < 0.05 && Math.abs(b.x) < 0.05, 'reaches the spot just inside the door');
+  assert.ok(b.distanceTo(HOME.pos) < 0.05, 'reaches the spot just inside the door');
   assert.ok(cameraAt(1).pos.z < -0.55, 'and stays inside the hall');
 });
 

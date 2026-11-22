@@ -173,9 +173,9 @@ function steps(kit, x0, x1, z0, run, from, to) {
 }
 
 // ---- the sunken lounge -----------------------------------------------------------------------------
-function lounge(kit, out) {
+function lounge(kit, out, openStacks) {
   const L = LOUNGE, y = L.y, zc = -13;
-  buildLoungeCore(kit, out);
+  buildLoungeCore(kit, out, { openStacks });
   steps(kit, -VX, VX, L.z0, (L.z0 - L.floorZ) / 2, 0, y);
   // the record wall on the left (the wall rack replaces it): sleeves faced out in a grid
   stationFurniture('lounge', (k) => {
@@ -404,7 +404,7 @@ function garden(root, kit, out) {
   stationFurniture('courtyard', (k) => { for (let q = 0; q < 3; q++) crateOfRecords(k, trs(3.6, q * 0.3, -26.4, 0, 0.1 * q + 2.7, 0), 0.7, 0.55, 203 + q); });
 }
 
-export function buildShop() {
+export function buildShop({ preview = false } = {}) {
   const root = new THREE.Group();
   STATION_FURNITURE = {};
   root.userData.stationFurniture = STATION_FURNITURE;
@@ -485,11 +485,16 @@ export function buildShop() {
   // belongs to the lounge, so it is built with the rooms beyond
   crossWall(kit, out, HALL.z1, HALL.x * 2, HALL.spring, VX * 2, VSPRING, { type: 'arch', y: 0, w: 4.0, h: 4.4, ring: 0.3 }, 31, { y0B: LOUNGE.y });
 
-  lounge(kit, out);
-  stacks(root, kit, out);
-  libraryRoom(root, kit, out);
-  glasshouse(kit, out);
-  garden(root, kit, out);
+  lounge(kit, out, !preview);
+  if (preview) {
+    // The walk ends in the hall. Keep the view through the lounge window but don't build the rooms beyond it.
+    buildCourtyardVista(root, kit, out);
+  } else {
+    stacks(root, kit, out);
+    libraryRoom(root, kit, out);
+    glasshouse(kit, out);
+    garden(root, kit, out);
+  }
 
   hk.flush(hall);
   ho.forEach((m) => (m.isLight ? root : hall).add(m));

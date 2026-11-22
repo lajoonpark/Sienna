@@ -5,7 +5,7 @@ import { lampWake } from './env.js';
 import { buildShop, streetHidden, hallHidden, inHall } from './shop.js';
 import { updateLod } from './kit.js';
 import { createLightSlots } from './lightslots.js';
-import { WATERCOLOUR } from './style.js';
+import { WATERCOLOUR, FONT, onLettering } from './style.js';
 import { createWatercolour, renderOverlay } from './watercolour.js';
 import { createSky } from './sky.js';
 import { toon, crisp, unpinned, GLOW_LAYER } from './materials.js';
@@ -14,7 +14,7 @@ import { createRack } from './racks/index.js';
 import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
 import { warmUp } from './warmup.js';
 import { STATIONS, HOME, assignShelves } from './stations.js';
-import { createNav, AT_HOME, paintViews, introBars, BASE_FOV } from './nav.js';
+import { createNav, AT_HOME, paintViews, introBars, BASE_FOV, DOOR_SWING } from './nav.js';
 import { createMenu } from './menu.js';
 import { createSearch } from './search.js';
 import { createSettingsPanel } from './settings-panel.js';
@@ -139,7 +139,7 @@ function leanShadowMap() {
 const sky = createSky();
 scene.add(sky.dome);
 
-const street = buildStreet();
+const street = buildStreet({ signFont: () => FONT, onLettering });
 const introLight = createIntroLight(street.root); // intro-only door spill, sun beams, grade (introlight.js)
 scene.add(street.root);
 // The street cannot be seen from the stacks, the glasshouse, the terrace or the garden (shop.js: walls all
@@ -943,7 +943,6 @@ addEventListener('wheel', (e) => {
 const lookM = new THREE.Matrix4();
 const UP = new THREE.Vector3(0, 1, 0);
 const pinnedPose = pinned ? { pos: new THREE.Vector3(...pinned.slice(0, 3)), target: new THREE.Vector3(...pinned.slice(3, 6)) } : null;
-const DOOR_OPEN = THREE.MathUtils.degToRad(105);
 
 let lastT = 0;
 let hoverOn = -1;
@@ -1004,7 +1003,7 @@ function frame(t, dtOverride, draw = true) {
   if (shop.userData.hall && shop.userData.hall.visible === hideHall) shop.userData.hall.visible = !hideHall;
   // Matrix4.lookAt uses the camera convention (looks down -z); Object3D.lookAt on a group would face the other way.
   rig.quaternion.setFromRotationMatrix(lookM.lookAt(c.pos, c.target, UP));
-  for (const { pivot, side } of street.leaves) pivot.rotation.y = side * -nav.doorOpen(t) * DOOR_OPEN;
+  for (const { pivot, side } of street.leaves) pivot.rotation.y = side * -nav.doorOpen(t) * DOOR_SWING;
   // the tilt holds while a rack record is up: turning the camera under it would slide the record across
   // the rack (keepUnderCursor keeps it on the spot where the hover began), as if the cursor were carrying
   // it. The album spread hangs in the camera's frame, so its records ride along and the tilt keeps going.

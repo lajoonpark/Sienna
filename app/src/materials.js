@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { toonGradient } from './textures.js';
-import { WATERCOLOUR } from './style.js';
+import { WATERCOLOUR } from './look.js';
 import { rng } from './rand.js';
 
 // Watercolour: fewer, lighter glaze layers (shadows in watercolour are thin washes, never near-black).

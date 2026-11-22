@@ -165,11 +165,12 @@ export function buildListeningTable(kit, T = LISTENING_TABLE) {
 // Lounge interior core shared by shop.js and mini.js.
 // capOpenings closes the adjacent hall and stacks passages invisibly behind/beside the lounge so sunlight
 // in mini.html enters from the courtyard window and sky rather than flooding behind an unbuilt hall.
-export function buildLoungeCore(kit, out, { capOpenings = false } = {}) {
+export function buildLoungeCore(kit, out, { capOpenings = false, openStacks = true } = {}) {
   const L = LOUNGE, y = L.y, I = new THREE.Matrix4();
   const { vx, spring } = LOUNGE_VAULT;
   out.push(cotto(kit, -vx, vx, L.floorZ, L.z1, 2, y));
-  sideWalls(kit, out, vx, L.z0, L.z1, spring, { y0: y, holes: [{ side: 1, z: L.arch.z, w: L.arch.w, h: L.arch.h, depth: STACKS.x0 - vx }] });
+  const holes = openStacks ? [{ side: 1, z: L.arch.z, w: L.arch.w, h: L.arch.h, depth: STACKS.x0 - vx }] : [];
+  sideWalls(kit, out, vx, L.z0, L.z1, spring, { y0: y, holes });
   out.push(barrelVault(kit, { spring, r: vx, z0: L.z0, z1: L.z1, seed: 40 }));
   crossWall(kit, out, L.z1, vx * 2, spring, 0, 0, { type: 'arch', y: LOUNGE_WINDOW.y, w: LOUNGE_WINDOW.w, h: LOUNGE_WINDOW.h, ring: 0.24 }, 50, { y0F: y, depth: LOUNGE_WINDOW.deep });
   buildLoungeWindow(kit);

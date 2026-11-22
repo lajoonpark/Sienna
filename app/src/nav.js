@@ -13,6 +13,7 @@ export const AT_HOME = -1;
 // sign, the doors swing open, through them to HOME. enter = when the camera reaches HOME.
 export const T = { doorStart: 6.7, doorEnd: 8.4, enter: 10.0 };
 export const BASE_FOV = 58; // the camera's lens everywhere but the intro (main.js builds it with this)
+export const DOOR_SWING = THREE.MathUtils.degToRad(105);
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const clamp01 = (v) => clamp(v, 0, 1);
@@ -104,7 +105,7 @@ function shotCurves(home) {
   return c;
 }
 
-function introPose(t, home, out) {
+export function introPose(t, home, out) {
   const c = shotCurves(home);
   // even speed along the path (arc length), then the curve's own parameter for look-at and fov
   const u = c.pos.getUtoTmapping(shareAt(t));
@@ -118,6 +119,8 @@ function introPose(t, home, out) {
   out.target.y += (Math.sin(t * 1.3 + 2) * 0.035 + Math.sin(t * 2.9) * 0.012) * hand;
   return out;
 }
+
+export const introDoorOpen = (t) => easeInOut(clamp01((t - T.doorStart) / (T.doorEnd - T.doorStart)));
 
 // 0..1: the cinema bars (painted letterbox) during the intro; they slide away as the camera arrives
 export function introBars(t) { return 1 - smooth01((t - 8.4) / 1.6); }
@@ -615,9 +618,8 @@ export function createNav({ home, stations, startAt = null }) {
   // 0..1: how far the shop door is open. It keeps opening if the intro is skipped.
   function doorOpen(t) {
     if (skipT !== null && skipT < 0) return 1;
-    const base = (x) => easeInOut(clamp01((x - T.doorStart) / (T.doorEnd - T.doorStart)));
-    if (skipT === null) return base(t);
-    return lerp(base(skipT), 1, easeInOut(clamp01((t - skipT) / 0.6)));
+    if (skipT === null) return introDoorOpen(t);
+    return lerp(introDoorOpen(skipT), 1, easeInOut(clamp01((t - skipT) / 0.6)));
   }
 
   return {
