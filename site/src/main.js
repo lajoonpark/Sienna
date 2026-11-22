@@ -126,6 +126,7 @@ paintSky();
 setInterval(paintSky, 30000);
 
 // Pointer
+let scrubbing = false;
 const interactive = 'a, button, input, kbd, .lanterns i, .stamp';
 addEventListener('pointermove', (e) => {
   cursor.classList.add('on');
@@ -139,10 +140,13 @@ document.addEventListener('pointerleave', () => { cursor.classList.remove('on');
 addEventListener('pointerdown', (e) => {
   cursor.classList.add('down');
   if (e.target.closest(`${interactive}, .card`)) return;
-  if (scene?.press(e.clientX, e.clientY)) e.preventDefault();
+  if (scene?.press(e.clientX, e.clientY)) { scrubbing = true; e.preventDefault(); }
 });
-addEventListener('pointerup', () => { cursor.classList.remove('down'); scene?.release(); });
-addEventListener('pointercancel', () => scene?.release());
+const endScrub = () => { scrubbing = false; scene?.release(); };
+addEventListener('pointerup', () => { cursor.classList.remove('down'); endScrub(); });
+addEventListener('pointercancel', endScrub);
+// A finger dragging the record must not scroll the page out from under it.
+addEventListener('touchmove', (e) => { if (scrubbing) e.preventDefault(); }, { passive: false });
 $('.player-tag').addEventListener('click', () => scene?.togglePlay());
 
 // Cards lean toward the cursor; buttons are pulled a little toward it.

@@ -392,6 +392,9 @@ export function createScene(canvas, { count = 26, onHover = () => {}, onRack = (
       if (delta < -Math.PI) delta += Math.PI * 2;
       scrub.angle = ang;
       scrub.moved += Math.abs(delta);
+      scrub.travel += Math.hypot(clientX - scrub.x, clientY - scrub.y);
+      scrub.x = clientX;
+      scrub.y = clientY;
       disks[0].spin += delta;
       song.progress = (((song.progress - (delta / (Math.PI * 2)) * 0.1) % 1) + 1) % 1;
     }
@@ -405,7 +408,7 @@ export function createScene(canvas, { count = 26, onHover = () => {}, onRack = (
     const hit = Math.hypot((d0.ndc.x - pointer.x) * camera.aspect, d0.ndc.y - pointer.y) < d0.ndcR;
     if (onPlayerDisk && hit) {
       const c = toPx(d0.ndc);
-      scrub = { angle: Math.atan2(-(clientY - c.y), clientX - c.x), moved: 0 };
+      scrub = { angle: Math.atan2(-(clientY - c.y), clientX - c.x), moved: 0, travel: 0, x: clientX, y: clientY };
       return true;
     }
     burst();
@@ -414,7 +417,7 @@ export function createScene(canvas, { count = 26, onHover = () => {}, onRack = (
 
   function release() {
     if (!scrub) return;
-    if (scrub.moved < 0.06) song.playing = !song.playing;
+    if (scrub.moved < 0.06 && scrub.travel < 6) song.playing = !song.playing;
     scrub = null;
   }
 
