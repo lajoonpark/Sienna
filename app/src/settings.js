@@ -15,6 +15,7 @@ export const DEFAULTS = {
   autoCool: true,       // draw lighter while the computer is warm or frames are slow (quality.js)
   font: 'amatic',       // lettering, a key of FONTS in style.js (changes live, see style.js)
   fps: false,           // frame-rate readout in the corner (for perf reports)
+  miniAutoClose: true,  // the mini player shuts when the cursor leaves it (after it has been inside)
 };
 
 function load() {

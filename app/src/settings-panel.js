@@ -329,6 +329,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   settingRows(playbackPage, [
     { key: 'playOnArm', label: 'Start of a song', hint: 'Play when the arm touches the record and it spins, or straight away.', opts: [['When the arm lands', true], ['At once', false]] },
     ...(isMac ? [{ key: 'volumeMode', label: 'Volume control', hint: 'Control your Mac’s system volume, or keep Sienna’s volume separate from other apps.', opts: [['Mac system volume', 'system'], ['Sienna only', 'app']] }] : []),
+    { key: 'miniAutoClose', label: 'Mini player', hint: 'Shut the mini player when the cursor leaves it. It waits until the cursor has been over it first.', opts: [['Close on leave', true], ['Stay open', false]] },
     { key: 'discordRpc', label: 'Discord Rich Presence', hint: 'Opt-in: show your current track in a local Discord desktop app. Never contacts remote servers.', opts: [['Off', false], ['On', true]] },
   ], 61);
   if (music?.volumeMode && isMac) {
