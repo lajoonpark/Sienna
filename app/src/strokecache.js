@@ -29,11 +29,12 @@ function run(mode, fn) {
 
 // -> the saved strokes if they were baked from the same fingerprint, else the ones shipped with the app
 // (baked at build time by scripts/bake-strokes.mjs, if they match), else null
-export async function loadStrokes(fingerprint) {
+export async function loadStrokes(fingerprint, key = KEY) {
   try {
-    const rec = await run('readonly', (s) => s.get(KEY));
+    const rec = await run('readonly', (s) => s.get(key));
     if (rec && rec.fingerprint === fingerprint) return rec.state;
   } catch { /* no cache: try the shipped ones */ }
+  if (key !== KEY) return null;
   const shipped = await loadShipped(fingerprint);
   if (shipped) saveStrokes(fingerprint, shipped);
   return shipped;
@@ -54,6 +55,6 @@ async function loadShipped(fingerprint) {
     return fp === fingerprint ? state : null;
   } catch { return null; }
 }
-export function saveStrokes(fingerprint, state) {
-  return run('readwrite', (s) => s.put({ fingerprint, state, at: Date.now() }, KEY)).catch(() => {});
+export function saveStrokes(fingerprint, state, key = KEY) {
+  return run('readwrite', (s) => s.put({ fingerprint, state, at: Date.now() }, key)).catch(() => {});
 }

@@ -7,8 +7,10 @@ import { buildStreet } from '../../../app/src/street.js';
 import { buildShop } from '../../../app/src/shop.js';
 import { lampWake, updateLamps, updateWindows } from '../../../app/src/env.js';
 import { updateLod } from '../../../app/src/kit.js';
+import { WATERCOLOUR } from '../../../app/src/look.js';
 import { GLOW_LAYER } from '../../../app/src/materials.js';
 import { DOOR_SWING } from '../../../app/src/nav.js';
+import { createWatercolour } from '../../../app/src/watercolour.js';
 import { paintTexture } from '../paint/worker.js';
 import { clamp } from '../layout.js';
 import { cameraAt, DOOR_OPEN } from './path.js';
@@ -36,9 +38,13 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+const STROKE_VIEWS = [0, 0.15, 0.29, 0.43, 0.57, 0.7, 0.82, 0.9, 1];
+const PAINT_PIXELS = 1_000_000;
+
 export function createAlley(canvas, { reduced = false } = {}) {
-  const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  const renderPaint = WATERCOLOUR && new URLSearchParams(location.search).get('wc') !== '0';
+  const renderer = new WebGLRenderer({ canvas, antialias: !renderPaint, powerPreference: 'high-performance' });
+  const canPaint = renderPaint && renderer.extensions.has('EXT_color_buffer_float');
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFShadowMap;
   renderer.shadowMap.autoUpdate = false;
@@ -60,12 +66,15 @@ export function createAlley(canvas, { reduced = false } = {}) {
 
   const street = buildStreet({ preview: true });
   scene.add(street.root, buildShop({ preview: true }));
+  // Moving doors get the live undercoat, not dabs pinned where the hinges were baked.
+  for (const { pivot } of street.leaves) pivot.userData.noStrokes = true;
   scene.updateMatrixWorld();
   document.fonts?.load('700 200px "Amatic SC"').then(wake, () => {});
 
   const skyU = { uTop: { value: new Color() }, uHorizon: { value: new Color() }, uCloud: { value: new Color() }, uClouds: { value: 0 }, uStars: { value: 0 }, uTex: { value: null }, uHasTex: { value: 0 } };
   const sky = new Mesh(new SphereGeometry(110, 32, 16), new ShaderMaterial({ vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, uniforms: skyU, side: BackSide, depthWrite: false, fog: false }));
   sky.renderOrder = -10;
+  sky.userData.noStrokes = true;
   scene.add(sky);
   paintTexture('sky').then((c) => {
     const t = new CanvasTexture(c);
@@ -104,13 +113,16 @@ export function createAlley(canvas, { reduced = false } = {}) {
   const look = { x: 0, y: 0 }, lookT = { x: 0, y: 0 };
   const pose = { pos: new Vector3(), target: new Vector3(), fov: 38 };
   const side = new Vector3();
-  let doorWas = -1;
+  let doorWas = -1, painter = null;
 
   function resize() {
     const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    renderer.setPixelRatio(canPaint ? Math.min(dpr, 1, Math.sqrt(PAINT_PIXELS / (w * h))) : Math.min(dpr, 1.5));
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    painter?.setSize();
     wake();
   }
 
@@ -151,13 +163,26 @@ export function createAlley(canvas, { reduced = false } = {}) {
     lampWake.camZ = open < 1 ? camera.position.z : null;
     const flickering = updateLamps(lampsOn, time);
     updateLod(camera);
-    renderer.render(scene, camera);
+    if (painter) {
+      // The stage schedules only changed frames; the canvas need not preserve the previous buffer.
+      painter.invalidate();
+      painter.render(scene, camera, time);
+    } else renderer.render(scene, camera);
     if (shown !== target || Math.abs(lookT.x - look.x) > 1e-4 || Math.abs(lookT.y - look.y) > 1e-4 || (!reduced && flickering)) {
       raf = requestAnimationFrame(frame);
     }
   }
 
   resize();
+  if (canPaint) {
+    painter = createWatercolour(renderer, { isLight: () => true });
+    const views = STROKE_VIEWS.map((p) => {
+      const view = cameraAt(p);
+      return { ...view, fov: view.fov + 14 };
+    });
+    // Use only the scroll path and its own cache; never load the full app's packaged bake.
+    painter.bakeStrokesCached(scene, views, { cacheKey: 'site-alley', background: true }).then(wake);
+  }
   addEventListener('resize', resize);
   document.addEventListener('visibilitychange', () => { last = performance.now(); });
 

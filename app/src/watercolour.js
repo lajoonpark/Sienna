@@ -848,14 +848,18 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
   }
   // The shop's own views, at start: read back from the stroke cache (strokecache.js) when the shop is the
   // same as when they were placed, else placed now and kept for next time. -> resolves when they are in.
-  function bakeStrokesCached(world, views) {
+  function bakeStrokesCached(world, views, { cacheKey, background = false } = {}) {
     if (!brush || firstBake) { bakeStrokes(world, views); return Promise.resolve(); }
     strokeWorld = world;
     strokeViews.push(...views); // (so the first frame does not place strokes of its own meanwhile)
     const strokes = brush.strokes, fp = strokeFingerprint(world, views);
-    const done = loadStrokes(fp).then((state) => {
+    const done = loadStrokes(fp, cacheKey).then(async (state) => {
       if (brush?.strokes !== strokes) return; // rebuilt meanwhile: that placed them from strokeViews
-      if (!(state && strokes.load(state))) { strokes.bake(world, views); saveStrokes(fp, strokes.save()); }
+      if (!(state && strokes.load(state))) {
+        if (background) await strokes.bakeAsync(world, views);
+        else strokes.bake(world, views);
+        saveStrokes(fp, strokes.save(), cacheKey);
+      }
       if (EXPORT_STROKES) exported = packStrokes(fp, strokes.save()); // scripts/bake-strokes.mjs
       invalidate();
     }).catch(() => {}).finally(() => { firstBake = null; });

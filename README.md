@@ -176,6 +176,7 @@ suitcase player (`site/src/suitcase/`). Scrolling down the page, 24 painted reco
 (brush and scatter them with the cursor), lift away for a pinned section that walks down the app's
 actual Tuscan alley into the shop (`site/src/alley/`, lit by the visitor's clock). The preview builds
 the main hall and the view through the lounge window, but skips the rooms the camera never sees.
+It uses the app's oil-paint renderer and caches dabs placed along the scroll path in the browser.
 The records then slip one by one into their painted sleeves in a
 crate-table rack you can hover through like the app's, send the picked record flying onto the
 suitcase player (its buttons, knob and record work), and finally slide out of their sleeves into a
