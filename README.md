@@ -96,7 +96,10 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
   The shop and mini player share a paper now-playing tag with a seekable progress line and stamped
   controls with painted tooltips. The tag steps aside while a list, sheet or tour note is open.
 - **Mini player & System Tray.** Press **⌃⌥K** anywhere to open the suitcase at your cursor, without
-  opening the shop. Closing the shop window frees GPU memory while Sienna stays in the menu bar /
+  opening the shop. It also closes when the cursor leaves it, once the cursor has been over it —
+  a card that opens beside the cursor stays put until the cursor comes in and leaves again
+  (Settings > Playback > Mini player, on by default). Closing the shop window frees GPU memory
+  while Sienna stays in the menu bar /
   system tray (macOS, Windows, and Linux) with now-playing info and playback controls.
 - **Hardware media keys.** Play/Pause, Next, Previous, and Stop keys on keyboards and headphones work
   globally.
