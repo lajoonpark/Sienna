@@ -160,6 +160,7 @@ app/                        the Electron + Three.js app
   build/                    macOS entitlements for Electron packaging
   scripts/                  dev launcher, screenshot tool, end-to-end and behaviour checks
   test/                     unit tests
+site/                       the landing page at sienna.lajoonpark.com (Vite + Three.js, no Electron)
 Casks/sienna.rb             Homebrew Cask (auto-clears macOS quarantine via xattr)
 .github/workflows/          automated unsigned release builds (macOS, Linux, Windows)
 archive/swift-prototype/    shelved early Swift macOS prototype (not part of the app)
@@ -167,6 +168,10 @@ archive/swift-prototype/    shelved early Swift macOS prototype (not part of the
 
 [`app/README.md`](app/README.md) has the shared UI kit, revamp phases, rendering, performance,
 and dev-flag details.
+
+The landing page in `site/` is a standalone Vite + Three.js page with its own painted sky, a
+drifting field of vinyls you can brush and scatter with the cursor, and a demo rack and player.
+Run it with `cd site && npm install && npm run dev`, and test it with `npm test`.
 
 ## Develop & Package
 
