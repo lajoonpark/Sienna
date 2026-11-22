@@ -137,6 +137,15 @@ function openSienna() {
   win.focus();
 }
 
+// The global 'app' shortcut toggles the shop: a focused shop window closes (Sienna stays in the
+// tray, same as the red close button); anything else brings it forward.
+function toggleSienna() {
+  const open = win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused();
+  if (open) { win.close(); return; }
+  mini.close();
+  openSienna();
+}
+
 function buildAppMenu() {
   const mac = process.platform === 'darwin';
   const dev = !isPackaged();
@@ -321,7 +330,7 @@ if (!app.requestSingleInstanceLock()) {
     createPower({ send: (s) => sendShop('power:state', s), guarded });
     ipcMain.handle('strokes:shipped', guarded(() => fs.promises.readFile(path.join(__dirname, '..', 'strokes', 'shop.bin.gz')).then((b) => new Uint8Array(b)).catch(() => null)));
     createShortcuts(
-      { mini: () => mini.toggle(), app: () => { mini.close(); openSienna(); } },
+      { mini: () => mini.toggle(), app: toggleSienna },
       {
         trusted,
         windows: appWebContents,

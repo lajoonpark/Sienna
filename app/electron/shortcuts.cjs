@@ -1,6 +1,6 @@
 // The three keyboard shortcuts, kept in one place and saved to <userData>/shortcuts.json so they are known
 // before any page loads. Two are global (they work from any app): `mini` opens/closes the mini player,
-// `app` brings the full shop window forward. `search` is not global: each window (shop and mini) listens for
+// `app` brings the full shop window forward, or closes it while it has focus. `search` is not global: each window (shop and mini) listens for
 // it while it has focus (src/shortcuts.js). Settings > Shortcuts changes them (src/settings-panel.js).
 // Also registers hardware media keys (Play/Pause, Next, Previous, Stop) so keyboard/headphone controls work.
 // Values are Electron accelerators ('Control+Alt+K'); on macOS Alt is Option.

@@ -126,7 +126,7 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
 | Key | Action |
 | --- | --- |
 | `⌃⌥K` (`Ctrl+Alt+K` on Windows/Linux) | Open or close the mini player, from any app |
-| `⌃⌥L` (`Ctrl+Alt+L`) | Bring up the full app, from any app |
+| `⌃⌥L` (`Ctrl+Alt+L`) | Bring up the full app — or close it while it's focused — from any app |
 | `⌃⌥J` (`Ctrl+Alt+J`) | Search (Songs / Albums / Playlists / Artists; `Tab` switches filter) |
 | `Space` / Media Play-Pause | Play / pause |
 | `←` `→` / Media Prev-Next | Back / skip |

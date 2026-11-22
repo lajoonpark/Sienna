@@ -461,7 +461,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
         used.add(name);
         ticks[name]?.classList.add('on');
       };
-      for (const [name, label] of [['mini', 'Mini player, over any app'], ['search', 'Search'], ['app', 'Back to the shop']]) {
+      for (const [name, label] of [['mini', 'Mini player, over any app'], ['search', 'Search'], ['app', 'Shop, open or close']]) {
         keyWords[name] = float(shortcuts.label(name), () => change(name), {
           extra: (w) => {
             const n = Object.assign(document.createElement('span'), { className: 'tr-kname', textContent: label });
