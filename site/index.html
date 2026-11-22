@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sienna: your music in a hand-painted record shop</title>
+    <meta name="description" content="Sienna is a free, open-source YouTube Music app where your music lives in a hand-painted 3D record shop." />
+    <meta property="og:title" content="Sienna" />
+    <meta property="og:description" content="A free, open-source YouTube Music app where your music lives in a hand-painted 3D record shop." />
+    <meta property="og:url" content="https://sienna.lajoonpark.com" />
+    <meta name="theme-color" content="#a6442f" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body>
+    <div class="sky" aria-hidden="true"><div class="sun"></div></div>
+    <canvas id="vinyls" aria-hidden="true"></canvas>
+    <div class="grain" aria-hidden="true"></div>
+    <div class="cursor" aria-hidden="true"></div>
+
+    <header class="nav">
+      <a class="brand" href="#top" data-magnet><span class="brand-disc"></span><span>Sienna</span></a>
+      <nav>
+        <a href="#shop">The shop</a>
+        <a href="#player">The player</a>
+        <a href="#more">What else</a>
+        <a href="#download">Download</a>
+        <a href="https://github.com/lajoonpark/Sienna" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero" data-mode="0">
+        <p class="stamp" data-tilt>Free and open source</p>
+        <h1 data-letters>Sienna</h1>
+        <p class="lede" data-words>Your YouTube Music, kept in a hand-painted record shop.</p>
+        <div class="actions">
+          <a class="btn primary" href="#download" data-magnet>Get Sienna</a>
+          <a class="btn" href="https://github.com/lajoonpark/Sienna" target="_blank" rel="noopener" data-magnet>Read the code</a>
+        </div>
+        <p class="hint" data-words>Move the cursor through the records. Click to scatter them.</p>
+      </section>
+
+      <section class="scene-section" id="shop" data-mode="1">
+        <div class="copy">
+          <p class="stamp" data-tilt>The shop</p>
+          <h2 data-letters>Flip through your shelves</h2>
+          <p data-words>You walk down a Tuscan alley and into the shop. Your Home shelves and your library are racks of records, in eight sections over four floors.</p>
+          <p data-words>Hover a record and it comes out toward you with a paper name tag. Try it on the rack below.</p>
+        </div>
+        <div class="rack-tag" aria-hidden="true"><span class="rack-tag-title"></span><span class="rack-tag-sub"></span></div>
+      </section>
+
+      <section class="scene-section" id="player" data-mode="2">
+        <div class="copy narrow">
+          <p class="stamp" data-tilt>The suitcase player</p>
+          <h2 data-letters>Drop the needle</h2>
+          <p data-words>Pick a record and its vinyl flies out of the sleeve and lands on a little suitcase record player. The tonearm creeps in as the song plays.</p>
+          <p data-words>Drag the record to scrub, or click it to pause.</p>
+          <button class="player-tag" type="button" data-tilt aria-label="Play or pause the demo record">
+            <span class="player-state">Playing</span>
+            <span class="player-time">0:10 / 1:30</span>
+            <span class="player-line"><i></i></span>
+          </button>
+        </div>
+      </section>
+
+      <section class="features" id="more" data-mode="3">
+        <p class="stamp" data-tilt>What else</p>
+        <h2 data-letters>Small things, painted by hand</h2>
+
+        <div class="cards">
+          <article class="card wide" data-tilt>
+            <h3>The sky follows your clock</h3>
+            <p data-words>The sky outside the shop is the sky where you are, and the lanterns come on one by one at dusk. This page does the same. Drag the hour to see it.</p>
+            <div class="lanterns" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <label class="clock">
+              <span class="clock-time">12:00</span>
+              <input type="range" min="0" max="24" step="0.05" value="12" aria-label="Hour of the day" />
+              <button type="button" class="chip" data-clock-now>Back to now</button>
+            </label>
+          </article>
+
+          <article class="card" data-tilt>
+            <h3>A mini player at your cursor</h3>
+            <p data-words>Open the suitcase from any app, without opening the shop. It closes when the cursor leaves it.</p>
+            <p class="keys"><kbd data-key="Control">Ctrl</kbd><kbd data-key="Alt">Alt</kbd><kbd data-key="k">K</kbd></p>
+          </article>
+
+          <article class="card" data-tilt>
+            <h3>Search without leaving the keys</h3>
+            <p data-words>Songs, albums, playlists and artists. Albums and playlists fan open into records.</p>
+            <p class="keys"><kbd data-key="Control">Ctrl</kbd><kbd data-key="Alt">Alt</kbd><kbd data-key="j">J</kbd></p>
+          </article>
+
+          <article class="card" data-tilt>
+            <h3>Keeps nothing about you</h3>
+            <p data-words>No tracking and no background update checks. Discord Rich Presence is off until you turn it on.</p>
+          </article>
+
+          <article class="card" data-tilt>
+            <h3>Runs cool</h3>
+            <p data-words>Once the shop is still it stops redrawing the room, and it lowers its sharpness when the computer warms up.</p>
+          </article>
+
+          <article class="card" data-tilt>
+            <h3>Yours to read and change</h3>
+            <p data-words>Every line is public under the MIT license. It makes no money.</p>
+            <p><a class="ink-link" href="https://github.com/lajoonpark/Sienna" target="_blank" rel="noopener">lajoonpark/Sienna on GitHub</a></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="download" id="download" data-mode="4">
+        <p class="stamp" data-tilt>Not released yet</p>
+        <h2 data-letters>Take a record home</h2>
+        <p class="lede" data-words>Sienna is still being painted. The downloads open here when the first release is out.</p>
+        <div class="actions">
+          <button class="btn primary dl" type="button" aria-disabled="true" data-magnet data-os="macOS">macOS</button>
+          <button class="btn primary dl" type="button" aria-disabled="true" data-magnet data-os="Windows">Windows</button>
+          <button class="btn primary dl" type="button" aria-disabled="true" data-magnet data-os="Linux">Linux</button>
+        </div>
+        <p class="note" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <footer>
+      <p data-words>Sienna is an unofficial app, not affiliated with YouTube or Google.</p>
+      <p><a class="ink-link" href="https://github.com/lajoonpark/Sienna" target="_blank" rel="noopener">GitHub</a> <a class="ink-link" href="https://github.com/lajoonpark/Sienna/blob/main/LICENSE" target="_blank" rel="noopener">MIT license</a> <span data-words>Made by lajoonpark</span></p>
+    </footer>
+  </body>
+</html>
