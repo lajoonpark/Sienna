@@ -4,6 +4,7 @@ import { createList } from './ui/list.js';
 import { segmented, inkButton } from './ui/inputs.js';
 import { createListBar, createListVeil } from './list-bar.js';
 import { paperSurface } from './ui/paper.js';
+import { unrollSheet } from './ui/unroll.js';
 import { MOTION } from './ui/tokens.js';
 
 const FILTERS = ['songs', 'albums', 'playlists', 'artists'];
@@ -32,7 +33,8 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
   input.setAttribute('role', 'combobox'); input.setAttribute('aria-controls', list.listboxEl.id);
   input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false');
   root.append(bar.el, tabs.el, head, list.el); document.body.appendChild(root);
-  paperSurface(root, { seed: 71, elevation: 'lift', amp: 5, cap: 10 });
+  paperSurface(root, { seed: 71, elevation: 'lift', amp: 5, cap: 10, crop: true });
+  const sheet = unrollSheet(root);
   root.addEventListener('pointerdown', e => { if (e.target !== input) e.preventDefault(); });
   root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
   let isOpen = false, seq = 0, timer = 0, shown = [], shownFor = null, filter = 'songs', artistView = null, pendingEnter = false;
@@ -139,11 +141,13 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
     setOverlayOpen(root, true); veil.show(true); root.classList.remove('closing'); root.classList.add('show');
     input.setAttribute('aria-expanded', 'true'); bar.play(true); input.focus({ preventScroll: true }); input.select();
     if (!input.value.trim()) showSuggestions();
+    sheet.open();
   }
   function close() {
     if (!isOpen) return; isOpen = false; openCount--; seq++; clearTimeout(timer); pendingEnter = false;
     setOverlayOpen(root, false); veil.show(false); input.setAttribute('aria-expanded', 'false');
     root.classList.replace('show', 'closing'); bar.play(false); input.blur();
+    sheet.close();
   }
   window.addEventListener('keydown', e => {
     if (isToggle(e)) { e.preventDefault(); e.stopPropagation(); if (!e.repeat) (isOpen ? close : open)(); }

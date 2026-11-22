@@ -164,7 +164,7 @@ export function getPaperUrl(w, h, seed = 1) {
 // Attach one oil-dabbed cream paper surface under a torn edge to `el`.
 // Drop shadow sits on the wrapper layer so it follows the torn() polygon without flattening
 // 3D children (e.g. sheet unfold flaps) on `el`.
-export function paperSurface(el, { seed = 1, elevation = 'rest', amp = 5, cap = amp * 2 } = {}) {
+export function paperSurface(el, { seed = 1, elevation = 'rest', amp = 5, cap = amp * 2, crop = false } = {}) {
   injectPaperCss();
   el.classList.add('ui-paper', elevation === 'lift' ? 'ui-paper--lift' : 'ui-paper--rest');
 
@@ -183,10 +183,21 @@ export function paperSurface(el, { seed = 1, elevation = 'rest', amp = 5, cap = 
   let rafId = 0;
   let destroyed = false;
 
+  // crop: paint once at the sheet's largest reach (its max-height) so an animated height
+  // never repaints; the bg is then cropped from the top instead of stretched.
+  const paintSize = () => {
+    const w = el.offsetWidth;
+    let h = el.offsetHeight;
+    if (crop) {
+      const maxH = parseFloat(getComputedStyle(el).maxHeight);
+      if (Number.isFinite(maxH)) h = Math.max(h, maxH);
+    }
+    return [w, h];
+  };
+
   const paintNow = (force = false) => {
     if (destroyed) return;
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
+    const [w, h] = paintSize();
     if (!w || !h) return;
     // Hysteresis: ignore sub-step resizes (< 8 px in both axes) so small nudges paint nothing.
     if (!force && lastW > 0 && Math.abs(w - lastW) < PAPER_STEP && Math.abs(h - lastH) < PAPER_STEP) {
@@ -204,12 +215,15 @@ export function paperSurface(el, { seed = 1, elevation = 'rest', amp = 5, cap = 
     lastH = h;
     lastKey = key;
     bg.style.backgroundImage = `url(${getPaperUrl(w, h, seed)})`;
+    if (crop) {
+      bg.style.backgroundSize = `100% ${rh}px`;
+      bg.style.backgroundPosition = 'top';
+    }
   };
 
   const schedulePaint = () => {
     if (destroyed || rafId) return;
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
+    const [w, h] = paintSize();
     if (!w || !h) return;
     if (lastW > 0 && Math.abs(w - lastW) < PAPER_STEP && Math.abs(h - lastH) < PAPER_STEP) return;
     rafId = requestAnimationFrame(() => {

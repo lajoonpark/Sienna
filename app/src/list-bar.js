@@ -28,7 +28,10 @@ const CSS = `
 .list-overlay > .ui-list { min-height: 0; flex: 1; }
 .list-overlay .ui-list-scroll { min-height: 0; }
 .list-overlay > .ui-seg { flex: none; margin: 0 var(--sienna-space-2) var(--sienna-space-2); }
-.list-overlay.closing > :not(.list-bar) { opacity: 0; transition: opacity var(--sienna-dur-fast); }
+.list-overlay.closing > .ui-list, .list-overlay.closing > .cs-head { opacity: 0;
+  transition: opacity var(--sienna-dur-fast) var(--sienna-ease-in); }
+.list-overlay.closing > .ui-paper-layer, .list-overlay.closing > .ui-seg, .list-overlay.closing > .cl-top { opacity: 0;
+  transition: opacity var(--sienna-dur-fast) var(--sienna-ease-out) var(--sienna-dur-mid); }
 .list-veil { position: fixed; inset: 0; z-index: var(--sienna-z-banner); background: var(--sienna-veil);
   backdrop-filter: var(--sienna-veil-filter); visibility: hidden; opacity: 0; pointer-events: none;
   transition: opacity var(--sienna-dur-mid), visibility var(--sienna-dur-mid); }

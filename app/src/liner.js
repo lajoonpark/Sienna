@@ -6,6 +6,7 @@ import { createSheet, setOverlayOpen, sheetOpen } from './ui/sheet.js';
 //   - WebGL initialization fallback screen
 import { injectTokens, MOTION } from './ui/tokens.js';
 import { paperSurface } from './ui/paper.js';
+import { unrollSheet } from './ui/unroll.js';
 import { createList } from './ui/list.js';
 import { inkButton, stamp } from './ui/inputs.js';
 import { createBanner } from './ui/banner.js';
@@ -108,7 +109,8 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   });
   qBox.appendChild(queueList.el);
   const qScroll = queueList.scrollEl;
-  paperSurface(qBox, { seed: 61, elevation: 'lift', amp: 5, cap: 10 });
+  paperSurface(qBox, { seed: 61, elevation: 'lift', amp: 5, cap: 10, crop: true });
+  const qSheet = unrollSheet(qBox);
 
   let mode = null; // null | 'lyrics' | 'queue'
   let qCloseTimer = 0;
@@ -142,6 +144,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     clearTimeout(qRefreshTimer);
     clearTimeout(qRetryTimer);
     queueList.playDrawerFlight(drawerOrigin(), { entering: false });
+    qSheet.close({ delay: MOTION.dur.fast });
     qveil.classList.remove('show');
     qveil.classList.add('closing');
     qCloseTimer = setTimeout(() => {
@@ -280,6 +283,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     qScroll.scrollTop = 0;
     qveil.classList.remove('closing');
     qveil.classList.add('show');
+    qSheet.open();
 
     let loaded = false;
     const loadNoteTimer = setTimeout(() => {

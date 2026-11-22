@@ -3,6 +3,7 @@ import { createList } from './ui/list.js';
 import { segmented, inkButton, stamp } from './ui/inputs.js';
 import { brushButton } from './ui/brush.js';
 import { paperSurface } from './ui/paper.js';
+import { unrollSheet } from './ui/unroll.js';
 import { paintedCoverURL } from './coverpaint.js';
 import { createListBar, createListVeil } from './list-bar.js';
 import { filterCollectionSongs } from './collection-filter.js';
@@ -45,7 +46,8 @@ export function createCollectionList({ onPlay, onShuffle = null, music = null } 
   input.setAttribute('role', 'combobox'); input.setAttribute('aria-controls', list.listboxEl.id);
   input.setAttribute('aria-expanded', 'false');
   root.append(header, bar.el, tabs.el, list.el); document.body.appendChild(root);
-  paperSurface(root, { seed: 83, elevation: 'lift', amp: 5, cap: 10 });
+  paperSurface(root, { seed: 83, elevation: 'lift', amp: 5, cap: 10, crop: true });
+  const sheet = unrollSheet(root);
   root.addEventListener('pointerdown', e => { if (e.target !== input) e.preventDefault(); });
   root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
   let isOpen = false, seq = 0, collection = null, allSongs = [], filtered = [], field = 'all', source = null, playing = null;
@@ -93,6 +95,7 @@ export function createCollectionList({ onPlay, onShuffle = null, music = null } 
     }
   }
   async function open(col, songsOrPromise) {
+    const wasOpen = isOpen;
     collection = col; source = songsOrPromise; field = 'all'; tabs.setValue(field); input.value = '';
     input.placeholder = `filter ${col?.title?.toLowerCase() || 'songs'}`; title.textContent = col?.title || 'Collection';
     cover.style.backgroundImage = '';
@@ -100,11 +103,14 @@ export function createCollectionList({ onPlay, onShuffle = null, music = null } 
     if (art) paintedCoverURL(art).then(url => { if (url && collection === col && collection.art === art && isOpen) cover.style.backgroundImage = `url(${url})`; });
     if (!isOpen) { isOpen = true; setOverlayOpen(root, true); veil.show(true); root.classList.remove('closing'); root.classList.add('show'); bar.play(true); }
     input.setAttribute('aria-expanded', 'true'); input.focus({ preventScroll: true });
-    return load();
+    const p = load();
+    if (!wasOpen) sheet.open();
+    return p;
   }
   function close() {
     if (!isOpen) return; isOpen = false; seq++; setOverlayOpen(root, false); veil.show(false);
     input.setAttribute('aria-expanded', 'false'); root.classList.replace('show', 'closing'); bar.play(false); input.blur();
+    sheet.close();
   }
   music?.onState?.(state => { if (isOpen) markNowPlaying(state.videoId ?? null); });
   window.addEventListener('keydown', e => { if (isOpen && e.target !== input) { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); close(); } } }, true);

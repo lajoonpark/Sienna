@@ -609,10 +609,12 @@ export function createList({
   function playDrawerFlight(origin, { entering = true } = {}) {
     if (!origin) return;
     const boxRect = scroll.getBoundingClientRect();
+    // Entering mid-unroll the scroll box is still short; judge rows against the window so they fly in too.
+    const bottom = entering ? Math.max(boxRect.bottom, innerHeight) : boxRect.bottom;
     const rows = [...listbox.children];
     const visible = rows.filter((el) => {
       const r = el.getBoundingClientRect();
-      return r.bottom >= boxRect.top - 40 && r.top <= boxRect.bottom + 40;
+      return r.bottom >= boxRect.top - 40 && r.top <= bottom + 40;
     });
     visible.forEach((row, k) => {
       const r = row.getBoundingClientRect();
