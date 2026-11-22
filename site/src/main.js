@@ -69,7 +69,9 @@ try {
       rackTag.firstElementChild.textContent = title;
       rackTag.lastElementChild.textContent = sub;
       rackTag.style.setProperty('--tag', r.color);
-      rackTag.style.transform = `translate(${r.x + 24}px, ${r.y - 90}px)`;
+      const x = clamp(r.x + 24, 12, innerWidth - rackTag.offsetWidth - 12);
+      const y = clamp(r.y - 90, 12, innerHeight - rackTag.offsetHeight - 12);
+      rackTag.style.transform = `translate(${x}px, ${y}px)`;
     },
     onPlayer(p) {
       playerState.textContent = p.playing ? 'Playing' : 'Paused';
@@ -130,7 +132,7 @@ let scrubbing = false;
 const interactive = 'a, button, input, kbd, .lanterns i, .stamp';
 addEventListener('pointermove', (e) => {
   cursor.classList.add('on');
-  cursor.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+  cursor.style.translate = `${e.clientX}px ${e.clientY}px`;
   root.style.setProperty('--mx', `${e.clientX}px`);
   root.style.setProperty('--my', `${e.clientY}px`);
   cursor.classList.toggle('link', !!e.target.closest?.(interactive));

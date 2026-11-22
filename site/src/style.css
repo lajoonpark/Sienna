@@ -136,3 +136,7 @@ footer p { margin: 6px 0; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 .no-webgl .player-tag { display: none; }
+.note, .clock-time { transition: color 0.2s, rotate 0.28s var(--pop), scale 0.28s var(--pop); }
+.note:hover { rotate: -1.5deg; scale: 1.06; color: var(--terracotta); }
+body.dark .note:hover { color: var(--mustard); }
+.clock-time:hover { rotate: -4deg; scale: 1.12; color: var(--terracotta); }
