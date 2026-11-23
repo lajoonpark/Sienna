@@ -118,7 +118,8 @@ const KIND_ICONS = Object.freeze({
 });
 
 export function kindIcon(kind) {
-  return KIND_ICONS[String(kind || '').toLowerCase()] || null;
+  const key = String(kind || '').toLowerCase();
+  return Object.hasOwn(KIND_ICONS, key) ? KIND_ICONS[key] : null;
 }
 
 export function icon(name, { size = 20, label = null } = {}) {
