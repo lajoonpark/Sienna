@@ -166,7 +166,7 @@ export function getCover(url, size = 256) {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = size > 256 ? 8 : 4;
   slim(tex, c, size);
-  e = { tex, color: null, loaded: Promise.resolve(), misses: 0, colorWaiters: [] };
+  e = { tex, color: null, loaded: Promise.resolve(), misses: 0, gaveUp: false, colorWaiters: [] };
   // the GPU lost everything (see restoreCovers): the paper again at full size, then the picture
   e.restore = () => { tex.dispose(); unslim(c, size); blank(); tex.needsUpdate = true; e.repaint?.(); };
   covers.set(key, e);
@@ -191,8 +191,8 @@ export function getCover(url, size = 256) {
       if (done.color) e.color = new THREE.Color(`rgb(${done.color.join(',')})`).offsetHSL(0, 0.08, -0.04);
       return true;
     }).then((ok) => {
-      if (ok) { e.misses = 0; if (e.color) for (const fn of e.colorWaiters.splice(0)) fn(); return; }
-      if (ok === false || e.misses >= RETRY_MS.length) return; // false: it loaded, but is no cover
+      if (ok) { e.misses = 0; e.gaveUp = !e.color; for (const fn of e.colorWaiters.splice(0)) if (e.color) fn(); return; } // no colour: a tainted canvas
+      if (ok === false || e.misses >= RETRY_MS.length) { e.gaveUp = true; e.colorWaiters.length = 0; return; } // false: it loaded, but is no cover
       setTimeout(() => { if (covers.get(key) === e) e.repaint(); }, RETRY_MS[e.misses++]);
     }));
     e.repaint();
@@ -204,7 +204,11 @@ settings.on('covers', () => { for (const e of covers.values()) e.repaint?.(); })
 export function restoreCovers() { for (const e of covers.values()) e.restore(); }
 
 // The cover's spine colour, now or once its picture is painted (maybe on a retry).
-function onCoverColor(e, fn) { if (e.color) fn(); else e.colorWaiters.push(fn); }
+// Only while a picture may still come: the waiters hold their sleeves, and the cache never lets go.
+function onCoverColor(e, fn) {
+  if (e.color) fn();
+  else if (e.repaint && !e.gaveUp) e.colorWaiters.push(fn);
+}
 
 // the old way: an <img>, painted on the main thread a few per frame.
 // Resolves true (painted), false (the picture is no cover) or undefined (it could not be loaded).
