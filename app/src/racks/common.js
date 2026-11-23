@@ -92,6 +92,9 @@ export function canvas(w, h) {
 const covers = new Map();   // `${size}|${url}` -> entry
 const bigOrder = [];        // keys of 512 px entries, oldest first (LRU)
 const BIG_KEEP = 32;
+// A cover that could not be fetched (a timeout while a shelf's worth loads at once, a dropped
+// connection) is tried again after these waits, instead of staying blank paper for good.
+const RETRY_MS = [5000, 20000, 60000];
 const [avgC, avgG] = typeof document !== 'undefined' ? canvas(8, 8) : [];
 
 // Spine colour from the cover: the average, deepened a little so the row reads as a painted band.
@@ -163,7 +166,7 @@ export function getCover(url, size = 256) {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = size > 256 ? 8 : 4;
   slim(tex, c, size);
-  e = { tex, color: null, loaded: Promise.resolve() };
+  e = { tex, color: null, loaded: Promise.resolve(), misses: 0, colorWaiters: [] };
   // the GPU lost everything (see restoreCovers): the paper again at full size, then the picture
   e.restore = () => { tex.dispose(); unslim(c, size); blank(); tex.needsUpdate = true; e.repaint?.(); };
   covers.set(key, e);
@@ -186,6 +189,11 @@ export function getCover(url, size = 256) {
       tex.needsUpdate = true;
       if (coverUploader) uploadSoon(coverUploader, tex); // on the GPU before a rack first shows it
       if (done.color) e.color = new THREE.Color(`rgb(${done.color.join(',')})`).offsetHSL(0, 0.08, -0.04);
+      return true;
+    }).then((ok) => {
+      if (ok) { e.misses = 0; if (e.color) for (const fn of e.colorWaiters.splice(0)) fn(); return; }
+      if (ok === false || e.misses >= RETRY_MS.length) return; // false: it loaded, but is no cover
+      setTimeout(() => { if (covers.get(key) === e) e.repaint(); }, RETRY_MS[e.misses++]);
     }));
     e.repaint();
   }
@@ -195,13 +203,17 @@ settings.on('covers', () => { for (const e of covers.values()) e.repaint?.(); })
 // After a lost GPU context three uploads every texture again from its image, and a shrunk canvas has none.
 export function restoreCovers() { for (const e of covers.values()) e.restore(); }
 
-// the old way: an <img>, painted on the main thread a few per frame
+// The cover's spine colour, now or once its picture is painted (maybe on a retry).
+function onCoverColor(e, fn) { if (e.color) fn(); else e.colorWaiters.push(fn); }
+
+// the old way: an <img>, painted on the main thread a few per frame.
+// Resolves true (painted), false (the picture is no cover) or undefined (it could not be loaded).
 function paintHere(url, size, g, tex, e) {
   return new Promise((res) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = async () => {
-      if (!artSizeOk(img.naturalWidth, img.naturalHeight) || isMissingFrame(img.naturalWidth, img.naturalHeight)) { res(); return; } // paper until repaired (cover.js)
+      if (!artSizeOk(img.naturalWidth, img.naturalHeight) || isMissingFrame(img.naturalWidth, img.naturalHeight)) { res(false); return; } // paper until repaired (cover.js)
       try { await img.decode(); } catch { /* decoded on draw instead */ } // off the main thread
       // painting a cover is a few ms of canvas work, and a shelf's worth arrives at once (often
       // during the intro push-in), so they are painted in small slices, a few per frame
@@ -213,10 +225,10 @@ function paintHere(url, size, g, tex, e) {
         tex.needsUpdate = true;
         if (coverUploader) uploadSoon(coverUploader, tex); // on the GPU before a rack first shows it
         if (size <= 256) { try { e.color = averageColor(img); } catch { /* tainted canvas: keep the default spine */ } }
-        res();
+        res(true);
       });
     };
-    img.onerror = res;
+    img.onerror = () => res();
     img.src = url;
   });
 }
@@ -311,7 +323,7 @@ export class Sleeve {
     this.small = small;
     this.big = null;
     this.spineMat = unpinned(toon(small.color ?? new THREE.Color().setHSL(rng(seed * 7 + 3)(), 0.3, 0.5), { unique: true }));
-    if (!small.color) small.loaded.then(() => { if (small.color) this.spineMat.color.copy(small.color); });
+    if (!small.color) onCoverColor(small, () => { if (this.small === small) this.spineMat.color.copy(small.color); });
     this.coverMat = crisp({ map: small.tex });
     // box faces: +x, -x, +y, -y (spine colour), +z (cover), -z (back: shows the art too, because
     // some racks are seen from behind)
@@ -356,8 +368,8 @@ export class Sleeve {
     if (art === this.art) return;
     this.art = art;
     this.small = getCover(art, 256);
-    const upd = () => { if (this.small.color) this.spineMat.color.copy(this.small.color); };
-    if (this.small.color) upd(); else this.small.loaded.then(upd);
+    const small = this.small;
+    onCoverColor(small, () => { if (this.small === small) this.spineMat.color.copy(small.color); });
     if (this.big) this.big = getCover(art, 512);
     // the 512 px one swaps in once loaded; the 256 px one is shown meanwhile
     this.coverMat.map = this.coverMat.emissiveMap = this.small.tex;
