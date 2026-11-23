@@ -832,7 +832,7 @@ async function buildFullLab(samples) {
     const { sec } = makeSection(
       'lab-icons',
       'Icons',
-      'Used by: stamps, Search bar, top-right utilities, and Collection header (14 hand-drawn SVGs).',
+      'Used by: stamps, Search bar, top-right utilities, and Collection header, and list-row kind marks (19 hand-drawn SVGs).',
       { seed: 59 },
     );
     const grid = el('div', 'lab-icons-grid');
