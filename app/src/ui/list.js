@@ -8,6 +8,7 @@ import { paintedCoverURL } from '../coverpaint.js';
 import { COLORS, injectTokens } from './tokens.js';
 import { paperSurface, PAPER_STEP, quantizePaperSize } from './paper.js';
 import { inkButton } from './inputs.js';
+import { icon, kindIcon } from './icons.js';
 
 const ROW_H = 66;
 const SLIP_SEEDS = 4;
@@ -162,6 +163,14 @@ const LIST_CSS = `
   color: var(--sienna-ink-2); background: var(--sienna-paper-lo);
   border: 1px solid var(--sienna-hairline); border-radius: 3px; transform: rotate(var(--sienna-tilt-md)); }
 .ui-list-row.is-now .ui-list-kind { color: var(--sienna-indigo); border-color: var(--sienna-indigo); }
+.ui-list-kind--icon { justify-content: center; width: 30px; height: 30px; padding: 0; box-sizing: border-box;
+  color: var(--sienna-ink-2); background: var(--sienna-paper-lo); border: none; border-radius: 47% 53% 50% 48% / 52% 46% 54% 48%;
+  box-shadow: inset 0 0 0 1px var(--sienna-hairline), inset 0 -2px 3px rgba(92, 70, 54, .12);
+  transform: rotate(var(--sienna-tilt-lg)); transition: color var(--sienna-dur-fast), background-color var(--sienna-dur-fast); }
+.ui-list-kind--icon .ui-icon { display: block; }
+.ui-list-row.is-active .ui-list-kind--icon,
+.ui-list-row.is-hover .ui-list-kind--icon { color: var(--sienna-terracotta); background: var(--sienna-paper); }
+.ui-list-row.is-now .ui-list-kind--icon { color: var(--sienna-paper); background: var(--sienna-indigo); box-shadow: none; }
 .ui-list-now-tag { display: inline-flex; align-items: center; gap: 3px; padding: 1px var(--sienna-space-2);
   font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); font-weight: 600;
   line-height: 1.2; letter-spacing: .03em; color: var(--sienna-paper); background: var(--sienna-indigo);
@@ -388,7 +397,15 @@ export function createList({
     if (showKind && item.kind) {
       const kindEl = document.createElement('span');
       kindEl.className = 'ui-list-kind';
-      kindEl.textContent = item.kind;
+      kindEl.dataset.kind = item.kind;
+      const glyph = kindIcon(item.kind);
+      if (glyph) {
+        const name = item.kind.charAt(0).toUpperCase() + item.kind.slice(1);
+        kindEl.classList.add('ui-list-kind--icon');
+        kindEl.appendChild(icon(glyph, { size: 17, label: name }));
+      } else {
+        kindEl.textContent = item.kind;
+      }
       right.appendChild(kindEl);
     }
     const metaText = item.meta ?? item.durationText ?? mmss(item.duration);
