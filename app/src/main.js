@@ -702,13 +702,13 @@ const pointerPx = { x: 0, y: 0 };
 // zoomRate: how quickly it gets there.
 // Clear of the edges and buttons (steerClear): once the record is up, the camera also slides sideways /
 // up / down (pan, in its own frame, panRate) so the record and its name tag sit inside the window (edge px
-// in from it, floor = NDC y of the tucked suitcase) and off the buttons (pad px round them), but only as
-// far as keeps the cursor keep of the cover's size inside its edges. What that cannot clear, the zoom gives
-// up (cut: 0 = full zoom, 1 = none, cutRate per second), and side words still in the way then step aside
-// (menu.update's hold).
+// in from it, floor = NDC y of the tucked suitcase) and off the buttons (pad px round them), as far as it
+// takes, short of the cursor leaving the cover (it stays keep px inside its edges). Only what that cannot
+// clear makes the zoom give up (cut: 0 = full zoom, 1 = none, cutRate per second), and only side words
+// still in the way after that step aside (menu.update's hold).
 const FOCUS = { dwell: 0.03, share: 0.35, maxYaw: 0.14, maxPitch: 0.09, omega: 11, rate: 6, settle: 2, release: 0.35, unfreezePx: 4,
   zoomTo: 1.6, zoomMax: 0.5, zoomRate: 4,
-  edge: 18, floor: -0.82, pad: 10, keep: 0.2, panRate: 5, cutRate: 2.5 };
+  edge: 18, floor: -0.82, pad: 10, keep: 10, panRate: 5, cutRate: 2.5 };
 const focus = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0, vyaw: 0, vpitch: 0, key: -1, aimed: -1, rack: -1, on: 0, off: 0, freeze: null, px: -1, py: -1, still: 0,
   pan: new THREE.Vector2(), cut: 0, stuck: false,
   pivot: new THREE.Vector3(), // rig-local point the camera orbits about
@@ -826,9 +826,16 @@ function steerClear(dt) {
   const h = held;
   if (!h) return;
   const p = camera.projectionMatrix.elements, ex = (2 * FOCUS.edge) / innerWidth, ey = (2 * FOCUS.edge) / innerHeight;
-  const [l, r, b, t] = h.all, [cl, cr, cb, ct] = h.rec, ix = FOCUS.keep * (cr - cl), iy = FOCUS.keep * (ct - cb);
-  // moves (NDC) that keep the cursor on the cover, and that keep cover + tag inside the window
-  const cur = [[h.anchor.x - cr + ix, h.anchor.x - cl - ix], [h.anchor.y - ct + iy, h.anchor.y - cb - iy]];
+  const [l, r, b, t] = h.all, [cl, cr, cb, ct] = h.rec;
+  const ix = Math.min((2 * FOCUS.keep) / innerWidth, 0.45 * (cr - cl)), iy = Math.min((2 * FOCUS.keep) / innerHeight, 0.45 * (ct - cb));
+  // moves (NDC) that keep the cursor on the cover (where the hover began and, where both fit, where it
+  // is now), and that keep cover + tag inside the window
+  const keepOn = (c) => [[c.x - cr + ix, c.x - cl - ix], [c.y - ct + iy, c.y - cb - iy]];
+  let cur = keepOn(h.anchor);
+  if (pointer) {
+    const both = keepOn(pointer).map(([lo, hi], i) => [Math.max(lo, cur[i][0]), Math.min(hi, cur[i][1])]);
+    if (both.every(([lo, hi]) => lo <= hi)) cur = both;
+  }
   const fit = [[-1 + ex - l, 1 - ex - r], [FOCUS.floor - b, 1 - ey - t]];
   // the move that would take the pan back out, where it is not needed
   const back = [(focus.pan.x * p[0]) / h.z, (focus.pan.y * p[5]) / h.z];
@@ -836,19 +843,27 @@ function steerClear(dt) {
   const px = (x) => (2 * x) / innerWidth - 1, py = (y) => 1 - (2 * y) / innerHeight;
   const boxes = [...menu.blockers(), settingsPanel.buttonsBox()].filter(Boolean)
     .map((o) => [px(o.l - FOCUS.pad), px(o.r + FOCUS.pad), py(o.b + FOCUS.pad), py(o.t - FOCUS.pad)]);
-  const hits = (o, [dx, dy]) => l + dx < o[1] && r + dx > o[0] && b + dy < o[3] && t + dy > o[2];
-  for (const o of boxes) {
-    if (!hits(o, d)) continue;
-    // step round it the shortest way still allowed (left, right, down, up)
-    let best = null, bestD = Infinity;
-    for (const c of [[o[0] - r, d[1]], [o[1] - l, d[1]], [d[0], o[2] - t], [d[0], o[3] - b]]) {
-      if (!within(c[0], cur[0]) || !within(c[1], cur[1]) || !within(c[0], fit[0]) || !within(c[1], fit[1])) continue;
-      const dd = Math.hypot(c[0] - d[0], c[1] - d[1]);
-      if (dd < bestD) { bestD = dd; best = c; }
+  // how much of cover + tag, moved by [dx, dy], still lies over the buttons (NDC area)
+  const over = ([dx, dy]) => boxes.reduce((a, o) => a + Math.max(0, Math.min(r + dx, o[1]) - Math.max(l + dx, o[0]) - 1e-5)
+    * Math.max(0, Math.min(t + dy, o[3]) - Math.max(b + dy, o[2]) - 1e-5), 0);
+  // Every move that lines an edge of cover + tag up with an edge of a button (on either axis, so a
+  // corner of buttons can be cleared in one go), kept to the moves allowed: the cursor stays on the
+  // cover and, where it can, cover + tag inside the window. The one least in the way wins, then the
+  // nearest; so the camera slides as far as it has to (and no further) before anything is hidden
+  const ok = (v, i) => within(v, cur[i]) && (within(v, fit[i]) || v === d[i]);
+  // (the furthest moves allowed too, for buttons that cannot be cleared, only got out of the way of)
+  const ends = (i) => [...cur[i], ...fit[i]].map((v) => clampTo(clampTo(v, fit[i]), cur[i]));
+  const xs = [d[0], ...ends(0), ...boxes.flatMap((o) => [o[0] - r, o[1] - l])].filter((v) => ok(v, 0));
+  const ys = [d[1], ...ends(1), ...boxes.flatMap((o) => [o[2] - t, o[3] - b])].filter((v) => ok(v, 1));
+  let best = d, bestO = over(d), bestD = 0;
+  if (bestO > 0) {
+    for (const x of xs) for (const y of ys) {
+      const c = [x, y], o = over(c), dd = Math.hypot(x - d[0], y - d[1]);
+      if (o < bestO - 1e-9 || (Math.abs(o - bestO) <= 1e-9 && dd < bestD)) { best = c; bestO = o; bestD = dd; }
     }
-    if (best) [d[0], d[1]] = best;
   }
-  focus.stuck = !within(d[0], fit[0]) || !within(d[1], fit[1]) || boxes.some((o) => hits(o, d));
+  [d[0], d[1]] = best;
+  focus.stuck = !within(d[0], fit[0]) || !within(d[1], fit[1]) || bestO > 0;
   if (focus.stuck && h.settled) focus.cut = Math.min(1, focus.cut + dt * FOCUS.cutRate);
   // camera right = picture left
   const k = 1 - Math.exp(-dt * FOCUS.panRate);
