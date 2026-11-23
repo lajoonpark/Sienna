@@ -107,7 +107,9 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
   (`Tab` switches tabs). Songs slide out of the suitcase drawer; albums and playlists fan open into
   records; artists open into their top songs and releases.
 - **Shared paper lists.** Search, collection songs and Up next each sit on one paper sheet with
-  ruled rows: terracotta marks the keyboard cursor and indigo marks the playing song. Collections
+  ruled rows: terracotta marks the keyboard cursor and indigo marks the playing song, and a small
+  hand-drawn kind icon on a paper dab at the end of each row tells songs, albums, playlists, artists
+  and podcasts apart. Collections
   filter as you type; **Play** starts the first filtered song and **Shuffle** uses the filtered
   pool. Up next pins the playing song first. Loading, empty and error notes stay in the list,
   with Retry on fetch errors.
