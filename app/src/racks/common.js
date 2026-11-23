@@ -936,10 +936,17 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
       },
       update(dt, camera, pointer, active, pickCamera = camera) {
         const n = core.sleeves.length;
+        const base = (cam) => (def.pick ? def.pick(core, pointer, cam) : core.picker.pick(pointer, cam, root));
         let want = -1;
-        if (forced !== null) want = forced < n ? forced : -1;
-        else if (active && pointer && n && !def.turning?.(core)) { // nothing lifts while the rack is turned by hand
-          const base = (cam) => (def.pick ? def.pick(core, pointer, cam) : core.picker.pick(pointer, cam, root));
+        if (forced !== null) {
+          want = forced < n ? forced : -1;
+          core.control = -1;
+          // a rack control (page arrows...) still answers the cursor while the hover is frozen
+          if (active && pointer && !def.turning?.(core)) {
+            const c = base(camera);
+            if (c >= 1000) core.control = c - 1000;
+          }
+        } else if (active && pointer && n && !def.turning?.(core)) { // nothing lifts while the rack is turned by hand
           // every record keeps its own patch of screen (its rest spot), so a lifted record that has
           // grown over a neighbour never hides it. The lifted one only catches the cursor where no
           // other record is (the bit sticking out above the rack): you click the song, not the rack.
@@ -951,8 +958,8 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
           if (want < 0) want = heldUnder(core, pointer, camera);
         }
         // picks >= 1000 are controls of the rack itself (page arrows...): def.control(core, id) on click
-        core.control = want >= 1000 ? want - 1000 : -1;
-        if (want >= 1000) want = -1;
+        if (want >= 1000) { core.control = want - 1000; want = -1; }
+        else if (forced === null) core.control = -1;
         setHovered(want);
         core.sleeves.forEach((s, i) => {
           s.empty !== core.play.isEmpty(s.item) && !s.picking && s.setEmpty(!s.empty);
