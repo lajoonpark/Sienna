@@ -709,7 +709,7 @@ const pointerPx = { x: 0, y: 0 };
 const FOCUS = { dwell: 0.03, share: 0.35, maxYaw: 0.14, maxPitch: 0.09, omega: 11, rate: 6, settle: 2, release: 0.35, unfreezePx: 4,
   zoomTo: 1.6, zoomMax: 0.5, zoomRate: 4,
   edge: 18, floor: -0.82, pad: 10, keep: 0.2, panRate: 5, cutRate: 2.5 };
-const focus = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0, vyaw: 0, vpitch: 0, key: -1, aimed: -1, rack: -1, on: 0, off: 0, freeze: null,
+const focus = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0, vyaw: 0, vpitch: 0, key: -1, aimed: -1, rack: -1, on: 0, off: 0, freeze: null, px: -1, py: -1,
   pan: new THREE.Vector2(), cut: 0, stuck: false,
   pivot: new THREE.Vector3(), // rig-local point the camera orbits about
   // the camera's pose in the rig without the cursor tilt; each frame's step of the swing is applied to it
@@ -724,9 +724,12 @@ function spring(x, v, target, w, dt) {
   return [target + (d + c * dt) * e, (v - w * c * dt) * e];
 }
 function aimAt(yaw, pitch, key) {
+  // freeze the hover first, even when the swing target does not move: a record aimed dead-ahead
+  // (or at the same angle as the last one) would never freeze otherwise, and steerClear's pan can
+  // then slide the record's rest spot off the still cursor and hand the hover to the next record
+  focus.freeze = currentRack()?.turning ? null : { key, x: pointerPx.x, y: pointerPx.y };
   if (Math.abs(yaw - focus.tyaw) + Math.abs(pitch - focus.tpitch) < 0.01) return;
   focus.tyaw = yaw; focus.tpitch = pitch;
-  focus.freeze = currentRack()?.turning ? null : { key, x: pointerPx.x, y: pointerPx.y };
 }
 function updateFocus(dt) {
   const at = nav.settled && nav.at !== AT_HOME && !pinnedPose ? nav.at : -1;
@@ -757,6 +760,13 @@ function updateFocus(dt) {
     focus.aimed = -1;
     aimAt(0, 0, -1);
   }
+  // the aimed record hovered again after a >4px move dropped the freeze, without needing a new
+  // aim: re-arm the freeze (only once the cursor is actually still again) or a still cursor would
+  // hover unfrozen, letting steerClear's pan slide its rest spot out from under it and hand the
+  // hover to the next record over
+  if (hov >= 0 && hov === focus.aimed && !focus.freeze && !rack?.turning
+    && Math.hypot(pointerPx.x - focus.px, pointerPx.y - focus.py) < 0.5) focus.freeze = { key: hov, x: pointerPx.x, y: pointerPx.y };
+  focus.px = pointerPx.x; focus.py = pointerPx.y;
   const k = 1 - Math.exp(-dt * FOCUS.rate);
   if (focus.aimed === -1) {
     // no record to keep under the cursor: ease straight home (undoes any drift between pivots)
