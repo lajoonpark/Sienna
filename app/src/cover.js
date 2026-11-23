@@ -3,13 +3,14 @@
 // the parsed art and starts `repairArt` in the background; when an item's art is replaced (a working
 // alternative url, or a data: URL collage painted here from the playlist's first songs) item.art is
 // updated in place and music.onArt callbacks get the item, so racks can reload that cover.
-// What the repair does for an item (songs that have art are left alone):
+// What the repair does for an item (songs that have art are left alone, unless it is a video frame with a
+// fallback: hq720 is missing for many videos, and YouTube answers with a grey placeholder):
 //   1. probe item.art, then item.artAlt[] (same way the racks load them: crossOrigin anonymous)
 //   2. else a collage of item.arts (parser found a multi-image renderer) or of the first songs
 //      of the playlist / mix (window.sienna.playlistArt(play), main process, via the API)
 //   3. else (songs) the video frame of play.videoId
 import { rng } from './rand.js';
-import { safeArtUrl } from './arturl.js';
+import { safeArtUrl, isMissingFrame } from './arturl.js';
 
 const SIZE = 512;
 
@@ -22,7 +23,7 @@ function loadImage(url, ms = 6000) {
     const t = setTimeout(() => done(false), ms);
     // YouTube answers a missing video frame with a 404 that still carries a picture (a grey 120x90),
     // and Chrome fires load for it: tiny images and exactly that placeholder do not count.
-    img.onload = () => done(img.naturalWidth >= 40 && img.naturalHeight >= 40 && !(img.naturalWidth === 120 && img.naturalHeight === 90));
+    img.onload = () => done(img.naturalWidth >= 40 && img.naturalHeight >= 40 && !isMissingFrame(img.naturalWidth, img.naturalHeight));
     img.onerror = () => done(false);
     img.src = url;
   });
@@ -83,10 +84,10 @@ const hash = (s) => [...String(s)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0))
 
 async function repairOne(item, getSongArts) {
   const song = item.kind === 'song';
-  if (song && item.art) return;
+  if (song && item.art && !item.artAlt?.length) return;
   const tries = [item.art, ...(item.artAlt ?? [])].filter(Boolean);
   if (song && item.play?.videoId) tries.push(`https://i.ytimg.com/vi/${item.play.videoId}/hq720.jpg`, `https://i.ytimg.com/vi/${item.play.videoId}/mqdefault.jpg`);
-  for (const url of tries) {
+  for (const url of new Set(tries)) {
     if (url.startsWith('data:') || await loadImage(url)) { item.art = url; return; }
   }
   if (song) return;
@@ -101,7 +102,7 @@ async function repairOne(item, getSongArts) {
 // item's art is replaced (item.art already updated), onChange(item) is called so the racks can
 // reload that cover. Items whose art loads fine are not touched and not reported.
 export function repairArt(items, { getSongArts, onChange } = {}) {
-  const queue = items.filter((i) => i.kind !== 'song' || !i.art);
+  const queue = items.filter((i) => i.kind !== 'song' || !i.art || i.artAlt?.length);
   return Promise.all(Array.from({ length: 6 }, async () => {
     for (let it = queue.shift(); it; it = queue.shift()) {
       const before = it.art;

@@ -47,7 +47,7 @@ import { settings } from '../settings.js';
 import { chooseDiscDir } from './clear.js';
 import { uploadSoon } from '../warmup.js';
 import { paintOffThread } from '../coverworker.js';
-import { safeArtUrl, artSizeOk } from '../arturl.js';
+import { safeArtUrl, artSizeOk, isMissingFrame } from '../arturl.js';
 import { toon, crisp, unpinned } from '../materials.js';
 import { rng } from '../rand.js';
 import { brushStroke } from '../ui/brush.js';
@@ -201,7 +201,7 @@ function paintHere(url, size, g, tex, e) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = async () => {
-      if (!artSizeOk(img.naturalWidth, img.naturalHeight)) { res(); return; }
+      if (!artSizeOk(img.naturalWidth, img.naturalHeight) || isMissingFrame(img.naturalWidth, img.naturalHeight)) { res(); return; } // paper until repaired (cover.js)
       try { await img.decode(); } catch { /* decoded on draw instead */ } // off the main thread
       // painting a cover is a few ms of canvas work, and a shelf's worth arrives at once (often
       // during the intro push-in), so they are painted in small slices, a few per frame
