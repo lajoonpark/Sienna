@@ -971,7 +971,8 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
         def.layout(core, dt, camera, want);
         core.sleeves.forEach((s) => { s.mesh.visible = s.appear > 0 && !s.hidden; });
         if (core.tag.mesh.parent) core.tag.mesh.scale.setScalar(0.6 + 0.4 * (core.sleeves[want]?.lift ?? 0));
-        keepTagInFrame(core, camera, dt, pointer);
+        // posed for the camera without steerClear's slide: the slide is main.js's to keep under the cursor
+        keepTagInFrame(core, pickCamera, dt, pointer);
       },
       // the item's art changed (repaired playlist cover): re-skin its sleeve(s) without re-laying out
       refreshArt(item) {
