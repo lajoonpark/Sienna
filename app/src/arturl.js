@@ -20,5 +20,9 @@ export function safeArtUrl(u) {
   return HOSTS.some((h) => host.endsWith(`.${h}`)) ? u : null;
 }
 
+// YouTube answers a missing video frame (often hq720) with a 404 that still carries a grey 120x90 picture,
+// and an <img> loads it: that is no cover.
+export const isMissingFrame = (w, h) => w === 120 && h === 90;
+
 // Is a decoded picture small enough to draw?
 export const artSizeOk = (w, h) => w > 0 && h > 0 && w * h <= ART_MAX_PIXELS;
