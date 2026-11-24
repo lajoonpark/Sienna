@@ -21,7 +21,7 @@
 //          wheel?(core, dx) / grab?(core, pointer, camera) / dragTo?(...) / release?(core)
 //                                        move the rack by hand (spinner): sideways scroll, press-drag;
 //          turning?(core)                true while it is being turned: no record is hovered.
-//        Returns the full contract (setShelf, update, click, hovered, forceHover, setPlaying,
+//        Returns the full contract (setShelf, pickHover, update, click, hovered, forceHover, setPlaying,
 //        ready, root). The vinyl pick animation and "vinyl goes back" are handled here.
 //   rack.refreshArt(item)  (in every contract) the item's art changed after setShelf (a repaired
 //        playlist cover): sleeves showing it (same object or same play.playlistId / videoId) get the
@@ -931,8 +931,18 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
 
   core.contract = (def) => {
     def.setup?.(core);
+    const pickAt = (pointer, camera) => (def.pick ? def.pick(core, pointer, camera) : core.picker.pick(pointer, camera, root));
+    function pickHover(pointer, camera, pickCamera = camera) {
+      if (!pointer || !core.sleeves.length || def.turning?.(core)) return -1;
+      // Prefer the resting spot, with the lifted sleeve catching only otherwise empty space.
+      // The camera without the framing slide can keep the current record's original patch live.
+      if (core.hovered >= 0 && pickCamera !== camera && pickAt(pointer, pickCamera) === core.hovered) return core.hovered;
+      const hit = pickAt(pointer, camera);
+      return hit >= 0 ? hit : heldUnder(core, pointer, camera);
+    }
     return {
       root,
+      pickHover,
       setShelf(shelf) {
         clear();
         core.shelf = shelf;
@@ -950,29 +960,18 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
         core.sign?.setTitle(shelf.title);
         def.items(core, items);
       },
-      update(dt, camera, pointer, active, pickCamera = camera) {
+      update(dt, camera, pointer, active, pickCamera = camera, hoverHit = null) {
         const n = core.sleeves.length;
-        const base = (cam) => (def.pick ? def.pick(core, pointer, cam) : core.picker.pick(pointer, cam, root));
         let want = -1;
         if (forced !== null) {
           want = forced < n ? forced : -1;
           core.control = -1;
           // a rack control (page arrows...) still answers the cursor while the hover is frozen
           if (active && pointer && !def.turning?.(core)) {
-            const c = base(camera);
+            const c = pickAt(pointer, camera);
             if (c >= 1000) core.control = c - 1000;
           }
-        } else if (active && pointer && n && !def.turning?.(core)) { // nothing lifts while the rack is turned by hand
-          // every record keeps its own patch of screen (its rest spot), so a lifted record that has
-          // grown over a neighbour never hides it. The lifted one only catches the cursor where no
-          // other record is (the bit sticking out above the rack): you click the song, not the rack.
-          // The camera may slide to bring the lifted one clear of the window's edges and buttons
-          // (main.js steerClear); pickCamera is the camera without that slide, so while the cursor is
-          // in the lifted record's patch as it was before the slide, it keeps the hover.
-          const keep = core.hovered >= 0 && pickCamera !== camera && base(pickCamera) === core.hovered;
-          want = keep ? core.hovered : base(camera);
-          if (want < 0) want = heldUnder(core, pointer, camera);
-        }
+        } else if (active) want = hoverHit ?? pickHover(pointer, camera, pickCamera);
         // picks >= 1000 are controls of the rack itself (page arrows...): def.control(core, id) on click
         if (want >= 1000) { core.control = want - 1000; want = -1; }
         else if (forced === null) core.control = -1;
@@ -1019,9 +1018,9 @@ export function createRackCore({ onPick, sign = null, tag = {}, maxItems = MAX_I
       get hovered() { return core.hovered; },
       get turning() { return !!def.turning?.(core); },
       // metres the view should make room by (records move right = camera moves left; up = camera down)
-      // where the hovered record is now (world), for the camera to turn toward; false if none
-      focusPoint(out) {
-        const s = core.sleeves[core.hovered];
+      // where the record is now (world), for the camera to turn toward; false if none
+      focusPoint(i, out) {
+        const s = core.sleeves[i];
         if (!s) return false;
         s.mesh.getWorldPosition(out);
         return true;

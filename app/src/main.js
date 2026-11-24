@@ -12,6 +12,7 @@ import { toon, crisp, unpinned, GLOW_LAYER } from './materials.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
 import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
+import { focusHover, lockHover } from './racks/hover.js';
 import { warmUp } from './warmup.js';
 import { STATIONS, HOME, assignShelves } from './stations.js';
 import { createNav, AT_HOME, paintViews, introBars, BASE_FOV, DOOR_SWING } from './nav.js';
@@ -740,28 +741,32 @@ function spring(x, v, target, w, dt) {
   const d = x - target, c = v + w * d, e = Math.exp(-w * dt);
   return [target + (d + c * dt) * e, (v - w * c * dt) * e];
 }
-function aimAt(yaw, pitch, key) {
+function aimAt(yaw, pitch, key, pointer) {
   // freeze the hover first, even when the swing target does not move: a record aimed dead-ahead
   // (or at the same angle as the last one) would never freeze otherwise, and steerClear's pan can
   // then slide the record's rest spot off the still cursor and hand the hover to the next record
-  focus.freeze = currentRack()?.turning ? null : { key, x: pointerPx.x, y: pointerPx.y };
+  lockHover(focus, pointer, pointerPx, key);
   if (Math.abs(yaw - focus.tyaw) + Math.abs(pitch - focus.tpitch) < 0.01) return;
   focus.tyaw = yaw; focus.tpitch = pitch;
 }
-function updateFocus(dt) {
+function updateFocus(dt, rack, pointer) {
   const at = nav.settled && nav.at !== AT_HOME && !pinnedPose ? nav.at : -1;
-  const rack = at >= 0 ? racks[at] : null;
   if (at !== focus.rack) {
     focus.rack = at; focus.key = focus.aimed = -1; focus.tyaw = focus.tpitch = 0; focus.vyaw = focus.vpitch = 0; focus.freeze = null; focus.still = 0;
   }
-  // moving the cursor (a few px, not a twitch) lets the hover follow it again; turning the rack drops it
-  const fz = focus.freeze;
-  if (fz && (Math.hypot(pointerPx.x - fz.x, pointerPx.y - fz.y) > FOCUS.unfreezePx || rack?.turning)) focus.freeze = null;
-  const hov = rack && hoverArg === null && !rack.turning ? rack.hovered : -1;
-  if (hov !== focus.key) { focus.key = hov; focus.on = 0; }
+  const live = at >= 0 && rack?.root.visible && hoverArg === null && !rack.turning ? pointer : null;
+  let hit = null;
+  const hov = focusHover(focus, live, pointerPx, FOCUS.unfreezePx, () => {
+    // Hit-test before this frame's focus motion; the rack uses the same hit for its lift.
+    updateRackCamera();
+    hit = rack.pickHover(live, camera, rackPickCamera());
+    return hit < 1000 ? hit : -1;
+  });
   // a couple of frames on a record is enough (brushing past one for a single frame does not count)
-  if (hov >= 0) { focus.on += dt; focus.off = 0; } else focus.off += dt;
-  if (hov >= 0 && hov !== focus.aimed && focus.on >= FOCUS.dwell && rack.focusPoint(_fp)) {
+  if (hov !== focus.key) { focus.key = hov; focus.on = 0; }
+  else if (hov >= 0) focus.on += dt;
+  if (hov >= 0) focus.off = 0; else focus.off += dt;
+  if (hov >= 0 && hov !== focus.aimed && focus.on >= FOCUS.dwell && rack.focusPoint(hov, _fp)) {
     // the record's direction from the rig (the camera before tilt and focus)
     rig.worldToLocal(_fp);
     const yaw = Math.atan2(-_fp.x, -_fp.z), pitch = Math.atan2(_fp.y, Math.hypot(_fp.x, _fp.z));
@@ -772,19 +777,19 @@ function updateFocus(dt) {
     const tp = THREE.MathUtils.clamp(-pitch * FOCUS.share, -FOCUS.maxPitch, FOCUS.maxPitch);
     focus.pivot.copy(_fp); // swings go step by step about the pivot, so a new pivot never jumps
     focus.cut = 0; focus.stuck = false;
-    aimAt(ty, tp, hov);
+    aimAt(ty, tp, hov, live);
   } else if (hov < 0 && focus.off > FOCUS.release && focus.aimed !== -1) {
     focus.aimed = -1;
-    aimAt(0, 0, -1);
+    aimAt(0, 0, -1, live);
   }
   // the aimed record hovered again after a >4px move dropped the freeze, without needing a new
   // aim: re-arm the freeze once the cursor has really stopped (inside a 4px disc for a beat, so
   // a slow drag keeps the hover free), or a still cursor would hover unfrozen, letting
   // steerClear's pan slide its rest spot out from under it and hand the hover to the next record
-  const still = Math.hypot(pointerPx.x - focus.px, pointerPx.y - focus.py) <= FOCUS.unfreezePx;
+  const still = live && Math.hypot(pointerPx.x - focus.px, pointerPx.y - focus.py) <= FOCUS.unfreezePx;
   focus.still = still ? focus.still + dt : 0;
   if (!still) { focus.px = pointerPx.x; focus.py = pointerPx.y; }
-  if (hov >= 0 && hov === focus.aimed && !focus.freeze && !rack?.turning && focus.still > 0.2) focus.freeze = { key: hov, x: pointerPx.x, y: pointerPx.y };
+  if (hov >= 0 && hov === focus.aimed && !focus.freeze && focus.still > 0.2) lockHover(focus, live, pointerPx, hov);
   const k = 1 - Math.exp(-dt * FOCUS.rate);
   if (focus.aimed === -1) {
     // no record to keep under the cursor: ease straight home (undoes any drift between pivots)
@@ -794,7 +799,8 @@ function updateFocus(dt) {
     focus.offQ.slerp(_qa.identity(), k);
     focus.pan.multiplyScalar(1 - k);
     focus.cut = 0; focus.stuck = false;
-    return finishFocus(rack);
+    finishFocus(rack);
+    return hit;
   }
   steerClear(dt);
   // this frame's step of the swing, as a rotation about the pivot
@@ -821,6 +827,7 @@ function updateFocus(dt) {
   focus.offQ.slerp(_qa, k2);
   focus.offP.sub(focus.pivot).setLength(dist + (focus.pivot.length() * near - dist) * kz).add(focus.pivot);
   finishFocus(rack);
+  return hit;
 }
 // The held-up record's box on screen (rack.screenBox, measured after the racks' last update) and the boxes
 // it must keep clear of (NDC [left, right, bottom, top]). Pans the camera toward the smallest move that
@@ -836,6 +843,14 @@ function updatePickCam() {
   pickCam.matrix.compose(focus.offP, camera.quaternion, camera.scale);
   pickCam.matrixWorld.multiplyMatrices(rig.matrixWorld, pickCam.matrix);
   pickCam.matrixWorldInverse.copy(pickCam.matrixWorld).invert();
+}
+const rackPickCamera = () => focus.pan.lengthSq() > 1e-8 ? pickCam : camera;
+function updateRackCamera() {
+  const k = nav.tilt;
+  camera.position.copy(focus.offP).add(_fp.set(focus.pan.x, focus.pan.y, 0).applyQuaternion(focus.offQ));
+  camera.quaternion.copy(focus.offQ).multiply(_qa.setFromEuler(_e.set(-tilt.y * 0.09 * k, -tilt.x * 0.2 * k, 0)));
+  rig.updateMatrixWorld();
+  updatePickCam();
 }
 const clampTo = (v, [lo, hi]) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
 const within = (v, [lo, hi]) => lo > hi || (v >= lo - 1e-4 && v <= hi + 1e-4);
@@ -890,7 +905,7 @@ function steerClear(dt) {
 function finishFocus(rack) {
   if (hoverArg === null) for (const r of racks) if (r) r.forceHover = r === rack && focus.freeze && !r.turning ? focus.freeze.key : null;
 }
-document.addEventListener('pointerleave', () => { pointer = null; cursorX01 = null; });
+document.addEventListener('pointerleave', () => { pointer = null; cursorX01 = null; focus.freeze = null; });
 const currentRack = () => (nav.settled && nav.at !== AT_HOME ? racks[nav.at] : null);
 // any click during the intro skips to home
 addEventListener('pointerdown', () => { if (nav.intro) nav.skipIntro(curT); });
@@ -1050,16 +1065,12 @@ function frame(t, dtOverride, draw = true) {
   // the tilt holds while a rack record is up: turning the camera under it would slide the record across
   // the rack (keepUnderCursor keeps it on the spot where the hover began), as if the cursor were carrying
   // it. The album spread hangs in the camera's frame, so its records ride along and the tilt keeps going.
+  const atRack = currentRack();
   // Input can wake a frame from idle. Don't apply that whole idle gap to a fresh cursor target.
-  tilt.step(dtOverride ?? Math.min(dt, 1 / 24), !spread.isOpen && (currentRack()?.hovered ?? -1) >= 0);
-  // gentle tilt at home, calmer at a rack so records stay put under the cursor
-  const k = nav.tilt;
-  updateFocus(dt);
-  // the swing about the hovered record, then the cursor tilt on top
-  camera.position.copy(focus.offP).add(_fp.set(focus.pan.x, focus.pan.y, 0).applyQuaternion(focus.offQ));
-  camera.quaternion.copy(focus.offQ).multiply(_qa.setFromEuler(_e.set(-tilt.y * 0.09 * k, -tilt.x * 0.2 * k, 0)));
-  rig.updateMatrixWorld();
-  updatePickCam();
+  tilt.step(dtOverride ?? Math.min(dt, 1 / 24), !spread.isOpen && (atRack?.hovered ?? -1) >= 0);
+  const rackPointer = !suitcase.over && !spread.isOpen && !collectionList.isOpen() ? pointer : null;
+  const hoverHit = updateFocus(dt, atRack, rackPointer);
+  updateRackCamera();
 
   // ?hover=N holds record N up on the rack you are at (a pinned ?cam counts as the table)
   const hoverAt = pinnedPose && nav.at === AT_HOME ? 0 : nav.settled ? nav.at : -1;
@@ -1072,11 +1083,9 @@ function frame(t, dtOverride, draw = true) {
   racks.forEach((rack, i) => {
     if (!rack || !rack.root.visible) return;
     const active = (nav.settled && nav.at === i) || (!!pinnedPose && i === hoverAt);
-    // the cursor over the suitcase or collection list does not pick records through them
-    rack.update(dt, camera, active && !suitcase.over && !spread.isOpen && !collectionList.isOpen() ? pointer : null, active, focus.pan.lengthSq() > 1e-8 ? pickCam : camera);
+    rack.update(dt, camera, active ? rackPointer : null, active, rackPickCamera(), rack === atRack ? hoverHit : null);
   });
   // the record the camera is on, where it is on screen now (steerClear works from it next frame)
-  const atRack = currentRack();
   held = atRack && !pinnedPose && !spread.isOpen && focus.aimed >= 0 && atRack.hovered === focus.aimed ? atRack.screenBox(camera) : null;
   // an album or playlist under the cursor: fetch its songs now, so pressing it opens the spread at once
   const hovItem = currentRack()?.core.sleeves[currentRack().hovered]?.item;
