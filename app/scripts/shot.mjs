@@ -10,7 +10,7 @@ const outDir = safeOutDir(outArg, 'sienna-shots');
 const port = Number(process.env.SIENNA_PORT) || 5199;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: ['--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || 'vulkan'}`, '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 // SIENNA_VIEWPORT=1024x640 shoots at another window size (default 1280x720)
 const [vw, vh] = (process.env.SIENNA_VIEWPORT || '1280x720').split('x').map(Number);
 // SIENNA_DPR=2 shoots like a Retina screen

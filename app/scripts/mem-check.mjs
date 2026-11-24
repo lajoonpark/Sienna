@@ -6,11 +6,13 @@
 //   (SIENNA_DPR=2 pretends a Retina screen; SIENNA_SETTLE_S=40, SIENNA_CLOSED_S=60; SIENNA_MINI_RELEASE_S=20 lets the closed sample show the mini window let go of)
 import { _electron as electron } from 'playwright';
 import { outDir, sandboxArgs } from './safe.mjs';
+import { readFileSync } from 'node:fs';
+const pss = (pid) => { try { return Math.round(Number(/^Pss:\s+(\d+)/m.exec(readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8'))[1]) / 1024); } catch { return null; } };
 const S = outDir(process.argv[2], 'sienna-mem-check');
 const SETTLE_S = Number(process.env.SIENNA_SETTLE_S || 40), CLOSED_S = Number(process.env.SIENNA_CLOSED_S || 60);
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, ...(process.env.SIENNA_DPR ? [`--force-device-scale-factor=${process.env.SIENNA_DPR}`] : []), '.'],
+  args: [...sandboxArgs(), '--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || 'vulkan'}`, '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, ...(process.env.SIENNA_DPR ? [`--force-device-scale-factor=${process.env.SIENNA_DPR}`] : []), '.'],
   env: { ...process.env, SIENNA_TEST: '1' },
   timeout: 60000,
 });
@@ -24,9 +26,10 @@ async function sample(label) {
     const who = new Map(webContents.getAllWebContents().map((w) => [w.getOSProcessId(), w.getURL().includes('mini.html') ? 'mini' : w.getURL().startsWith('file:') ? 'shop' : /youtube|google/.test(w.getURL()) ? 'player' : w.getURL()]));
     return app.getAppMetrics().map((m) => ({ pid: m.pid, type: m.type, what: who.get(m.pid) ?? m.serviceName ?? m.name ?? '', mb: Math.round(m.memory.workingSetSize / 1024), cpu: +m.cpu.percentCPUUsage.toFixed(1) }));
   });
+  for (const r of rows) r.pss = pss(r.pid);
   rows.sort((a, b) => b.mb - a.mb);
-  console.log(`\n== ${label}: ${rows.reduce((t, r) => t + r.mb, 0)} MB, ${rows.reduce((t, r) => t + r.cpu, 0).toFixed(1)} % CPU`);
-  for (const r of rows) console.log(`  ${String(r.mb).padStart(5)} MB ${String(r.cpu).padStart(6)} %  ${r.type.padEnd(8)} ${r.what}`);
+  console.log(`\n== ${label}: ${rows.reduce((t, r) => t + r.mb, 0)} MB${rows[0]?.pss != null ? ` (${rows.reduce((t, r) => t + r.pss, 0)} MB PSS)` : ''}, ${rows.reduce((t, r) => t + r.cpu, 0).toFixed(1)} % CPU`);
+  for (const r of rows) console.log(`  ${String(r.mb).padStart(5)} MB ${r.pss != null ? String(r.pss).padStart(5) + ' PSS ' : ''}${String(r.cpu).padStart(6)} %  ${r.type.padEnd(8)} ${r.what}`);
 }
 
 let page;
@@ -35,6 +38,8 @@ for (let i = 0; i < 40 && !page; i++) {
   if (!page) await wait(0.5);
 }
 await page.waitForFunction(() => window.__siennaDebug?.state.introDone && window.__siennaDebug.state.settled, null, { timeout: 240000 }).catch(() => console.log('(the intro had not settled)'));
+// a new install opens on the first-run tour, whose note keeps the shop painting: rest is measured without it
+await page.keyboard.press('Escape');
 await wait(SETTLE_S);
 await sample('shop open, at rest');
 // Off macOS closing the window quits the app; keep it running the way it does on a Mac.

@@ -113,8 +113,9 @@ sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.03;
 scene.add(sun, sun.target);
 // The shadow map, made here rather than by three. PCF shadows sample only its depth layer, but three gives
-// its target a full RGBA colour layer too (64 MB at 4096 px, written and never read). A framebuffer needs a
-// colour layer the same size, so it is the smallest one, one byte a pixel: 16 MB. Otherwise as three makes
+// its target a full RGBA colour layer too (64 MB at 4096 px, written and never read). three cannot make a
+// target without one, so it is made as the smallest, one byte a pixel (16 MB), and then taken off the
+// framebuffer and freed (dropShadowColour): WebGL 2 draws to a depth-only framebuffer. Otherwise as three makes
 // it (WebGLShadowMap: PCF, no reversed depth); made again whenever timeofday.js has let go of it for the night.
 // Made at the first shadow draw (updateShadows), not here: a new texture takes a Math.random uuid, and the
 // street and shop below are built from Math.random, so making it now would build a different street.
@@ -134,6 +135,20 @@ function leanShadowMap() {
   map.depthTexture.minFilter = map.depthTexture.magFilter = THREE.LinearFilter;
   sun.shadow.map = map;
   sun.shadow.camera.updateProjectionMatrix();
+  if (params.get('shadowColour') !== '1') dropShadowColour(map);
+}
+// Frees the colour layer of a shadow map nobody reads. If the driver will not draw without one, it stays.
+function dropShadowColour(map) {
+  const gl = renderer.getContext(), prev = renderer.getRenderTarget();
+  renderer.initRenderTarget(map);
+  const fb = renderer.properties.get(map).__webglFramebuffer, tex = renderer.properties.get(map.texture).__webglTexture;
+  if (fb && tex && !Array.isArray(fb)) {
+    renderer.state.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, null, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) gl.deleteTexture(tex); // (three's later delete of it is a no-op)
+    else gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  }
+  renderer.setRenderTarget(prev);
 }
 
 const sky = createSky();
@@ -1092,8 +1107,10 @@ function frame(t, dtOverride, draw = true) {
     else painter.setFovea?.((tilt.x + 1) / 2, 1 - (tilt.y + 1) / 2, FOVEA);
     const whole = painter.stats.full;
     painter.render(scene, camera, t, suitcase.overlay);
-    // something changed while nothing was moving (a cover arrived, the sun crept): full rate for a moment
-    if (painter.stats.full !== whole && pacer?.deep) pacer.kick();
+    // something changed while nothing was moving (a cover arrived): full rate for a moment. Not for the sun's
+    // creep: that one frame is all there is to it, every 5 s all day, and waking for each kept a still shop
+    // looking at itself 16 times a second instead of 2.
+    if (painter.stats.full !== whole && pacer?.deep && !timeOfDay.stepped) pacer.kick();
   } else { renderer.render(scene, camera); renderOverlay(renderer, suitcase.overlay); }
 }
 

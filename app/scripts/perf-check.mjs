@@ -7,7 +7,7 @@ const at = Number(process.argv[2] ?? 0), dpr = Number(process.argv[3] ?? 1), q =
 const port = Number(process.env.SIENNA_PORT) || 5243;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: ['--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || 'vulkan'}`, '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await b.newPage({ viewport: { width: 960, height: 600 }, deviceScaleFactor: dpr });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 const t0 = Date.now();
