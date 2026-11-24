@@ -351,7 +351,8 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   in; a record with the step number slides out from behind it and spins, and a row of little records at the bottom
   shows the track you are on. Moving on flicks the note off to one side. Clicks, ticks, a first record and the
   goodbye burst into paint, confetti, music notes and records (`src/tourfx.js`: one canvas behind the notes that only
-  draws while something is flying). Reduced motion and `?shot` keep it all still.
+  draws while something is flying). Once the tour has faded away its animations pause too (`.tr.gone`),
+  so a hidden note stops waking the page every frame. Reduced motion and `?shot` keep it all still.
   The notes lean toward the cursor (about 9°), and so does the Settings card (5°, on a wrapper so its open bounce
   stays): `src/cursortilt.js` eases the cursor on its own rAF loop, which runs only while the paper is catching up,
   so the paper keeps turning while the camera's tilt holds still for a record at a rack. Check: `node scripts/tilt-check.mjs [out]`.
@@ -366,8 +367,10 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
 - **Heat / battery**: the shop is drawn at that cap only while something moves (camera, input, flights,
   lid); once still it drops to 12 fps (30 while a record spins on screen). 4 s later, if nothing on screen animates
   on its own (no record turning on the suitcase), it goes into deep idle: it only looks twice a second whether
-  anything changed (a cover arriving, the sun creeping) and the ragged border stops boiling, so nothing is drawn at
-  all; input, or a change it finds, brings the full rate back at once. It stops while the window is hidden,
+  anything changed (a cover arriving) and the ragged border stops boiling, so nothing is drawn at
+  all; input, or a change it finds, brings the full rate back at once. The sun's 5 s creep paints the one
+  frame it makes and leaves the two-looks-a-second pace alone (waking for each kept a still shop at 16
+  looks a second). It stops while the window is hidden,
   minimised or covered (`src/pacer.js`; `node scripts/idle-check.mjs [rack]` prints B busy / i idle / d deep and what
   was painted; `?deep=0` turns deep idle off, e.g. for `cache-check.mjs`).
   **Lamps**: of the shop's 8 point lights only 5 are on at a time, the ones that light the view most (their falloff
@@ -442,7 +445,7 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   only while a window is on screen: every 3 s while Sienna has the keyboard, every 12 s while you are in
   another app, and at once when you come back.
 - **Memory**: `npm run build && xvfb-run -a node scripts/mem-check.mjs [out]` gives memory and CPU per process
-  (`SIENNA_DPR=2` pretends a Retina screen; it prints PSS beside the resident size on Linux, and `SIENNA_ANGLE=swiftshader` picks the renderer where there is no Vulkan). The shadow map's unread colour layer is freed once made (`dropShadowColour` in `src/main.js`, 16 MB). A still shop is looked at twice a second, the sun's 5 s creep included, and the hidden tour's animations are paused. The sun's 4096 px shadow map (128 MB of video memory) is let go of while the sun is down
+  (`SIENNA_DPR=2` pretends a Retina screen; it prints PSS beside the resident size on Linux, and `SIENNA_ANGLE=swiftshader` picks the renderer where there is no Vulkan). The shadow map's unread colour layer is freed once made (`dropShadowColour` in `src/main.js`, 16 MB; `?shadowColour=1` keeps it, e.g. where a driver will not draw without one). A still shop is looked at twice a second, the sun's 5 s creep included, and the hidden tour's animations are paused. The sun's 4096 px shadow map (128 MB of video memory) is let go of while the sun is down
   (`src/timeofday.js`). A resting cover's canvas is shrunk to a pixel once the picture is on the GPU
   (`slim` in `src/racks/common.js`, about 50 MB for a full shop). The mini window makes no travelling
   washes (it has no camera to travel).
