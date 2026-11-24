@@ -7,3 +7,8 @@ export function focusHover(focus, pointer, px, unfreezePx, pick) {
   if (lock && (!pointer || Math.hypot(px.x - lock.x, px.y - lock.y) > unfreezePx)) focus.freeze = null;
   return pointer ? (focus.freeze?.key ?? pick()) : -1;
 }
+
+export function hoverPanBounds({ rec: [left, right, bottom, top], anchor }, keepX, keepY) {
+  const ix = Math.min(keepX, 0.45 * (right - left)), iy = Math.min(keepY, 0.45 * (top - bottom));
+  return [[anchor.x - right + ix, anchor.x - left - ix], [anchor.y - top + iy, anchor.y - bottom - iy]];
+}
