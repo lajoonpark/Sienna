@@ -37,3 +37,9 @@ test('releasing focus locks a miss only while the pointer is live', async () => 
   lockHover(focus, null, px, -1);
   assert.equal(focus.freeze, null);
 });
+
+test('framing offsets are bounded by the original hover anchor', async () => {
+  const { hoverPanBounds } = await import('../src/racks/hover.js');
+  const held = { rec: [-0.5, 0.5, -0.5, 0.5], anchor: { x: 0, y: -0.25 } };
+  assert.deepEqual(hoverPanBounds(held, 0.125, 0.125), [[-0.375, 0.375], [-0.625, 0.125]]);
+});

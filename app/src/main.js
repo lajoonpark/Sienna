@@ -12,7 +12,7 @@ import { toon, crisp, unpinned, GLOW_LAYER } from './materials.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
 import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
-import { focusHover, lockHover } from './racks/hover.js';
+import { focusHover, hoverPanBounds, lockHover } from './racks/hover.js';
 import { warmUp } from './warmup.js';
 import { STATIONS, HOME, assignShelves } from './stations.js';
 import { createNav, AT_HOME, paintViews, introBars, BASE_FOV, DOOR_SWING } from './nav.js';
@@ -858,16 +858,8 @@ function steerClear(dt) {
   const h = held;
   if (!h) return;
   const p = camera.projectionMatrix.elements, ex = (2 * FOCUS.edge) / innerWidth, ey = (2 * FOCUS.edge) / innerHeight;
-  const [l, r, b, t] = h.all, [cl, cr, cb, ct] = h.rec;
-  const ix = Math.min((2 * FOCUS.keep) / innerWidth, 0.45 * (cr - cl)), iy = Math.min((2 * FOCUS.keep) / innerHeight, 0.45 * (ct - cb));
-  // moves (NDC) that keep the cursor on the cover (where the hover began and, where both fit, where it
-  // is now), and that keep cover + tag inside the window
-  const keepOn = (c) => [[c.x - cr + ix, c.x - cl - ix], [c.y - ct + iy, c.y - cb - iy]];
-  let cur = keepOn(h.anchor);
-  if (pointer) {
-    const both = keepOn(pointer).map(([lo, hi], i) => [Math.max(lo, cur[i][0]), Math.min(hi, cur[i][1])]);
-    if (both.every(([lo, hi]) => lo <= hi)) cur = both;
-  }
+  const [l, r, b, t] = h.all;
+  const cur = hoverPanBounds(h, (2 * FOCUS.keep) / innerWidth, (2 * FOCUS.keep) / innerHeight);
   const fit = [[-1 + ex - l, 1 - ex - r], [FOCUS.floor - b, 1 - ey - t]];
   // the move that would take the pan back out, where it is not needed
   const back = [(focus.pan.x * p[0]) / h.z, (focus.pan.y * p[5]) / h.z];
