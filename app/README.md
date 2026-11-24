@@ -162,7 +162,10 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   keep the cursor 15% inside its edges, at every moment of the animation, so you can press it without
   moving (check with `SIENNA_GL=vulkan node scripts/cursor-check.mjs [out] [stations] [n]`). It keeps
   the record under where the cursor was when the hover began, not the live cursor, so a lifted record
-  never follows the cursor about (`hoverAnchor`); the cursor tilt of the camera also holds while a
+  never follows the cursor about (`hoverAnchor`), and the camera frames the lifted cover around that
+  same anchor alone (`hoverPanBounds` in `src/racks/hover.js`), so drifting the cursor off the record
+  hands the hover to the one below instead of panning after it; the cursor tilt of the camera also
+  holds while a
   record is up, since turning the camera would slide the record across the rack.
   The plant-room spinner also turns by hand: scroll sideways (trackpad swipe), or press on the stand and
   drag it round; let go with a flick and it keeps spinning, slowing down (`wheel` / `grab` / `dragTo` /
