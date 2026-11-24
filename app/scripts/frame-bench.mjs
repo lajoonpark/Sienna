@@ -15,7 +15,7 @@ const [vw, vh] = (process.env.SIENNA_VIEWPORT || '1440x900').split('x').map(Numb
 const variants = JSON.parse(process.env.VARIANTS || '[{}]');
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: ['--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || 'vulkan'}`, '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 for (const at of ats) {
   const page = await b.newPage({ viewport: { width: vw, height: vh }, deviceScaleFactor: dpr });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));

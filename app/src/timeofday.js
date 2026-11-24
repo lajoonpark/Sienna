@@ -68,7 +68,7 @@ export function createTimeOfDay({ scene, sun, hemi, sky }) {
   // times a second, and between those moments a shop where nothing moves is exactly the same frame
   // (which the painter then does not paint again, see still.js). ?speed runs the clock fast: every frame.
   const STEP = 5 / 3600; // hours
-  let lastHour = null, lampsOn = 0, shown = { hour: 0, e: 0 };
+  let lastHour = null, lampsOn = 0, shown = { hour: 0, e: 0 }, stepped = false;
 
   function hourNow() {
     if (speed) return (startHour + ((performance.now() - t0) / 3600000) * speed) % 24;
@@ -80,8 +80,10 @@ export function createTimeOfDay({ scene, sun, hemi, sky }) {
   return {
     update(t) {
       const hour = hourNow();
+      stepped = false;
       if (lastHour === null || speed || Math.abs(hour - lastHour) >= STEP) {
         lastHour = hour;
+        stepped = true;
         const { e, s } = sunAt(hour);
         shown = { hour, e };
         const m = moodAt(e);
@@ -117,5 +119,7 @@ export function createTimeOfDay({ scene, sun, hemi, sky }) {
       updateLamps(lampsOn, t);
       return shown;
     },
+    // the light was worked out again in the last update (the sun crept one step)
+    get stepped() { return stepped; },
   };
 }

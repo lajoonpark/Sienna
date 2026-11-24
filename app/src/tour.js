@@ -45,6 +45,8 @@ const CSS = `
 .tr { position: fixed; inset: 0; z-index: var(--sienna-z-tour); pointer-events: none; font-family: var(--sienna-font); color: var(--sienna-ink); perspective: 1100px;
   opacity: 0; visibility: hidden; transition: opacity var(--sienna-dur-slow) ease, visibility 0s var(--sienna-dur-slow); }
 .tr.show { opacity: 1; visibility: visible; transition: opacity var(--sienna-dur-slow) ease; }
+/* faded out: its spinning record and bobbing words stop too (hidden, they still woke the page every frame) */
+.tr.gone, .tr.gone * { animation-play-state: paused !important; }
 .tr-skip { position: absolute; top: 3.4vh; left: 50%; transform: translateX(-50%); font-size: var(--sienna-text-md); pointer-events: auto; opacity: .85; }
 .tr-skip:hover { opacity: 1; }
 .tr-stage { position: absolute; left: 50%; top: 50%; width: min(620px, 92vw); will-change: transform;
@@ -218,7 +220,8 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
 
   // ---- the page: SKIP TOUR at the top, the note, and the floating words under it ----
   const root = document.createElement('div');
-  root.className = 'tr';
+  root.className = 'tr gone';
+  root.addEventListener('transitionend', (e) => { if (e.target === root && e.propertyName === 'visibility' && !root.classList.contains('show')) root.classList.add('gone'); });
   root.innerHTML = '<div class="tr-stage"><div class="tr-amb"></div><div class="tr-note"><div class="tr-disc"><div class="tr-vinyl"><div class="tr-lab"><span></span></div></div></div>'
     + '<div class="tr-tape"></div><div class="tr-title"></div><div class="tr-body"></div><div class="tr-fine"></div><div class="tr-msg"></div></div>'
     + '<div class="tr-float"></div></div><div class="tr-prog"></div>';
@@ -294,7 +297,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   // a timeout that is called off when the step changes
   const later = (fn, ms) => { const id = setTimeout(fn, ms); cleanup.push(() => clearTimeout(id)); };
 
-  function show(on) { root.classList.toggle('show', on); setOverlayOpen(root, on); }
+  function show(on) { if (on) root.classList.remove('gone'); root.classList.toggle('show', on); setOverlayOpen(root, on); }
 
   // Write a step: where it sits, its words, its floating buttons
   function render() {

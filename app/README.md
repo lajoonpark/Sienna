@@ -442,7 +442,7 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   only while a window is on screen: every 3 s while Sienna has the keyboard, every 12 s while you are in
   another app, and at once when you come back.
 - **Memory**: `npm run build && xvfb-run -a node scripts/mem-check.mjs [out]` gives memory and CPU per process
-  (`SIENNA_DPR=2` pretends a Retina screen). The sun's 4096 px shadow map (128 MB of video memory) is let go of while the sun is down
+  (`SIENNA_DPR=2` pretends a Retina screen; it prints PSS beside the resident size on Linux, and `SIENNA_ANGLE=swiftshader` picks the renderer where there is no Vulkan). The shadow map's unread colour layer is freed once made (`dropShadowColour` in `src/main.js`, 16 MB). A still shop is looked at twice a second, the sun's 5 s creep included, and the hidden tour's animations are paused. The sun's 4096 px shadow map (128 MB of video memory) is let go of while the sun is down
   (`src/timeofday.js`). A resting cover's canvas is shrunk to a pixel once the picture is on the GPU
   (`slim` in `src/racks/common.js`, about 50 MB for a full shop). The mini window makes no travelling
   washes (it has no camera to travel).
