@@ -19,6 +19,7 @@ import { createMenu } from './menu.js';
 import { createSearch } from './search.js';
 import { createSettingsPanel } from './settings-panel.js';
 import { createTour } from './tour.js';
+import { createCameraTilt } from './camera-tilt.js';
 import { settings } from './settings.js';
 import { createPacer } from './pacer.js';
 import { createQuality } from './quality.js';
@@ -686,16 +687,17 @@ if (!window.sienna || window.sienna.isDev) window.__siennaDebug = {
 };
 
 // ---- cursor tilt ----
-const tilt = { x: 0, y: 0, tx: 0, ty: 0 };
+const tilt = createCameraTilt();
 let pointer = null; // normalised device coords, for picking records
 let cursorX01 = null; // 0..1 across the window, for the side menus
 addEventListener('pointermove', (e) => {
   pointerPx.x = e.clientX; pointerPx.y = e.clientY;
   cursorX01 = e.clientX / innerWidth;
-  tilt.tx = (e.clientX / innerWidth) * 2 - 1;
-  tilt.ty = (e.clientY / innerHeight) * 2 - 1;
+  const x = cursorX01 * 2 - 1, y = (e.clientY / innerHeight) * 2 - 1;
+  tilt.tx = THREE.MathUtils.clamp(x, -1, 1);
+  tilt.ty = THREE.MathUtils.clamp(y, -1, 1);
   // words and buttons drawn over the picture do not pick records through them
-  pointer = e.target === renderer.domElement ? new THREE.Vector2(tilt.tx, -tilt.ty) : null;
+  pointer = e.target === renderer.domElement ? new THREE.Vector2(x, -y) : null;
 });
 const pointerPx = { x: 0, y: 0 };
 
@@ -1048,13 +1050,8 @@ function frame(t, dtOverride, draw = true) {
   // the tilt holds while a rack record is up: turning the camera under it would slide the record across
   // the rack (keepUnderCursor keeps it on the spot where the hover began), as if the cursor were carrying
   // it. The album spread hangs in the camera's frame, so its records ride along and the tilt keeps going.
-  if (spread.isOpen || !((currentRack()?.hovered ?? -1) >= 0)) {
-    tilt.x += (tilt.tx - tilt.x) * 0.06;
-    tilt.y += (tilt.ty - tilt.y) * 0.06;
-    // the last hair's breadth (a 30th of a pixel) at once: the view comes to rest, and a resting view is not painted again
-    if (Math.abs(tilt.tx - tilt.x) < 1e-4) tilt.x = tilt.tx;
-    if (Math.abs(tilt.ty - tilt.y) < 1e-4) tilt.y = tilt.ty;
-  }
+  // Input can wake a frame from idle. Don't apply that whole idle gap to a fresh cursor target.
+  tilt.step(dtOverride ?? Math.min(dt, 1 / 24), !spread.isOpen && (currentRack()?.hovered ?? -1) >= 0);
   // gentle tilt at home, calmer at a rack so records stay put under the cursor
   const k = nav.tilt;
   updateFocus(dt);
