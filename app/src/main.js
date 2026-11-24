@@ -12,7 +12,7 @@ import { toon, crisp, unpinned, GLOW_LAYER } from './materials.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
 import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
-import { focusHover } from './racks/hover.js';
+import { focusHover, lockHover } from './racks/hover.js';
 import { warmUp } from './warmup.js';
 import { STATIONS, HOME, assignShelves } from './stations.js';
 import { createNav, AT_HOME, paintViews, introBars, BASE_FOV, DOOR_SWING } from './nav.js';
@@ -739,11 +739,11 @@ function spring(x, v, target, w, dt) {
   const d = x - target, c = v + w * d, e = Math.exp(-w * dt);
   return [target + (d + c * dt) * e, (v - w * c * dt) * e];
 }
-function aimAt(yaw, pitch, key) {
+function aimAt(yaw, pitch, key, pointer) {
   // freeze the hover first, even when the swing target does not move: a record aimed dead-ahead
   // (or at the same angle as the last one) would never freeze otherwise, and steerClear's pan can
   // then slide the record's rest spot off the still cursor and hand the hover to the next record
-  focus.freeze = key < 0 || currentRack()?.turning ? null : { key, x: pointerPx.x, y: pointerPx.y };
+  lockHover(focus, pointer, pointerPx, key);
   if (Math.abs(yaw - focus.tyaw) + Math.abs(pitch - focus.tpitch) < 0.01) return;
   focus.tyaw = yaw; focus.tpitch = pitch;
 }
@@ -775,10 +775,10 @@ function updateFocus(dt, rack, pointer) {
     const tp = THREE.MathUtils.clamp(-pitch * FOCUS.share, -FOCUS.maxPitch, FOCUS.maxPitch);
     focus.pivot.copy(_fp); // swings go step by step about the pivot, so a new pivot never jumps
     focus.cut = 0; focus.stuck = false;
-    aimAt(ty, tp, hov);
+    aimAt(ty, tp, hov, live);
   } else if (hov < 0 && focus.off > FOCUS.release && focus.aimed !== -1) {
     focus.aimed = -1;
-    aimAt(0, 0, -1);
+    aimAt(0, 0, -1, live);
   }
   // the aimed record hovered again after a >4px move dropped the freeze, without needing a new
   // aim: re-arm the freeze once the cursor has really stopped (inside a 4px disc for a beat, so
@@ -787,7 +787,7 @@ function updateFocus(dt, rack, pointer) {
   const still = live && Math.hypot(pointerPx.x - focus.px, pointerPx.y - focus.py) <= FOCUS.unfreezePx;
   focus.still = still ? focus.still + dt : 0;
   if (!still) { focus.px = pointerPx.x; focus.py = pointerPx.y; }
-  if (hov >= 0 && hov === focus.aimed && !focus.freeze && !rack?.turning && focus.still > 0.2) focus.freeze = { key: hov, x: pointerPx.x, y: pointerPx.y };
+  if (hov >= 0 && hov === focus.aimed && !focus.freeze && focus.still > 0.2) lockHover(focus, live, pointerPx, hov);
   const k = 1 - Math.exp(-dt * FOCUS.rate);
   if (focus.aimed === -1) {
     // no record to keep under the cursor: ease straight home (undoes any drift between pivots)

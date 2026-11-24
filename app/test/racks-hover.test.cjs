@@ -25,3 +25,15 @@ test('a record under the cursor on the previous frame is not a current hit', asy
   assert.equal(focusHover(focus, { x: 0, y: 0 }, { x: 210, y: 280 }, 4, () => -1), -1);
   assert.equal(focus.freeze, null);
 });
+
+test('releasing focus locks a miss only while the pointer is live', async () => {
+  const { focusHover, lockHover } = await import('../src/racks/hover.js');
+  const focus = { freeze: null };
+  const pointer = { x: 0, y: 0 }, px = { x: 120, y: 200 };
+  lockHover(focus, pointer, px, -1);
+  assert.deepEqual(focus.freeze, { key: -1, ...px });
+  assert.equal(focusHover(focus, pointer, px, 4, () => assert.fail('still locked on the miss')), -1);
+  assert.equal(focusHover(focus, pointer, { x: 125, y: 200 }, 4, () => 2), 2);
+  lockHover(focus, null, px, -1);
+  assert.equal(focus.freeze, null);
+});
