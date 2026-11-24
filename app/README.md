@@ -150,7 +150,11 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   toward you with a paper name tag; click it and its vinyl pops out and flies into the suitcase.
   On the crate table (Quick picks) the record under the cursor comes up with a neighbour each side,
   fanned like a hand of cards, so each is a big target. At any rack, resting the cursor on a record
-  turns the camera part of the way toward it (`updateFocus` in `main.js`). Records are picked by where
+  turns the camera part of the way toward it (`updateFocus` in `main.js`, with the hover lock in
+  `src/racks/hover.js`: `lockHover` freezes the hovered record to the cursor's spot and `focusHover`
+  picks the record under it). The lock shares the rack's lift pick each frame and releases the moment
+  the pointer leaves the window or moves off the record, so a sleeve always settles back into its
+  slot. Records are picked by where
   they rest, so a lifted record never blocks its neighbours; if the cursor is on none of those, the
   lifted record takes the click, so you click the song, not the rack behind it.
   However a rack lifts, swings or zooms a record, it never leaves the cursor: after each rack poses the
