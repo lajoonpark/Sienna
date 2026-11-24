@@ -2,7 +2,7 @@
 
 A 3D vinyl shop for YouTube Music (free, open source). Electron + Three.js.
 
-The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over the street, a little piazza, and the Sienna shop. The door swings open on its own, the camera walks into the shop, and the view tilts with the cursor. All scenery is procedural.
+The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over the street, a little piazza, and the Sienna shop. The door swings open on its own, the camera walks into the shop, and the view tilts with the cursor. The tilt is a critically damped spring (`src/camera-tilt.js`, `tilt.step` in `main.js`): it keeps its speed capped on wide sweeps, bends rather than yanks when the cursor reverses, and steps on the frame's clock so it feels the same at 30 and 60 fps. All scenery is procedural.
 
 **Look:** painted in oil, through a screen pass (`src/watercolour.js`, `src/oilpaint.js`): opaque dabs on the brush strokes' places (`src/brushstrokes.js` places them, pinned to the world's surfaces), each with its object's own paint, lit live, with impasto ridges, over an under-coat of smaller dabs so no canvas is left bare; full bleed, no border. Oil paint is the only look: the watercolour (Faint / Light / Medium / Heavy) and Brush strokes looks and the Settings > Look > Painting choice were removed when oil-paint was merged into dev (Lajoon, 2026-11-13). The mini window's suitcase card matches (`CARD_OIL` in `src/watercolour.js`): full-bleed oil-dabbed suitcase and canvas backdrop with linen weave and no wash. `?wc=0` shows the plain unpainted render (for the check scripts); `?style=flat` shows the old flat toon look.
 
@@ -433,7 +433,7 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   still mini card skips re-rendering the 3D scene. A frame put together in parts is the same picture to the last bit as a whole repaint:
   `node scripts/cache-check.mjs` compares them and counts what was painted (`__siennaDebug.painter.stats`).
   Things that help the shop come to rest: the time of day is worked out every 5 s of the clock, not every
-  frame (`src/timeofday.js`); the cursor tilt snaps the last 1/30 px; under a shut lid (case tucked away)
+  frame (`src/timeofday.js`); the cursor tilt lands on an exact rest once it is within a hair of its target and slow (`src/camera-tilt.js`); under a shut lid (case tucked away)
   the record and arm are not posed. Bricks, tiles and slats are instanced per 8 m square of ground
   (`src/kit.js`), so what is outside the view is not sent to the GPU while the camera does move (43%
   fewer of those triangles on average, for 15 more draw calls).
