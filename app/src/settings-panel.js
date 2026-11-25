@@ -60,7 +60,7 @@ const CSS = `
 
 const action = (text, seed, onClick, danger = false) => inkButton(text, { seed, onClick, danger });
 
-export function createSettingsPanel({ music = null, onTour = null, onRestock = null } = {}) {
+export function createSettingsPanel({ music = null, onTour = null, onRestock = null, onClose = null } = {}) {
   injectTokens();
   const style = document.createElement('style');
   style.textContent = CSS;
@@ -125,7 +125,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
 
   const sheet = createSheet({ title: 'Settings', seed: 7,
     width: 'min(calc(var(--sienna-space-10) * 21), 92vw)',
-    onClose: () => { openNow = false; stopRecording(); },
+    onClose: () => { openNow = false; stopRecording(); onClose?.(); },
   });
   const veil = sheet.el;
   veil.classList.add('st-settings');
@@ -323,7 +323,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   settingRows(addPage('look', 'Look'), [
     { key: 'covers', label: 'Cover art', hint: 'How strongly album covers are painted over.', opts: ['Off', 'Light', 'Medium', 'Heavy'].map((l, i) => [l, i]) },
     { key: 'font', label: 'Lettering', hint: 'The handwriting on tags, signs and buttons. It changes straight away.', opts: Object.entries(FONTS).map(([k, f]) => [f.label, k, f]) },
-    { key: 'coverCarousel', label: 'Cover carousel', hint: 'Browse Listen again in the mini player with spinning covers or the ruled paper list.', opts: [['Carousel', true], ['Paper list', false]] },
+    { key: 'coverCarousel', label: 'Cover carousel', hint: 'Browse Up next and the mini player’s Listen again with spinning covers or the ruled paper list.', opts: [['Carousel', true], ['Paper list', false]] },
   ], 23);
   const isMac = /Mac/.test(navigator.platform);
   const playbackPage = addPage('playback', 'Playback');

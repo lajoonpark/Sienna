@@ -14,6 +14,12 @@ const CSS = `
   backface-visibility: hidden; }
 .la-cover[aria-selected="true"] { cursor: pointer; box-shadow: var(--sienna-shadow-lift); }
 .la-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.la-cover[aria-current="true"]::after { content: '♪'; position: absolute; top: var(--sienna-space-2); left: var(--sienna-space-2);
+  width: var(--sienna-space-6); height: var(--sienna-space-6); border-radius: 50%; display: grid; place-items: center;
+  color: var(--sienna-paper); background: var(--sienna-indigo); font: var(--sienna-text-sm)/1 var(--sienna-serif); }
+.la-horizontal .la-wheel { flex-basis: 200px; }
+.la-horizontal .la-cover { --cover-size: min(154px, 32cqw, 78cqh); }
+.la-horizontal .la-wheel:focus-visible { outline: 2px solid var(--sienna-indigo); outline-offset: -2px; }
 .la-details { flex: none; padding: var(--sienna-space-2) var(--sienna-space-4) 0; color: var(--sienna-ink); }
 .la-title, .la-artist { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .la-title { font: bold var(--sienna-text-lg)/1.05 var(--sienna-font); }
@@ -33,16 +39,19 @@ const angleStep = Math.PI / 5.6;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 let nextId = 0;
 
-export function createCoverCarousel({ onPick, onActiveChange, drawer }) {
+export function createCoverCarousel({ onPick, onActiveChange, drawer, orientation = 'vertical' }) {
   injectTokens();
   if (!document.getElementById('sienna-cover-carousel')) {
     const style = document.createElement('style');
     style.id = 'sienna-cover-carousel'; style.textContent = CSS; document.head.appendChild(style);
   }
+  const horizontal = orientation === 'horizontal';
   const root = document.createElement('div'); root.className = 'la-carousel ui-list'; root.hidden = true;
+  if (horizontal) root.classList.add('la-horizontal');
   const wheel = document.createElement('div'); wheel.className = 'la-wheel';
   wheel.id = `la-wheel-${++nextId}`; wheel.setAttribute('role', 'listbox');
-  wheel.setAttribute('aria-orientation', 'vertical');
+  wheel.setAttribute('aria-orientation', orientation);
+  if (horizontal) wheel.tabIndex = 0;
   const details = document.createElement('div'); details.className = 'la-details'; details.setAttribute('aria-hidden', 'true');
   const title = document.createElement('div'); title.className = 'la-title';
   const artist = document.createElement('div'); artist.className = 'la-artist';
@@ -51,17 +60,33 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer }) {
   details.append(title, artist);
   const hint = document.createElement('div'); hint.className = 'ui-list-foot';
   hint.id = `${wheel.id}-hint`;
-  hint.textContent = 'Scroll or drag · ↑↓ choose · Enter play · Esc close';
+  hint.textContent = `Scroll or drag · ${horizontal ? '←→' : '↑↓'} choose · Enter play · Esc close`;
   wheel.setAttribute('aria-describedby', hint.id);
   root.append(wheel, details, hint);
 
   const calm = matchMedia('(prefers-reduced-motion: reduce)');
   let items = [], cards = [], position = 0, active = -1, target = null, frame = 0, wheelTimer = 0, drag = null, dragged = false;
-  let cancelEntrance = null;
+  let cancelEntrance = null, now = -1;
+  const loaded = new Set();
   const itemArtist = item => item.subtitle || item.artist || '';
   const itemTitle = item => item.title || 'Untitled';
   const bound = n => clamp(n, 0, Math.max(0, items.length - 1));
   const activeId = () => cards[active]?.id;
+  const pointerAxis = e => horizontal ? e.clientX : e.clientY;
+
+  function loadArt(i) {
+    const { art } = items[i];
+    if (!art || loaded.has(i)) return;
+    loaded.add(i);
+    const card = cards[i];
+    paintedCoverURL(art, horizontal ? 160 : undefined).then(src => {
+      if (!src || !card.isConnected) return;
+      const img = new Image(); img.alt = ''; img.decoding = 'async'; img.draggable = false;
+      img.onerror = () => img.remove();
+      img.src = src;
+      card.appendChild(img);
+    });
+  }
 
   function draw(next) {
     position = bound(next);
@@ -70,23 +95,26 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer }) {
       cards[active]?.setAttribute('aria-selected', 'false');
       active = index;
       cards[index].setAttribute('aria-selected', 'true');
+      if (horizontal) wheel.setAttribute('aria-activedescendant', activeId());
       titleText.data = itemTitle(items[index]);
       artistText.data = itemArtist(items[index]);
-      onActiveChange();
+      onActiveChange?.();
     }
     const shownPosition = calm.matches ? index : position;
     cards.forEach((card, i) => {
       const offset = i - shownPosition;
       const distance = Math.abs(offset);
       const angle = clamp(offset * angleStep, -Math.PI / 2, Math.PI / 2);
-      const y = calm.matches ? offset * 83 : 167 * Math.sin(angle);
+      const axisOffset = calm.matches ? offset * 83 : 167 * Math.sin(angle);
       const z = (Math.cos(angle) - 1) * 178;
       const scale = 1 - Math.min(distance, 2) * 0.10;
-      card.style.transform = `perspective(420px) translate(-50%, -50%) translateY(${y}%) `
-        + (calm.matches ? '' : `translateZ(${z}px) rotateX(${-angle}rad) `) + `scale(${scale})`;
+      card.style.transform = `perspective(420px) translate(-50%, -50%) translate${horizontal ? 'X' : 'Y'}(${axisOffset}%) `
+        + (calm.matches ? '' : `translateZ(${z}px) ${horizontal ? `rotateY(${angle}rad)` : `rotateX(${-angle}rad)`} `)
+        + `scale(${scale})`;
       card.style.opacity = String(clamp(1 - distance * 0.38, 0, 1));
       card.style.zIndex = String(Math.round(100 - distance * 10));
       card.style.pointerEvents = distance < 2.35 ? '' : 'none';
+      if (horizontal && distance < 3) loadArt(i);
     });
   }
 
@@ -122,12 +150,13 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer }) {
   }
 
   wheel.addEventListener('wheel', e => {
-    if (e.ctrlKey || !e.deltaY) return;
+    const delta = horizontal && Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (e.ctrlKey || !delta) return;
     e.preventDefault();
     stopEntrance();
     if (drag?.moved) return;
     stopMotion();
-    const pixels = e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? wheel.clientHeight : 1);
+    const pixels = delta * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? (horizontal ? wheel.clientWidth : wheel.clientHeight) : 1);
     draw(position + pixels / WHEEL_STEP);
     wheelTimer = setTimeout(() => snap(position), 95);
   }, { passive: false });
@@ -136,12 +165,14 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer }) {
     if (!e.isPrimary || e.button !== 0) return;
     stopEntrance();
     dragged = false;
-    drag = { id: e.pointerId, startY: e.clientY, from: position, y: e.clientY, at: e.timeStamp, velocity: 0, moved: false };
+    const point = pointerAxis(e);
+    drag = { id: e.pointerId, start: point, from: position, point, at: e.timeStamp, velocity: 0, moved: false };
   });
   wheel.addEventListener('pointermove', e => {
     if (!drag || drag.id !== e.pointerId) return;
+    const point = pointerAxis(e);
     if (!drag.moved) {
-      if (Math.abs(e.clientY - drag.startY) < 5) return;
+      if (Math.abs(point - drag.start) < 5) return;
       stopMotion();
       drag.from = position;
       drag.moved = dragged = true;
@@ -149,11 +180,11 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer }) {
       wheel.classList.add('is-dragging');
     }
     const step = Math.max(40, (cards[active]?.offsetWidth || WHEEL_STEP) * 0.9);
-    const velocity = (drag.y - e.clientY) / step / Math.max(8, e.timeStamp - drag.at);
+    const velocity = (drag.point - point) / step / Math.max(8, e.timeStamp - drag.at);
     drag.velocity = 0.4 * drag.velocity + 0.6 * velocity;
-    drag.y = e.clientY;
+    drag.point = point;
     drag.at = e.timeStamp;
-    draw(drag.from + (drag.startY - e.clientY) / step);
+    draw(drag.from + (drag.start - point) / step);
   });
   function release(e) {
     if (!drag || e.pointerId !== drag.id) return;
@@ -185,10 +216,17 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer }) {
     wheel.classList.remove('is-dragging');
   }
 
-  function setItems(next, label) {
+  function setNowPlaying(index) {
+    cards[now]?.removeAttribute('aria-current');
+    cards[index]?.setAttribute('aria-current', 'true');
+    now = index;
+  }
+
+  function setItems(next, label, { index = 0, entrance = true } = {}) {
     stop();
     items = next;
-    active = -1;
+    active = now = -1;
+    loaded.clear();
     wheel.setAttribute('aria-label', label);
     cards = items.map((item, i) => {
       const card = document.createElement('div'); card.className = 'la-cover';
@@ -196,31 +234,33 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer }) {
       card.setAttribute('role', 'option'); card.setAttribute('aria-selected', 'false');
       card.setAttribute('aria-label', [itemTitle(item), itemArtist(item)].filter(Boolean).join(' · '));
       card.appendChild(icon('album', { size: 32 }));
-      if (item.art) paintedCoverURL(item.art).then(src => {
-        if (!src || !card.isConnected) return;
-        const img = new Image(); img.alt = ''; img.decoding = 'async'; img.draggable = false;
-        img.onerror = () => img.remove();
-        img.src = src;
-        card.appendChild(img);
-      });
       return card;
     });
     wheel.replaceChildren(...cards);
-    draw(0);
-    if (drawer && !calm.matches && cards.length) cancelEntrance = flyIntoCovers(drawer, cards.slice(0, 3));
+    if (!horizontal) items.forEach((_, i) => loadArt(i));
+    draw(index);
+    if (drawer && entrance && !calm.matches && cards.length) {
+      const nearby = [active, active + 1, active - 1, active + 2].map(i => cards[i]).filter(Boolean).slice(0, 3);
+      cancelEntrance = flyIntoCovers(drawer, nearby, { horizontal });
+    }
   }
 
   function handleKeyDown(e) {
     const index = target ?? active;
-    if (['ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter'].includes(e.key)) stopEntrance();
-    if (e.key === 'ArrowUp') snap(index - 1);
-    else if (e.key === 'ArrowDown') snap(index + 1);
-    else if (e.key === 'Home') snap(0);
-    else if (e.key === 'End') snap(items.length - 1);
-    else if (e.key === 'Enter' && !e.repeat && items[index]) onPick(index);
-    else return;
+    let next;
+    if (e.key === 'ArrowUp' || (horizontal && e.key === 'ArrowLeft')) next = index - 1;
+    else if (e.key === 'ArrowDown' || (horizontal && e.key === 'ArrowRight')) next = index + 1;
+    else if (horizontal && e.key === 'PageUp') next = index - 5;
+    else if (horizontal && e.key === 'PageDown') next = index + 5;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = items.length - 1;
+    else if (e.key !== 'Enter' || e.repeat || !items[index]) return;
     e.preventDefault();
+    stopEntrance();
+    if (next === undefined) onPick(index);
+    else snap(next);
   }
 
-  return { el: root, listboxEl: wheel, setItems, activeId, stop, handleKeyDown };
+  const center = index => { stopEntrance(); snap(index); };
+  return { el: root, listboxEl: wheel, setItems, activeId, getActive: () => active, setNowPlaying, center, stop, handleKeyDown };
 }

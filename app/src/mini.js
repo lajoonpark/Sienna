@@ -179,7 +179,7 @@ const drawerScreenPos = () => {
 };
 const liner = timePart('liner', () => createLiner({
   music,
-  onQueueOpen: () => tray.openHold(lastState?.art ? [getCover(lastState.art, 256).tex] : []),
+  onQueueOpen: ({ showStack }) => tray.openHold(lastState?.art ? [getCover(lastState.art, 256).tex] : [], { showStack }),
   onQueueCovers: (items) => {
     if (!items?.length) return;
     const sel = items.findIndex((it) => it.selected);
@@ -437,7 +437,7 @@ addEventListener('wheel', (e) => {
 
 // ---- keys: Esc shuts it; Space, arrows, L, M as in the shop ----
 addEventListener('keydown', (e) => {
-  if (search.isOpen()) return;
+  if (search.isOpen() || liner.isQueueCarouselOpen()) return;
   const cmd = { ' ': 'toggle', ArrowRight: 'next', ArrowLeft: 'previous', l: 'like', L: 'like', m: 'mute', M: 'mute' }[e.key];
   if (e.key === 'Escape') { e.preventDefault(); dismiss(); }
   else if (cmd) { e.preventDefault(); music.command(cmd); }

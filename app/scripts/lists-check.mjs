@@ -38,6 +38,7 @@ try {
     const { createCaption } = await import('/src/controls.js');
     const { listStats } = await import('/src/ui/list.js');
     const { paperStats } = await import('/src/ui/paper.js');
+    const { settings } = await import('/src/settings.js');
     const song = (i, prefix = 'Song') => ({ id: `s${i}`, videoId: `s${i}`, title: `${prefix} ${String(i).padStart(3, '0')}`, subtitle: `Artist ${i % 5}`, album: `Album ${i % 3}`, kind: 'song', duration: 180, track: i + 1 });
     const f = window.fixture = { played: [], shuffled: [], commands: [], collections: [], listeners: [], calls: [], leaks: [], artistFails: true,
       songs: Array.from({ length: 612 }, (_, i) => song(i)), queue: [0, 1, 2].map(i => ({ ...song(i), selected: i === 1, index: i })),
@@ -62,9 +63,15 @@ try {
       },
     };
     f.emit = patch => { Object.assign(f.state, patch); for (const fn of f.listeners) fn(f.state); };
-    f.caption = createCaption({ variant: 'shop', onSeek: () => {}, onCommand: () => {} });
+    f.caption = createCaption({ variant: 'shop', onSeek: () => {}, onCommand: () => {}, onQueue: (...args) => f.liner.openQueue(...args) });
     f.caption.setState(f.state); f.caption.show(true);
+    f.settings = settings;
+    f.drawerOpens = [];
     f.liner = createLiner({ music, getDrawerPos: () => ({ x: 160, y: 650 }),
+      onQueueOpen: ({ showStack }) => {
+        f.drawerOpens.push(showStack);
+        return new Promise(resolve => { f.drawerReady = resolve; });
+      },
       onPickQueue: (item, i) => music.command('queueIndex', item.index ?? i),
     });
     f.search = createSearch({ music, onPlay: item => f.played.push(item), onOpenCollection: item => f.collections.push(item) });
@@ -206,12 +213,157 @@ try {
   assert.equal(await page.evaluate(() => fixture.collection.isOpen()), false);
   pass('collection loading/error notes: rejected songs promise, Retry re-fetches, Esc closes');
 
+  const queueWheel = page.getByRole('listbox', { name: 'Up next' });
+  const centered = queueWheel.locator('[aria-selected="true"]');
+  const current = queueWheel.locator('[aria-current="true"]');
+  const queueCover = i => queueWheel.getByRole('option', { name: `Song 00${i} · Artist ${i}` });
+  const expectCentered = i => page.waitForFunction(index =>
+    document.querySelector('.ln-qveil .la-cover[aria-selected="true"]')?.dataset.index === String(index), i);
+  const queueButton = page.getByRole('button', { name: 'Up next', exact: true });
+  await page.evaluate(() => {
+    const queue = fixture.music.queue;
+    fixture.music.queue = () => new Promise(resolve => {
+      fixture.releaseQueue = () => { fixture.music.queue = queue; resolve(queue()); };
+    });
+  });
+  await queueButton.focus();
+  await queueButton.click();
+  await page.evaluate(() => fixture.releaseQueue());
+  await queueWheel.waitFor();
+  await expectCentered(1);
+  assert.equal(await queueWheel.getAttribute('aria-orientation'), 'horizontal');
+  assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'the queue wheel is focused on open');
+  assert.equal(await queueWheel.getAttribute('aria-activedescendant'), await centered.getAttribute('id'));
+  assert.equal(await current.getAttribute('data-index'), '1');
+  assert.equal(await page.locator('.ln-qveil .la-title').innerText(), 'Song 001');
+  assert.equal(await page.locator('.ln-qveil .la-artist').innerText(), 'Artist 1');
+  assert.equal(await queueWheel.locator('.la-title, .la-artist').count(), 0);
+  assert.equal(await page.evaluate(() => fixture.drawerOpens.at(-1)), false);
+  await wait(600);
+  await page.evaluate(() => fixture.drawerReady());
+  await page.locator('.la-vinyl-flight').first().waitFor();
+  assert.equal(await page.locator('.la-vinyl-flight').count(), 3);
+  await page.locator('.la-vinyl-flight').first().waitFor({ state: 'detached' });
+  await page.keyboard.press('ArrowRight');
+  await expectCentered(2);
+  await page.keyboard.press('ArrowLeft');
+  await expectCentered(1);
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.set('search', 'Control+Alt+Right');
+  });
+  await queueWheel.focus();
+  await page.keyboard.press('Control+Alt+ArrowRight');
+  assert.equal(await page.evaluate(() => fixture.search.isOpen()), true, 'the focused queue wheel lets the modified Search shortcut through');
+  await expectCentered(1);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('ArrowRight');
+  await expectCentered(2);
+  await page.keyboard.press('ArrowLeft');
+  await expectCentered(1);
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.reset();
+  });
+  await queueWheel.focus();
+  await queueCover(0).click();
+  await expectCentered(0);
+  assert.equal(await page.evaluate(() => fixture.commands.length), 0);
+  await page.keyboard.press('ArrowRight');
+  await expectCentered(1);
+  await queueWheel.hover();
+  await page.mouse.wheel(100, 0);
+  await expectCentered(2);
+  await page.mouse.wheel(0, -100);
+  await expectCentered(1);
+  const queueBounds = await queueWheel.boundingBox();
+  const dragX = queueBounds.x + queueBounds.width / 2;
+  const dragY = queueBounds.y + queueBounds.height / 2;
+  await page.mouse.move(dragX, dragY);
+  await page.mouse.down();
+  await page.mouse.move(dragX - 135, dragY, { steps: 5 });
+  await page.mouse.up();
+  await expectCentered(2);
+  assert.equal(await page.evaluate(() => fixture.commands.length), 0, 'horizontal drag does not play a cover');
+  await page.keyboard.press('ArrowLeft');
+  await expectCentered(1);
+  await page.evaluate(() => { fixture.queue.forEach(it => { it.selected = it.videoId === 's2'; }); fixture.emit({ videoId: 's2', queueSig: 2 }); });
+  await page.waitForFunction(() => document.querySelector('.ln-qveil .la-cover[aria-current="true"]')?.dataset.index === '2');
+  await expectCentered(1);
+  const nowPlaying = page.getByRole('button', { name: 'Now playing', exact: true });
+  await page.keyboard.press('Tab');
+  assert.equal(await nowPlaying.evaluate(el => el === document.activeElement), true);
+  const closeQueue = page.locator('.ln-qclose').getByRole('button', { name: 'Close (Esc)', exact: true });
+  await page.keyboard.press('Tab');
+  assert.equal(await closeQueue.evaluate(el => el === document.activeElement), true);
+  await page.keyboard.press('Tab');
+  assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'Tab after Close wraps to the queue wheel');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await closeQueue.evaluate(el => el === document.activeElement), true, 'Shift+Tab from the wheel wraps to Close');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await nowPlaying.evaluate(el => el === document.activeElement), true);
+  await page.keyboard.press('ArrowLeft');
+  await expectCentered(1);
+  await page.keyboard.press('Space');
+  await expectCentered(2);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.keyboard.press('ArrowLeft');
+  await expectCentered(1);
+  assert.equal(await queueCover(2).evaluate(el => el.style.transform.includes('rotateY')), false);
+  await page.keyboard.press('Enter');
+  assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), ['queueIndex', 1]);
+  await page.evaluate(() => fixture.liner.openQueue());
+  await expectCentered(2);
+  assert.equal(await page.evaluate(() => fixture.drawerOpens.length), 1, 'reduced motion leaves the queue drawer closed');
+  assert.equal(await page.locator('.la-vinyl-flight').count(), 0);
+  await page.evaluate(() => fixture.settings.set('coverCarousel', false));
+  await page.waitForSelector('.ln-qveil .is-pinned', { state: 'visible' });
+  assert.equal(await page.locator('.ln-qveil .la-wheel').isVisible(), false);
+  assert.equal(await page.getByRole('button', { name: 'Now playing', exact: true }).isVisible(), false);
+  await page.keyboard.press('Escape');
+  await page.evaluate(async () => {
+    const { createSettingsPanel } = await import('/src/settings-panel.js');
+    fixture.panel = createSettingsPanel({ onClose: fixture.liner.restoreQueueFocusAfterSettings });
+    await fixture.liner.openQueue();
+  });
+  await page.locator('.ln-qveil').getByRole('listbox', { name: 'Up next' }).focus();
+  await page.keyboard.press('Home');
+  await page.evaluate(() => fixture.panel.open('look'));
+  const settingsDialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await settingsDialog.getByRole('radio', { name: 'Carousel', exact: true }).click();
+  assert.equal(await settingsDialog.evaluate(el => el.contains(document.activeElement)), true);
+  await page.keyboard.press('Escape');
+  assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'closing Settings focuses the new queue wheel');
+  await expectCentered(2);
+  await page.keyboard.press('ArrowLeft');
+  await expectCentered(1);
+  await page.keyboard.press('Enter');
+  assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), ['queueIndex', 1]);
+  const commandsBeforeClose = await page.evaluate(() => fixture.commands.length);
+  await page.evaluate(() => { fixture.settings.set('coverCarousel', false); return fixture.liner.openQueue(); });
+  await closeQueue.focus();
+  await page.evaluate(() => fixture.panel.open('look'));
+  await settingsDialog.getByRole('radio', { name: 'Carousel', exact: true }).click();
+  await page.keyboard.press('Escape');
+  assert.equal(await closeQueue.evaluate(el => el === document.activeElement), true, 'Settings preserves a usable queue opener');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => fixture.liner.isOpen()), false);
+  assert.equal(await page.evaluate(() => fixture.commands.length), commandsBeforeClose, 'Enter on Close does not play a track');
+  await page.evaluate(() => fixture.settings.set('coverCarousel', false));
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.evaluate(() => {
+    fixture.queue.forEach(it => { it.selected = it.videoId === 's1'; });
+    fixture.emit({ videoId: 's1', queueSig: 1 });
+  });
+  pass('queue carousel: horizontal, one caption, independent now-playing marker and jump, drawer landing, keyboard, wheel, drag, reduced motion, queueIndex and live paper fallback');
+
   await page.evaluate(() => {
     fixture.shortQueue = fixture.queue;
     fixture.queue = fixture.songs.slice(0, 80).map((item, index) => ({ ...item, index, selected: index === 1 }));
   });
   await page.evaluate(() => fixture.liner.openQueue());
   await page.waitForSelector('.ln-qveil .is-pinned', { state: 'visible' });
+  assert.equal(await page.evaluate(() => fixture.drawerOpens.at(-1)), true);
   await wait(1000);
   await page.evaluate(async () => {
     const scroll = document.querySelector('.ln-qbox .ui-list-scroll');
@@ -305,6 +457,7 @@ try {
     const { createSearch } = await import('/src/search.js');
     const { settings } = await import('/src/settings.js');
     const items = Array.from({ length: 8 }, (_, i) => ({ title: `Record ${i}`, subtitle: `Artist ${i}`, kind: 'song' }));
+    settings.set('coverCarousel', true);
     const played = [], pickModes = [];
     const drawer = { opens: 0, closes: 0,
       open() { this.opens++; return new Promise(resolve => { this.release = resolve; }); },
@@ -376,6 +529,7 @@ try {
   assert.equal(await page.evaluate(() => fixture.drawer.opens), 1, 'reduced motion leaves the drawer closed');
   await activeCover.click();
   assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0', 'Record 0']);
+  await page.mouse.move(0, 0);
   await page.evaluate(() => { fixture.search.open(); fixture.settings.set('coverCarousel', false); });
   await page.locator('.cs .ui-list-row').first().waitFor();
   assert.equal(await carousel.isVisible(), false);

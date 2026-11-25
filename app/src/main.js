@@ -218,11 +218,11 @@ function ensureRack(i) {
 // the torn-paper overlays for Lyrics (liner notes), Up Next Queue, and offline/error status banner
 const liner = createLiner({
   music,
-  onQueueOpen: () => {
+  onQueueOpen: ({ showStack }) => {
     pacer?.kick();
     suitcase.wake(4);
     const initialCovers = player?.art ? [getCover(player.art, 256).tex] : [];
-    return suitcase.openDrawer(initialCovers);
+    return suitcase.openDrawer(initialCovers, { showStack });
   },
   onQueueCovers: (items) => {
     if (!items?.length) return;
@@ -320,6 +320,7 @@ const settingsPanel = createSettingsPanel({
   music,
   onTour: () => tour.restart(),
   onRestock: () => loadShelves({ force: true }),
+  onClose: liner.restoreQueueFocusAfterSettings,
 });
 // the first-run tour (src/tour.js): paper notes in the shop once the intro reaches home on a new install
 const tour = createTour({
@@ -954,7 +955,7 @@ const typing = (e) => {
 const searchOpen = () => search.isOpen() || collectionList.isOpen();
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock']);
 addEventListener('keydown', (e) => {
-  if (typing(e) || searchOpen()) return;
+  if (typing(e) || searchOpen() || liner.isQueueCarouselOpen()) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (nav.intro) {
     if (MODIFIER_KEYS.has(e.key)) return;

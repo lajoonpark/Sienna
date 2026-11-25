@@ -1,4 +1,4 @@
-export function flyIntoCovers(drawer, cards) {
+export function flyIntoCovers(drawer, cards, { horizontal = false } = {}) {
   const opened = drawer.open();
   if (!opened) return null;
   const discs = new Map();
@@ -21,9 +21,10 @@ export function flyIntoCovers(drawer, cards) {
     cards.forEach((card, i) => {
       const slot = card.getBoundingClientRect();
       if (!slot.width || !slot.height) return;
-      const size = slot.width * 0.88;
+      const size = (horizontal ? slot.height : slot.width) * 0.88;
       const x = slot.left + slot.width / 2, y = slot.top + slot.height / 2;
-      const edge = slot.right, tilt = slot.height / slot.width;
+      const edge = slot.right;
+      const sx = horizontal ? slot.width / slot.height : 1, sy = horizontal ? 1 : slot.height / slot.width;
       const disc = document.createElement('div'); disc.className = 'la-vinyl-flight';
       disc.setAttribute('aria-hidden', 'true');
       disc.style.width = `${size}px`;
@@ -36,8 +37,8 @@ export function flyIntoCovers(drawer, cards) {
       const animation = disc.animate([
         { transform: pose(start.x, start.y, 0.66, 0.26), opacity: 0, offset: 0 },
         { transform: pose(start.x + (edge - start.x) * 0.7 + size * 0.48, start.y + (y - start.y) * 0.38 - size * 0.44, 1.03, 0.82), opacity: 1, offset: 0.36 },
-        { transform: pose(edge + size / 2, y, 1, tilt), clipPath: 'inset(0 0 0 0)', offset: 0.72, easing: 'ease-in' },
-        { transform: pose(x, y, 0.9, tilt * 0.9), clipPath: 'inset(0 0 0 100%)', offset: 1 },
+        { transform: pose(edge + size * sx / 2, y, sx, sy), clipPath: 'inset(0 0 0 0)', offset: 0.72, easing: 'ease-in' },
+        { transform: pose(x, y, sx * 0.9, sy * 0.9), clipPath: 'inset(0 0 0 100%)', offset: 1 },
       ], timing);
       label?.animate([{ rotate: '0deg' }, { rotate: '195deg' }], timing);
       discs.set(disc, animation);
