@@ -60,7 +60,8 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   details.append(title, artist);
   const hint = document.createElement('div'); hint.className = 'ui-list-foot';
   hint.id = `${wheel.id}-hint`;
-  hint.textContent = `Scroll or drag · ${horizontal ? '←→' : '↑↓'} choose · Enter play · Esc close`;
+  const setHint = text => { hint.textContent = text; };
+  setHint(`Scroll or drag · ${horizontal ? '←→' : '↑↓'} choose · Enter play · Esc close`);
   wheel.setAttribute('aria-describedby', hint.id);
   root.append(wheel, details, hint);
 
@@ -88,7 +89,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     });
   }
 
-  function draw(next) {
+  function draw(next, source) {
     position = bound(next);
     const index = Math.round(position);
     if (index !== active && items[index]) {
@@ -98,7 +99,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       if (horizontal) wheel.setAttribute('aria-activedescendant', activeId());
       titleText.data = itemTitle(items[index]);
       artistText.data = itemArtist(items[index]);
-      onActiveChange?.();
+      onActiveChange?.(source);
     }
     const shownPosition = calm.matches ? index : position;
     cards.forEach((card, i) => {
@@ -157,7 +158,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     if (drag?.moved) return;
     stopMotion();
     const pixels = delta * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? (horizontal ? wheel.clientWidth : wheel.clientHeight) : 1);
-    draw(position + pixels / WHEEL_STEP);
+    draw(position + pixels / WHEEL_STEP, 'wheel');
     wheelTimer = setTimeout(() => snap(position), 95);
   }, { passive: false });
 
@@ -245,7 +246,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     }
   }
 
-  function handleKeyDown(e) {
+  function handleKeyDown(e, { passHorizontalEdges = false } = {}) {
     const index = target ?? active;
     let next;
     if (e.key === 'ArrowUp' || (horizontal && e.key === 'ArrowLeft')) next = index - 1;
@@ -255,6 +256,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = items.length - 1;
     else if (e.key !== 'Enter' || e.repeat || !items[index]) return;
+    if (passHorizontalEdges && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && (next < 0 || next >= items.length)) return;
     e.preventDefault();
     stopEntrance();
     if (next === undefined) onPick(index);
@@ -262,5 +264,5 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   }
 
   const center = index => { stopEntrance(); snap(index); };
-  return { el: root, listboxEl: wheel, setItems, activeId, getActive: () => active, setNowPlaying, center, stop, handleKeyDown };
+  return { el: root, listboxEl: wheel, setItems, setHint, activeId, getActive: () => active, setNowPlaying, center, stop, handleKeyDown };
 }

@@ -96,7 +96,7 @@ try {
   assert.equal(await page.locator('.cs .ui-list-foot.ui-paper').count(), 0);
   assert.equal(await page.locator('.cs .ui-list--lines').count(), 1);
   assert.equal(await page.locator('.cs .ui-list-row').first().evaluate(el => el.style.backgroundImage), '');
-  assert.equal(await page.locator('.cs .ui-list').evaluate(el => el.style.getPropertyValue('--ui-slip-0')), '');
+  assert.equal(await page.locator('.cs .cs-list').evaluate(el => el.style.getPropertyValue('--ui-slip-0')), '');
   assert.equal(await page.locator('.cs .ui-list-row').first().evaluate(el => getComputedStyle(el).filter), 'none');
   pass('search tabs: aria-selected, Tab/Shift+Tab cycle, pointer chips retain input focus');
   await page.mouse.move(0, 0); await wait(700);
@@ -465,7 +465,7 @@ try {
       close() { this.closes++; },
     };
     const search = createSearch({
-      music: { search: async () => [{ title: 'Matched result', kind: 'song' }] },
+      music: { search: async q => Array.from({ length: 7 }, (_, i) => ({ title: `${q} result ${i + 1}`, subtitle: 'Search artist', kind: 'song' })) },
       suggest: () => ({ title: 'Listen again', items }),
       coverSuggestions: true, coverDrawer: drawer, onPlay: (item, { fromCoverPicker }) => {
         played.push(item.title);
@@ -475,15 +475,16 @@ try {
     window.fixture = { search, played, pickModes, settings, drawer };
     search.open();
   });
-  const carousel = page.locator('.la-wheel');
+  const carousel = page.locator('.la-wheel[aria-orientation="vertical"]');
+  const suggestionCaption = page.locator('.cs > .la-carousel:not(.cs-result-strip) .la-details');
   const activeCover = carousel.locator('[aria-selected="true"]');
   const input = page.locator('.cs-input');
   const coverName = n => `Record ${n} · Artist ${n}`;
   async function expectCover(n) {
-    await page.waitForFunction(name => document.querySelector('.la-wheel [aria-selected="true"]')?.getAttribute('aria-label') === name, coverName(n));
+    await page.waitForFunction(name => document.querySelector('.la-wheel[aria-orientation="vertical"] [aria-selected="true"]')?.getAttribute('aria-label') === name, coverName(n));
     assert.equal(await input.getAttribute('aria-activedescendant'), await activeCover.getAttribute('id'));
-    assert.equal(await page.locator('.la-title').innerText(), `Record ${n}`);
-    assert.equal(await page.locator('.la-artist').innerText(), `Artist ${n}`);
+    assert.equal(await suggestionCaption.locator('.la-title').innerText(), `Record ${n}`);
+    assert.equal(await suggestionCaption.locator('.la-artist').innerText(), `Artist ${n}`);
   }
   await carousel.waitFor();
   await expectCover(0);
@@ -515,7 +516,7 @@ try {
   await page.mouse.down();
   await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height * 0.2, { steps: 5 });
   await page.mouse.up();
-  await page.waitForFunction(() => Number(document.querySelector('.la-wheel [aria-selected="true"]')?.dataset.index) >= 4);
+  await page.waitForFunction(() => Number(document.querySelector('.la-wheel[aria-orientation="vertical"] [aria-selected="true"]')?.dataset.index) >= 4);
   assert.deepEqual(await page.evaluate(() => fixture.played), [], 'drag release does not play a cover');
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -540,12 +541,131 @@ try {
   assert.deepEqual(await page.evaluate(() => fixture.pickModes), [true, true, false]);
   await page.evaluate(() => { fixture.search.open(); fixture.settings.set('coverCarousel', true); });
   await carousel.waitFor();
-  await input.fill('match');
-  await page.waitForFunction(() => document.querySelector('.cs .ui-list-title')?.textContent === 'Matched result');
-  assert.equal(await carousel.isVisible(), false, 'typed search remains a paper list');
+  await input.fill('Match');
+  await page.waitForFunction(() => document.querySelector('.cs .ui-list-title')?.textContent === 'Match result 1');
+  assert.equal(await carousel.isVisible(), false, 'typed search does not show the Listen again wheel');
+  const strip = page.getByRole('listbox', { name: 'Top search results' });
+  const results = page.getByRole('listbox', { name: 'Search results', exact: true });
+  assert.equal(await strip.getAttribute('aria-orientation'), 'horizontal');
+  assert.deepEqual(await strip.getByRole('option').evaluateAll(els => els.map(el => el.getAttribute('aria-label'))),
+    [1, 2, 3, 4, 5].map(i => `Match result ${i} · Search artist`));
+  assert.equal(await results.getByRole('option').count(), 7);
+  assert.ok((await strip.boundingBox()).y < (await results.boundingBox()).y);
+  assert.equal(await page.locator('.cs-result-strip .la-title').innerText(), 'Match result 1');
+  assert.equal(await page.locator('.cs-result-strip .la-artist').innerText(), 'Search artist');
+  assert.equal(await strip.locator('.la-title, .la-artist').count(), 0);
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await results.getByRole('option', { selected: true }).locator('.ui-list-title').innerText(), 'Match result 1');
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.set('search', 'Alt+Up');
+  });
+  assert.equal(await input.getAttribute('aria-keyshortcuts'), 'Shift+ArrowUp');
+  assert.match(await page.locator('.cs-result-strip .ui-list-foot').innerText(), /^Shift\+↑/);
+  await page.keyboard.press('Shift+ArrowUp');
+  assert.equal(await input.getAttribute('aria-controls'), await strip.getAttribute('id'));
+  await page.keyboard.press('Alt+ArrowUp');
+  assert.equal(await page.evaluate(() => fixture.search.isOpen()), false, 'the configured Search toggle still closes Search');
+  await page.keyboard.press('Alt+ArrowUp');
+  await strip.waitFor();
+  for (const name of ['app', 'mini']) {
+    await page.evaluate(async name => {
+      const { shortcuts } = await import('/src/shortcuts.js');
+      await shortcuts.reset();
+      await shortcuts.set(name, 'Alt+Up');
+    }, name);
+    assert.equal(await input.getAttribute('aria-keyshortcuts'), 'Shift+ArrowUp', `Alt+Up reserved by ${name}`);
+  }
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.set('app', 'Shift+Up');
+  });
+  assert.equal(await input.getAttribute('aria-keyshortcuts'), 'Alt+Shift+ArrowUp');
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.set('search', 'Alt+Shift+Up');
+  });
+  assert.equal(await input.getAttribute('aria-keyshortcuts'), 'Control+Shift+ArrowUp');
+  await page.keyboard.press('Control+Shift+ArrowUp');
+  assert.equal(await input.getAttribute('aria-controls'), await strip.getAttribute('id'));
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.reset();
+  });
+  await page.keyboard.press('Alt+ArrowUp');
+  assert.equal(await input.getAttribute('aria-controls'), await strip.getAttribute('id'));
+  const stripTitle = page.locator('.cs-result-strip .la-title');
+  const selection = () => input.evaluate(el => [el.selectionStart, el.selectionEnd]);
+  await input.evaluate(el => el.setSelectionRange(2, 2));
+  await page.keyboard.press('Shift+ArrowRight');
+  assert.deepEqual(await selection(), [2, 3]);
+  assert.equal(await stripTitle.innerText(), 'Match result 1');
+  await input.evaluate(el => el.setSelectionRange(2, 2));
+  await page.keyboard.press('ArrowLeft');
+  assert.deepEqual(await selection(), [1, 1], 'at the first cover, Left moves the input caret');
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowRight');
+  assert.deepEqual(await selection(), [2, 2], 'at the last cover, Right moves the input caret');
+  assert.equal(await stripTitle.innerText(), 'Match result 5');
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('.cs-result-strip .la-title').innerText(), 'Match result 2');
+  assert.equal(await input.getAttribute('aria-activedescendant'), await strip.getByRole('option', { selected: true }).getAttribute('id'));
+  assert.equal(await strip.getByRole('option').first().evaluate(el => el.style.transform.includes('rotateY')), false);
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await input.getAttribute('aria-controls'), await results.getAttribute('id'));
+  assert.equal(await results.getByRole('option', { selected: true }).locator('.ui-list-title').innerText(), 'Match result 2');
+  await page.keyboard.press('Alt+ArrowUp');
+  await input.evaluate(el => el.setSelectionRange(el.value.length, el.value.length));
+  await page.keyboard.type('a');
+  assert.equal(await input.inputValue(), 'Matcha');
+  await page.waitForFunction(() => document.querySelector('.cs-result-strip .la-title')?.textContent === 'Matcha result 1');
+  await page.evaluate(() => fixture.settings.set('coverCarousel', false));
+  assert.equal(await strip.isVisible(), false);
+  assert.equal(await results.getByRole('option').count(), 7);
+  await page.evaluate(() => fixture.settings.set('coverCarousel', true));
+  await strip.waitFor();
+  await page.keyboard.press('Alt+ArrowUp');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 2');
+  await page.evaluate(() => fixture.search.open());
+  await strip.waitFor();
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowDown');
+  await strip.dispatchEvent('wheel', { deltaY: -100, cancelable: true, bubbles: true });
+  assert.equal(await input.getAttribute('aria-controls'), await results.getAttribute('id'));
+  assert.equal(await stripTitle.innerText(), 'Matcha result 1');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 2', 'scrolling past the first cover does not redirect playback');
+  await page.evaluate(() => fixture.search.open());
+  await strip.waitFor();
+  await strip.hover();
+  await page.mouse.wheel(0, 100);
+  await page.waitForFunction(() => document.querySelector('.cs-result-strip .la-title')?.textContent === 'Matcha result 2');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 2', 'Enter plays the cover reached by scrolling');
+  await page.evaluate(() => fixture.search.open());
+  await strip.waitFor();
+  await page.keyboard.press('Alt+ArrowUp');
+  await page.keyboard.press('ArrowRight');
+  const hoveredResult = results.getByRole('option', { name: /Matcha result 3/ });
+  await hoveredResult.hover();
+  assert.equal(await hoveredResult.getAttribute('aria-selected'), 'true');
+  assert.equal(await input.getAttribute('aria-controls'), await results.getAttribute('id'));
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 3', 'Enter follows the row highlighted by hovering');
+  await page.evaluate(() => fixture.search.open());
+  await strip.waitFor();
+  await strip.getByRole('option', { selected: true }).click();
+  assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 1');
+  assert.deepEqual(await page.evaluate(() => fixture.pickModes.slice(-2)), [false, false], 'search strip uses search playback');
+  await page.evaluate(() => fixture.search.open());
   await input.fill('');
   await carousel.waitFor();
-  pass('Listen again: drawer discs land in covers, keyboard/Enter, side and centre clicks, wheel, drag, reduced motion, paper fallback and unchanged typed results');
+  assert.equal(await strip.isVisible(), false);
+  pass('Listen again: drawer discs land in covers, keyboard/Enter, side and centre clicks, wheel, drag, reduced motion and paper fallback');
+  pass('typed search: five covers above the full ruled list, independent keyboard navigation, native typing, centered click/Enter, reduced motion and live setting');
   assert.deepEqual(errors, []);
   console.log(`all lists checks passed -> ${out}`);
 } finally { await browser.close(); await server.close(); }
