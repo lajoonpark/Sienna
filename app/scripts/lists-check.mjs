@@ -627,6 +627,16 @@ try {
   assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 2', 'Enter plays the cover reached by scrolling');
   await page.evaluate(() => fixture.search.open());
   await strip.waitFor();
+  await page.keyboard.press('Alt+ArrowUp');
+  await page.keyboard.press('ArrowRight');
+  const hoveredResult = results.getByRole('option', { name: /Matcha result 3/ });
+  await hoveredResult.hover();
+  assert.equal(await hoveredResult.getAttribute('aria-selected'), 'true');
+  assert.equal(await input.getAttribute('aria-controls'), await results.getAttribute('id'));
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 3', 'Enter follows the row highlighted by hovering');
+  await page.evaluate(() => fixture.search.open());
+  await strip.waitFor();
   await strip.getByRole('option', { selected: true }).click();
   assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 1');
   assert.deepEqual(await page.evaluate(() => fixture.pickModes.slice(-2)), [false, false], 'search strip uses search playback');

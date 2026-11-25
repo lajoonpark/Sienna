@@ -38,7 +38,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   });
   const list = createList({ label: 'Search results', showKind: true, lines: true,
     footerHints: ['↑↓ choose · Enter play · Tab type · Esc close'], onPick: (_, i) => pick(i),
-    onActiveChange: () => syncActive(),
+    onActiveChange: () => { if (stripActive) setStripActive(false); else syncActive(); },
   });
   const carousel = coverSuggestions && suggest ? createCoverCarousel({ onPick: i => pick(i, true), onActiveChange: syncActive, drawer: coverDrawer }) : null;
   const resultStrip = createCoverCarousel({
