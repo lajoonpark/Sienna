@@ -12,7 +12,6 @@ import { settings } from './settings.js';
 const FILTERS = ['songs', 'albums', 'playlists', 'artists'];
 const DEBOUNCE = 250;
 const STRIP_LIMIT = 5;
-const STRIP_SHORTCUT = 'Alt+ArrowUp';
 const STRIP_CSS = `
 .cs > .cs-result-strip { flex: none; margin-bottom: var(--sienna-space-2); }
 .cs-result-strip .la-wheel { flex-basis: clamp(64px, 16dvh, 116px); }
@@ -44,7 +43,6 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   const carousel = coverSuggestions && suggest ? createCoverCarousel({ onPick: i => pick(i, true), onActiveChange: syncActive, drawer: coverDrawer }) : null;
   const resultStrip = createCoverCarousel({
     orientation: 'horizontal', onPick: i => pick(i), onActiveChange: syncActive,
-    hintText: 'Alt+↑ browse covers · ←→ choose · Enter play · ↓ list',
   });
   resultStrip.el.classList.add('cs-result-strip');
   resultStrip.listboxEl.tabIndex = -1;
@@ -65,8 +63,16 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
   let isOpen = false, seq = 0, timer = 0, shown = [], shownFor = null, filter = 'songs', artistView = null, pendingEnter = false;
   let suggestion = null, stripActive = false, opener = null;
+  let stripModifier = 'Alt';
   const cache = new Map();
   const showingCovers = () => carousel && !carousel.el.hidden;
+  function syncStripShortcut() {
+    if (resultStrip.el.hidden) return;
+    stripModifier = shortcuts.matches('search', { code: 'ArrowUp', altKey: true, ctrlKey: false, shiftKey: false, metaKey: false }) ? 'Shift' : 'Alt';
+    input.setAttribute('aria-keyshortcuts', `${stripModifier}+ArrowUp`);
+    resultStrip.setHint(`${stripModifier}+↑ browse covers · ←→ choose · Enter play · ↓ list`);
+  }
+  shortcuts.on(syncStripShortcut);
   function syncActive() {
     const picker = showingCovers() ? carousel : stripActive ? resultStrip : null;
     const box = picker?.listboxEl ?? list.listboxEl;
@@ -91,7 +97,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
       return;
     }
     resultStrip.el.hidden = false;
-    input.setAttribute('aria-keyshortcuts', STRIP_SHORTCUT);
+    syncStripShortcut();
     resultStrip.setItems(shown.slice(0, STRIP_LIMIT), 'Top search results');
   }
   resultStrip.listboxEl.addEventListener('pointerdown', e => {
@@ -217,7 +223,8 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   input.addEventListener('keydown', e => {
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); if (artistView) goBack(); else close(); }
-    else if (e.altKey && e.key === 'ArrowUp' && !resultStrip.el.hidden) {
+    else if (!resultStrip.el.hidden && e.key === 'ArrowUp' && !e.ctrlKey && !e.metaKey
+      && e.altKey === (stripModifier === 'Alt') && e.shiftKey === (stripModifier === 'Shift')) {
       e.preventDefault(); setStripActive(true);
     } else if (e.key === 'Tab') {
       e.preventDefault(); tabs.setValue(FILTERS[(FILTERS.indexOf(filter) + (e.shiftKey ? -1 : 1) + FILTERS.length) % FILTERS.length], { notify: true });

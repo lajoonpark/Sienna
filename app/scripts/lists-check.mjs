@@ -518,6 +518,22 @@ try {
   assert.equal(await strip.locator('.la-title, .la-artist').count(), 0);
   await page.keyboard.press('ArrowDown');
   assert.equal(await results.getByRole('option', { selected: true }).locator('.ui-list-title').innerText(), 'Match result 1');
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.set('search', 'Alt+Up');
+  });
+  assert.equal(await input.getAttribute('aria-keyshortcuts'), 'Shift+ArrowUp');
+  assert.match(await page.locator('.cs-result-strip .ui-list-foot').innerText(), /^Shift\+↑/);
+  await page.keyboard.press('Shift+ArrowUp');
+  assert.equal(await input.getAttribute('aria-controls'), await strip.getAttribute('id'));
+  await page.keyboard.press('Alt+ArrowUp');
+  assert.equal(await page.evaluate(() => fixture.search.isOpen()), false, 'the configured Search toggle still closes Search');
+  await page.keyboard.press('Alt+ArrowUp');
+  await strip.waitFor();
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.reset();
+  });
   await page.keyboard.press('Alt+ArrowUp');
   assert.equal(await input.getAttribute('aria-controls'), await strip.getAttribute('id'));
   await page.keyboard.press('ArrowRight');

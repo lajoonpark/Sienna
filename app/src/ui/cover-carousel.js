@@ -39,7 +39,7 @@ const angleStep = Math.PI / 5.6;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 let nextId = 0;
 
-export function createCoverCarousel({ onPick, onActiveChange, drawer, orientation = 'vertical', hintText }) {
+export function createCoverCarousel({ onPick, onActiveChange, drawer, orientation = 'vertical' }) {
   injectTokens();
   if (!document.getElementById('sienna-cover-carousel')) {
     const style = document.createElement('style');
@@ -60,7 +60,8 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   details.append(title, artist);
   const hint = document.createElement('div'); hint.className = 'ui-list-foot';
   hint.id = `${wheel.id}-hint`;
-  hint.textContent = hintText ?? `Scroll or drag · ${horizontal ? '←→' : '↑↓'} choose · Enter play · Esc close`;
+  const setHint = text => { hint.textContent = text; };
+  setHint(`Scroll or drag · ${horizontal ? '←→' : '↑↓'} choose · Enter play · Esc close`);
   wheel.setAttribute('aria-describedby', hint.id);
   root.append(wheel, details, hint);
 
@@ -262,5 +263,5 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   }
 
   const center = index => { stopEntrance(); snap(index); };
-  return { el: root, listboxEl: wheel, setItems, activeId, getActive: () => active, setNowPlaying, center, stop, handleKeyDown };
+  return { el: root, listboxEl: wheel, setItems, setHint, activeId, getActive: () => active, setNowPlaying, center, stop, handleKeyDown };
 }
