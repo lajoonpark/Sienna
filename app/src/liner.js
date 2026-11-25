@@ -8,9 +8,11 @@ import { injectTokens, MOTION } from './ui/tokens.js';
 import { paperSurface } from './ui/paper.js';
 import { unrollSheet } from './ui/unroll.js';
 import { createList } from './ui/list.js';
+import { createCoverCarousel } from './ui/cover-carousel.js';
 import { inkButton, stamp } from './ui/inputs.js';
 import { createBanner } from './ui/banner.js';
 import { createScrollCue } from './ui/scroll-cue.js';
+import { settings } from './settings.js';
 
 const CSS = `
 .ln-lyrics { white-space: pre-wrap; font-family: var(--sienna-serif); font-size: var(--sienna-text-md); line-height: 1.6; color: var(--sienna-ink); user-select: text; }
@@ -22,6 +24,7 @@ const CSS = `
 .ln-qveil.show { pointer-events: auto; visibility: visible; opacity: 1; }
 .ln-qveil.closing { visibility: visible; opacity: 1; }
 .ln-qveil.closing .ln-qbackdrop { opacity: 0; transition: opacity var(--sienna-dur-mid); }
+.ln-qveil.closing .la-carousel { opacity: 0; transition: opacity var(--sienna-dur-fast); }
 .ln-qbackdrop { position: absolute; inset: 0; background: var(--sienna-veil); backdrop-filter: var(--sienna-veil-filter); }
 .ln-qbox { position: fixed; left: 50%; top: var(--sienna-space-10); transform: translateX(-50%);
   box-sizing: border-box; padding: var(--sienna-space-6) var(--sienna-space-8) var(--sienna-space-5);
@@ -34,6 +37,8 @@ const CSS = `
   color: var(--sienna-indigo); }
 .ln-qbox > .ui-list { min-height: 0; flex: 1; }
 .ln-qbox .ui-list-scroll { min-height: 0; }
+.ln-qclose { display: flex; align-items: center; gap: var(--sienna-space-2); }
+.ln-qclose .ui-ink[hidden] { display: none; }
 @media (max-width: 720px) {
   .ln-qbox { padding: var(--sienna-space-5) var(--sienna-space-5) var(--sienna-space-4); }
 }
@@ -87,7 +92,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   const cue = createScrollCue(scroll, { parent: lyricsSheet.footer });
   lyricsSheet.footer.appendChild(srcEl);
 
-  // ---- queue drawer-to-list overlay ----
+  // ---- queue overlay ----
   const qveil = document.createElement('div');
   qveil.className = 'ln-qveil';
   qveil.innerHTML = `<div class="ln-qbackdrop"></div><div class="ln-qbox">
@@ -97,17 +102,14 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   const qBackdrop = qveil.querySelector('.ln-qbackdrop');
   const qBox = qveil.querySelector('.ln-qbox');
   const qCloseWrap = qveil.querySelector('.ln-qclose');
-  const queueList = createList({ label: 'Up next', pinNowPlaying: true, showNowBadge: true, showIndex: true, showKind: true, lines: true,
-    onPick: (item, idx) => {
-      if (onPickQueue) { close({ keepDrawer: true }); onPickQueue(item, idx); }
-      else {
-        if (item.videoId) music.play({ videoId: item.videoId, ...(item.playlistId ? { playlistId: item.playlistId } : {}), ...(item.params ? { params: item.params } : {}) });
-        else music.command('queueIndex', item.index ?? idx);
-        close();
-      }
-    },
+  const queueList = createList({ label: 'Up next', pinNowPlaying: true, showNowBadge: true,
+    showIndex: true, showKind: true, lines: true, onPick: pickQueue,
   });
-  qBox.appendChild(queueList.el);
+  const queueCarousel = createCoverCarousel({ orientation: 'horizontal',
+    onPick: idx => pickQueue(renderedItems[idx], idx),
+    drawer: { open: () => drawerReady, position: drawerOrigin, close() {} },
+  });
+  qBox.append(queueList.el, queueCarousel.el);
   const qScroll = queueList.scrollEl;
   paperSurface(qBox, { seed: 61, elevation: 'lift', amp: 5, cap: 10, crop: true });
   const qSheet = unrollSheet(qBox);
@@ -117,12 +119,19 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   let qRefreshTimer = 0;
   let qRetryTimer = 0;
   let renderedItems = [];
+  let drawerReady = null, queueOpener = null, nowIndex = -1;
   let seq = 0;
+  const showingCovers = () => !queueCarousel.el.hidden;
 
   const closeBtn = inkButton('Close', { onClick: () => close() });
   lyricsSheet.footer.appendChild(closeBtn);
   const qCloseBtn = stamp('close', { label: 'Close', tooltip: 'Close (Esc)', onClick: () => close() });
-  qCloseWrap.appendChild(qCloseBtn);
+  const qNowBtn = inkButton('Now playing', { size: 'sm', icon: 'song', onClick: () => {
+    queueCarousel.center(nowIndex);
+    queueCarousel.listboxEl.focus({ preventScroll: true });
+  } });
+  qNowBtn.hidden = true;
+  qCloseWrap.append(qNowBtn, qCloseBtn);
 
   qBox.addEventListener('click', (e) => e.stopPropagation());
   qBackdrop.addEventListener('click', () => close());
@@ -143,7 +152,13 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     clearTimeout(qCloseTimer);
     clearTimeout(qRefreshTimer);
     clearTimeout(qRetryTimer);
-    queueList.playDrawerFlight(drawerOrigin(), { entering: false });
+    if (showingCovers()) queueCarousel.stop();
+    else queueList.playDrawerFlight(drawerOrigin(), { entering: false });
+    drawerReady = null;
+    if (qveil.contains(document.activeElement)) {
+      document.activeElement.blur();
+      if (queueOpener?.isConnected) queueOpener.focus({ preventScroll: true });
+    }
     qSheet.close({ delay: MOTION.dur.fast });
     qveil.classList.remove('show');
     qveil.classList.add('closing');
@@ -211,8 +226,21 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     return true;
   }
 
+  function pickQueue(item, idx) {
+    if (!item) return;
+    if (onPickQueue) { close({ keepDrawer: true }); onPickQueue(item, idx); }
+    else {
+      if (item.videoId) music.play({ videoId: item.videoId, ...(item.playlistId ? { playlistId: item.playlistId } : {}), ...(item.params ? { params: item.params } : {}) });
+      else music.command('queueIndex', item.index ?? idx);
+      close();
+    }
+  }
+
   function applySelectedToDom(selectedIdx) {
-    queueList.setNowPlaying(`queue-${selectedIdx}`);
+    nowIndex = selectedIdx;
+    qNowBtn.hidden = !showingCovers() || selectedIdx < 0;
+    if (showingCovers()) queueCarousel.setNowPlaying(selectedIdx);
+    else queueList.setNowPlaying(`queue-${selectedIdx}`);
   }
 
   function syncQueueSelection(videoId) {
@@ -220,19 +248,53 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     const idx = renderedItems.findIndex((it) => it.videoId === videoId);
     if (idx < 0) return false;
     renderedItems.forEach((it, i) => { it.selected = i === idx; });
-    applySelectedToDom(idx, { smoothScroll: true });
+    applySelectedToDom(idx);
     return true;
   }
 
-  function renderQueueItems(items, { animate = false } = {}) {
-    const prevScroll = qScroll.scrollTop;
-    renderedItems = Array.isArray(items) ? items.map((it, i) => ({ ...it, kind: it.kind || 'song', id: `queue-${i}` })) : [];
-    queueList.setItems(renderedItems, { animate: false, emptyMessage: 'Nothing in the queue yet — pick a record to start one.' });
+  function renderQueueView({ animate = false, preferred = -1 } = {}) {
+    const focused = document.activeElement;
+    const movingFocus = queueList.el.contains(focused) || queueCarousel.el.contains(focused) || focused === qNowBtn;
     const selectedIdx = renderedItems.findIndex(it => it.selected);
+    if (settings.get('coverCarousel') && renderedItems.length) {
+      queueList.el.hidden = true;
+      queueCarousel.el.hidden = false;
+      queueCarousel.setItems(renderedItems, 'Up next', { index: Math.max(0, preferred < 0 ? selectedIdx : preferred), entrance: animate });
+      applySelectedToDom(selectedIdx);
+      if ((animate && focused === queueOpener) || queueList.el.contains(focused)) {
+        queueCarousel.listboxEl.focus({ preventScroll: true });
+      }
+      return;
+    }
+    queueCarousel.stop();
+    queueCarousel.el.hidden = true;
+    queueList.el.hidden = false;
+    const prevScroll = qScroll.scrollTop;
+    queueList.setItems(renderedItems, { animate: false, active: preferred, emptyMessage: 'Nothing in the queue yet — pick a record to start one.' });
     applySelectedToDom(selectedIdx);
     if (animate) queueList.playDrawerFlight(drawerOrigin(), { entering: true });
     else qScroll.scrollTop = prevScroll;
+    if (movingFocus) {
+      (renderedItems.length ? queueList.listboxEl : qCloseBtn).focus({ preventScroll: true });
+    }
   }
+
+  function renderQueueItems(items, { animate = false } = {}) {
+    const previous = showingCovers() ? renderedItems[queueCarousel.getActive()] : null;
+    renderedItems = Array.isArray(items) ? items.map((it, i) => ({ ...it, kind: it.kind || 'song', id: `queue-${i}` })) : [];
+    let preferred = -1;
+    if (previous) {
+      const matches = it => (it.videoId || it.title) === (previous.videoId || previous.title);
+      if (previous.index != null) preferred = renderedItems.findIndex(it => it.index === previous.index && matches(it));
+      if (preferred < 0) preferred = renderedItems.findIndex(matches);
+    }
+    renderQueueView({ animate, preferred });
+  }
+
+  settings.on('coverCarousel', () => {
+    if (mode !== 'queue' || !renderedItems.length) return;
+    renderQueueView({ preferred: showingCovers() ? queueCarousel.getActive() : queueList.getActive() });
+  });
 
   async function refreshQueue({ retryIfStale = true, expectedVideoId = null } = {}) {
     if (mode !== 'queue') return;
@@ -247,8 +309,8 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
         const byVid = items.findIndex((it) => it.videoId === expectedVideoId);
         if (byVid >= 0) selectedIdx = byVid;
       }
-      renderedItems = items.map((it, i) => ({ ...it, selected: i === selectedIdx }));
-      if (selectedIdx >= 0) applySelectedToDom(selectedIdx, { smoothScroll: true });
+      renderedItems = items.map((it, i) => ({ ...it, kind: it.kind || 'song', id: `queue-${i}`, selected: i === selectedIdx }));
+      if (selectedIdx >= 0 || showingCovers()) applySelectedToDom(selectedIdx);
     } else if (items.length || !renderedItems.length) {
       renderQueueItems(items, { animate: false });
     }
@@ -271,14 +333,20 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     clearTimeout(qRefreshTimer);
     clearTimeout(qRetryTimer);
     mode = 'queue';
+    queueOpener = document.activeElement;
     setOverlayOpen(qveil, true);
     renderedItems = [];
 
-    // Start fetching the queue AND opening the drawer + launching the sweeping vinyls immediately
-    // in parallel so the Queue menu loads right in front of the vinyls while the animation plays.
+    const showStack = !settings.get('coverCarousel');
+    const openDrawer = showStack || !matchMedia('(prefers-reduced-motion: reduce)').matches;
     const itemsPromise = music.queue?.().catch(() => []) ?? Promise.resolve([]);
-    onQueueOpen?.();
+    const opened = openDrawer ? onQueueOpen?.({ showStack }) : null;
+    drawerReady = !showStack && opened ? Promise.resolve(opened) : null;
 
+    queueCarousel.stop();
+    queueCarousel.el.hidden = true;
+    queueList.el.hidden = false;
+    qNowBtn.hidden = true;
     queueList.setItems([], { animate: false });
     qScroll.scrollTop = 0;
     qveil.classList.remove('closing');
@@ -296,7 +364,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     clearTimeout(loadNoteTimer);
     if (my !== seq || mode !== 'queue') return;
 
-    if (items?.length) onQueueCovers?.(items);
+    if (showStack && items?.length) onQueueCovers?.(items);
     renderQueueItems(items, { animate: true });
   }
 
@@ -333,9 +401,11 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   addEventListener('keydown', (e) => {
     if (mode !== 'queue' || sheetOpen()) return;
     if (mode === 'queue' && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
-    if (mode === 'queue' && ['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Enter'].includes(e.key)) {
+    if (['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Enter'].includes(e.key)
+      || showingCovers() && ['ArrowLeft', 'ArrowRight'].includes(e.key)) {
       if (e.key === 'Enter' && e.target.closest?.('button')) return;
-      queueList.handleKeyDown(e); e.preventDefault(); e.stopImmediatePropagation(); return;
+      (showingCovers() ? queueCarousel : queueList).handleKeyDown(e);
+      e.preventDefault(); e.stopImmediatePropagation(); return;
     }
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
   }, true);

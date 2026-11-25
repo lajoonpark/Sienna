@@ -218,11 +218,11 @@ function ensureRack(i) {
 // the torn-paper overlays for Lyrics (liner notes), Up Next Queue, and offline/error status banner
 const liner = createLiner({
   music,
-  onQueueOpen: () => {
+  onQueueOpen: ({ showStack }) => {
     pacer?.kick();
     suitcase.wake(4);
     const initialCovers = player?.art ? [getCover(player.art, 256).tex] : [];
-    return suitcase.openDrawer(initialCovers);
+    return suitcase.openDrawer(initialCovers, { showStack });
   },
   onQueueCovers: (items) => {
     if (!items?.length) return;

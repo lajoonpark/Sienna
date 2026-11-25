@@ -179,7 +179,7 @@ const drawerScreenPos = () => {
 };
 const liner = timePart('liner', () => createLiner({
   music,
-  onQueueOpen: () => tray.openHold(lastState?.art ? [getCover(lastState.art, 256).tex] : []),
+  onQueueOpen: ({ showStack }) => tray.openHold(lastState?.art ? [getCover(lastState.art, 256).tex] : [], { showStack }),
   onQueueCovers: (items) => {
     if (!items?.length) return;
     const sel = items.findIndex((it) => it.selected);

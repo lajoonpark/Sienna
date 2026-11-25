@@ -444,7 +444,7 @@ async function captureHomeSurfaces(page, vw, vh, fontKey, shotDir) {
     await pinPlayingTrack(page);
     await domClick(page, '.cad-tag .tool, .cad-tag .ui-stamp', 'Queue');
     await page.waitForFunction(
-      () => document.querySelector('.ln-qveil.show') && document.querySelectorAll('.ln-qveil .ui-list-row').length > 0,
+      () => document.querySelector('.ln-qveil.show .la-carousel:not([hidden]) .la-cover, .ln-qveil.show .ui-list:not([hidden]) .ui-list-row'),
       null,
       { timeout: 10000 },
     );
