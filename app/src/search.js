@@ -139,6 +139,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     heading.textContent = title || ''; back.style.display = withBack ? '' : 'none';
     if (title) head.animate([{ opacity: 0 }, { opacity: 1 }], { delay: bar.lead(), duration: MOTION.dur.mid, fill: 'backwards' });
     if (covers && shown.length) {
+      list.stopScroll();
       list.el.hidden = true;
       carousel.el.hidden = false;
       carousel.setItems(shown, title || 'Listen again');
@@ -265,6 +266,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     opener = null;
     setOverlayOpen(root, false); veil.show(false); input.setAttribute('aria-expanded', 'false');
     root.classList.replace('show', 'closing'); bar.play(false); input.blur();
+    list.stopScroll();
     carousel?.stop();
     resultStrip.stop();
     if (stripActive) setStripActive(false);

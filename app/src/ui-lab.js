@@ -21,8 +21,10 @@ import { createSheet, overlayOpen, onOverlay } from './ui/sheet.js';
 import { createList, listStats } from './ui/list.js';
 import { createBanner } from './ui/banner.js';
 import { createScrollCue } from './ui/scroll-cue.js';
+import { smoothWheel } from './ui/smooth-scroll.js';
 
 injectTokens();
+smoothWheel(document.scrollingElement);
 
 const params = new URLSearchParams(location.search);
 const isCompare = params.has('compare');

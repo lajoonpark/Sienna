@@ -1,4 +1,5 @@
 import { setOverlayOpen, sheetOpen } from './ui/sheet.js';
+import { smoothWheel } from './ui/smooth-scroll.js';
 // The first-run tour: torn paper notes in the shop, with brush-stroke words floating under them, the same
 // paper and words as the Settings card. It starts once the intro reaches home on a new install, and each
 // step ends when you have done the thing it is about (signed in, played a record, pressed a shortcut).
@@ -231,6 +232,10 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   const fx = createFx({ still });
   const stage = root.querySelector('.tr-stage');
   const note = root.querySelector('.tr-note');
+  const stopNoteScroll = smoothWheel(note);
+  note.addEventListener('wheel', e => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && note.scrollHeight > note.clientHeight) e.stopPropagation();
+  }, { passive: true });
   const notePaper = paperSurface(note, { seed: 31, amp: 6, cap: 12, elevation: 'lift' });
   const disc = root.querySelector('.tr-disc'), lab = root.querySelector('.tr-lab');
   stage.prepend(disc, root.querySelector('.tr-tape'));
@@ -297,10 +302,16 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   // a timeout that is called off when the step changes
   const later = (fn, ms) => { const id = setTimeout(fn, ms); cleanup.push(() => clearTimeout(id)); };
 
-  function show(on) { if (on) root.classList.remove('gone'); root.classList.toggle('show', on); setOverlayOpen(root, on); }
+  function show(on) {
+    if (on) root.classList.remove('gone');
+    else stopNoteScroll();
+    root.classList.toggle('show', on);
+    setOverlayOpen(root, on);
+  }
 
   // Write a step: where it sits, its words, its floating buttons
   function render() {
+    stopNoteScroll();
     for (const fn of cleanup) fn();
     cleanup = [];
     onKey = null;

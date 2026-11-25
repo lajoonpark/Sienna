@@ -1,5 +1,6 @@
 import { createSheet } from './ui/sheet.js';
 import { createScrollCue } from './ui/scroll-cue.js';
+import { smoothWheel } from './ui/smooth-scroll.js';
 // Settings: a SETTINGS word top-right (like HOME top-left) and Cmd+, (Ctrl+, elsewhere) open a
 // torn paper card in the middle of the screen. A side rail of brush-stroke words on the left picks a
 // page (Account, Look, Playback, Performance, Shortcuts, Tour); the page shows on the right. Each
@@ -125,7 +126,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
 
   const sheet = createSheet({ title: 'Settings', seed: 7,
     width: 'min(calc(var(--sienna-space-10) * 21), 92vw)',
-    onClose: () => { openNow = false; stopRecording(); onClose?.(); },
+    onClose: () => { openNow = false; stopRailScroll(); stopPageScroll(); stopRecording(); onClose?.(); },
   });
   const veil = sheet.el;
   veil.classList.add('st-settings');
@@ -134,6 +135,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   side.setAttribute('aria-label', 'Settings pages');
   const scroller = document.createElement('div');
   scroller.className = 'st-scroll';
+  const stopRailScroll = smoothWheel(side), stopPageScroll = smoothWheel(scroller);
   sheet.body.append(side, scroller);
   const cue = createScrollCue(scroller, { parent: sheet.footer });
 
@@ -183,6 +185,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
       if (x === p) railWords[x.id].setAttribute('aria-current', 'page');
       else railWords[x.id].removeAttribute('aria-current');
     }
+    stopPageScroll();
     scroller.scrollTop = 0;
     stopRecording();
     p.onShow?.();

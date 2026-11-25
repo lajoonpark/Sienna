@@ -109,6 +109,7 @@ export function createCollectionList({ onPlay, onShuffle = null, music = null } 
   }
   function close() {
     if (!isOpen) return; isOpen = false; seq++; setOverlayOpen(root, false); veil.show(false);
+    list.stopScroll();
     input.setAttribute('aria-expanded', 'false'); root.classList.replace('show', 'closing'); bar.play(false); input.blur();
     sheet.close();
   }
