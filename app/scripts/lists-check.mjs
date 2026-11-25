@@ -568,6 +568,26 @@ try {
   assert.equal(await page.evaluate(() => fixture.search.isOpen()), false, 'the configured Search toggle still closes Search');
   await page.keyboard.press('Alt+ArrowUp');
   await strip.waitFor();
+  for (const name of ['app', 'mini']) {
+    await page.evaluate(async name => {
+      const { shortcuts } = await import('/src/shortcuts.js');
+      await shortcuts.reset();
+      await shortcuts.set(name, 'Alt+Up');
+    }, name);
+    assert.equal(await input.getAttribute('aria-keyshortcuts'), 'Shift+ArrowUp', `Alt+Up reserved by ${name}`);
+  }
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.set('app', 'Shift+Up');
+  });
+  assert.equal(await input.getAttribute('aria-keyshortcuts'), 'Alt+Shift+ArrowUp');
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.set('search', 'Alt+Shift+Up');
+  });
+  assert.equal(await input.getAttribute('aria-keyshortcuts'), 'Control+Shift+ArrowUp');
+  await page.keyboard.press('Control+Shift+ArrowUp');
+  assert.equal(await input.getAttribute('aria-controls'), await strip.getAttribute('id'));
   await page.evaluate(async () => {
     const { shortcuts } = await import('/src/shortcuts.js');
     await shortcuts.reset();

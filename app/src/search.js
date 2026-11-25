@@ -12,6 +12,12 @@ import { settings } from './settings.js';
 const FILTERS = ['songs', 'albums', 'playlists', 'artists'];
 const DEBOUNCE = 250;
 const STRIP_LIMIT = 5;
+const SHORTCUT_NAMES = ['search', 'app', 'mini'];
+const STRIP_CHORDS = ['Alt', 'Shift', 'Alt+Shift', 'Control+Shift'].map(label => ({
+  label, code: 'ArrowUp',
+  altKey: label.includes('Alt'), shiftKey: label.includes('Shift'),
+  ctrlKey: label.includes('Control'), metaKey: false,
+}));
 const STRIP_CSS = `
 .cs > .cs-result-strip { flex: none; margin-bottom: var(--sienna-space-2); }
 .cs-result-strip .la-wheel { flex-basis: clamp(64px, 16dvh, 116px); }
@@ -64,14 +70,14 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
   let isOpen = false, seq = 0, timer = 0, shown = [], shownFor = null, filter = 'songs', artistView = null, pendingEnter = false;
   let suggestion = null, stripActive = false, opener = null;
-  let stripModifier = 'Alt';
+  let stripChord = STRIP_CHORDS[0];
   const cache = new Map();
   const showingCovers = () => carousel && !carousel.el.hidden;
   function syncStripShortcut() {
     if (resultStrip.el.hidden) return;
-    stripModifier = shortcuts.matches('search', { code: 'ArrowUp', altKey: true, ctrlKey: false, shiftKey: false, metaKey: false }) ? 'Shift' : 'Alt';
-    input.setAttribute('aria-keyshortcuts', `${stripModifier}+ArrowUp`);
-    resultStrip.setHint(`${stripModifier}+↑ browse covers · ←→ choose · Enter play · ↓ list`);
+    stripChord = STRIP_CHORDS.find(chord => !SHORTCUT_NAMES.some(name => shortcuts.matches(name, chord)));
+    input.setAttribute('aria-keyshortcuts', `${stripChord.label}+ArrowUp`);
+    resultStrip.setHint(`${stripChord.label}+↑ browse covers · ←→ choose · Enter play · ↓ list`);
   }
   shortcuts.on(syncStripShortcut);
   function syncActive() {
@@ -221,8 +227,8 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   input.addEventListener('keydown', e => {
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); if (artistView) goBack(); else close(); }
-    else if (!resultStrip.el.hidden && e.key === 'ArrowUp' && !e.ctrlKey && !e.metaKey
-      && e.altKey === (stripModifier === 'Alt') && e.shiftKey === (stripModifier === 'Shift')) {
+    else if (!resultStrip.el.hidden && e.key === 'ArrowUp' && e.ctrlKey === stripChord.ctrlKey && e.metaKey === stripChord.metaKey
+      && e.altKey === stripChord.altKey && e.shiftKey === stripChord.shiftKey) {
       e.preventDefault(); setStripActive(true);
     } else if (e.key === 'Tab') {
       e.preventDefault(); tabs.setValue(FILTERS[(FILTERS.indexOf(filter) + (e.shiftKey ? -1 : 1) + FILTERS.length) % FILTERS.length], { notify: true });
