@@ -465,7 +465,7 @@ try {
       close() { this.closes++; },
     };
     const search = createSearch({
-      music: { search: async q => Array.from({ length: 7 }, (_, i) => ({ title: `${q} result ${i + 1}`, subtitle: 'Search artist', kind: 'song' })) },
+      music: { search: async q => Array.from({ length: 7 }, (_, i) => ({ title: `${q} result ${i + 1}`, subtitle: 'Search artist', kind: 'song', art: window.fixture.artFor?.(q, i) })) },
       suggest: () => ({ title: 'Listen again', items }),
       coverSuggestions: true, coverDrawer: drawer, onPlay: (item, { fromCoverPicker }) => {
         played.push(item.title);
@@ -629,6 +629,7 @@ try {
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('Enter');
   assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 2');
+  assert.equal(await page.evaluate(() => fixture.pickModes.at(-1)), false, 'Enter on a search cover uses search playback');
   await page.evaluate(() => fixture.search.open());
   await strip.waitFor();
   await page.keyboard.press('Home');
@@ -660,12 +661,83 @@ try {
   await strip.getByRole('option', { selected: true }).click();
   assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 1');
   assert.deepEqual(await page.evaluate(() => fixture.pickModes.slice(-2)), [false, false], 'search strip uses search playback');
+
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const artColours = await page.evaluate(() => Object.fromEntries(['Slow', 'Fast'].flatMap((q, j) => Array.from({ length: 7 }, (_, i) => {
+    const c = document.createElement('canvas'); c.width = c.height = 32;
+    const g = c.getContext('2d'); g.fillStyle = `hsl(${j * 180 + i * 24} 70% 50%)`; g.fillRect(0, 0, 32, 32);
+    return [`${q}-${i}`, c.toDataURL('image/png').split(',')[1]];
+  }))));
+  const artHits = [];
+  await page.route('https://i.ytimg.com/vi/**', async route => {
+    const id = new URL(route.request().url()).pathname.split('/')[2];
+    artHits.push(id);
+    if (id.startsWith('Slow')) await new Promise(resolve => setTimeout(resolve, 900));
+    await route.fulfill({ contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: Buffer.from(artColours[id], 'base64') });
+  });
+  await page.evaluate(() => { fixture.artFor = (q, i) => (/^(Slow|Fast)$/.test(q) ? `https://i.ytimg.com/vi/${q}-${i}/hq.jpg` : undefined); });
+  const stripArt = () => page.evaluate(async () => {
+    const { paintedCoverURL } = await import('/src/coverpaint.js');
+    return Promise.all([...document.querySelectorAll('.cs-result-strip .la-cover')].map(async card => {
+      const srcs = [...card.querySelectorAll('img')].map(img => img.src);
+      const art = `https://i.ytimg.com/vi/${card.getAttribute('aria-label').split(' result ')[0]}-${card.dataset.index}/hq.jpg`;
+      return { srcs, ok: srcs.length === 0 || (srcs.length === 1 && srcs[0] === await paintedCoverURL(art, 160)) };
+    }));
+  });
+  const artShown = n => page.waitForFunction(n => [...document.querySelectorAll('.cs-result-strip .la-cover')].slice(0, n)
+    .every(card => card.querySelector('img')), n);
+  await page.evaluate(() => fixture.search.open());
+  await input.fill('Slow');
+  await page.waitForFunction(() => document.querySelector('.cs-result-strip .la-title')?.textContent === 'Slow result 1');
+  await input.fill('Fast');
+  await page.waitForFunction(() => document.querySelector('.cs-result-strip .la-title')?.textContent === 'Fast result 1');
+  await artShown(3);
+  await wait(1200);
+  assert.ok(artHits.includes('Slow-0'), 'the first query\'s covers were still loading when the query changed');
+  let art = await stripArt();
+  assert.ok(art.every(card => card.ok), 'each cover shows its own result\'s artwork after the query changes');
+  assert.ok(art.slice(0, 3).every(card => card.srcs.length === 1));
+  await page.keyboard.press('Alt+ArrowUp');
+  await page.keyboard.press('End');
+  await artShown(5);
+  await input.fill('Slow');
+  await page.waitForFunction(() => document.querySelector('.cs-result-strip .la-title')?.textContent === 'Slow result 1');
+  await artShown(3);
+  art = await stripArt();
+  assert.ok(art.every(card => card.ok), 'cached results show their own artwork again');
+  assert.equal(new Set(art.flatMap(card => card.srcs)).size, 3);
+
+  assert.equal(await strip.evaluate(el => el.closest('.cs-result-strip').scrollHeight - el.closest('.cs-result-strip').clientHeight), 0,
+    'a full list leaves the cover strip unclipped at rest');
+  const rollOverflow = () => page.evaluate(() => new Promise(resolve => {
+    const sheet = document.querySelector('.cs'), coverStrip = document.querySelector('.cs-result-strip');
+    let worst = -Infinity, smallest = Infinity;
+    const start = performance.now();
+    (function frame() {
+      const edge = sheet.getBoundingClientRect().bottom - parseFloat(getComputedStyle(sheet).paddingBottom);
+      const rect = coverStrip.getBoundingClientRect();
+      worst = Math.max(worst, rect.bottom - edge); smallest = Math.min(smallest, rect.height);
+      if (performance.now() - start < 700) requestAnimationFrame(frame); else resolve({ worst, smallest });
+    })();
+  }));
+  const closing = rollOverflow();
+  await page.evaluate(() => fixture.search.close());
+  const closed = await closing;
+  assert.ok(closed.worst < 0.5, `covers stay inside the paper while it rolls up (${closed.worst}px out)`);
+  assert.ok(closed.smallest < 1, 'the paper rolls all the way up to the cover strip\'s top edge');
+  const opening = rollOverflow();
+  await page.evaluate(() => fixture.search.open());
+  const opened = await opening;
+  assert.ok(opened.worst < 0.5, `covers stay inside the paper while it unrolls (${opened.worst}px out)`);
+  await page.evaluate(() => { fixture.artFor = null; });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.evaluate(() => fixture.search.open());
   await input.fill('');
   await carousel.waitFor();
   assert.equal(await strip.isVisible(), false);
   pass('Listen again: drawer discs land in covers, keyboard/Enter, side and centre clicks, wheel, drag, reduced motion and paper fallback');
   pass('typed search: five covers above the full ruled list, independent keyboard navigation, native typing, centered click/Enter, reduced motion and live setting');
+  pass('typed search covers: each result\'s own artwork across query changes, covers clipped by the paper while it rolls up and unrolls');
   assert.deepEqual(errors, []);
   console.log(`all lists checks passed -> ${out}`);
 } finally { await browser.close(); await server.close(); }
