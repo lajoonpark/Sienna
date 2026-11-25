@@ -9,6 +9,7 @@ import { paperSurface } from './ui/paper.js';
 import { unrollSheet } from './ui/unroll.js';
 import { createList } from './ui/list.js';
 import { createCoverCarousel, createCoverTilt } from './ui/cover-carousel.js';
+import { listenForCoverPickSkip } from './ui/cover-pick-input.js';
 import { inkButton, stamp } from './ui/inputs.js';
 import { createBanner } from './ui/banner.js';
 import { createScrollCue } from './ui/scroll-cue.js';
@@ -144,7 +145,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   qCloseWrap.append(qNowBtn, qCloseBtn);
 
   qBox.addEventListener('click', (e) => e.stopPropagation());
-  qBackdrop.addEventListener('click', () => { if (!picking) close(); });
+  qBackdrop.addEventListener('click', () => close());
 
   function openLyricsSheet() {
     mode = 'lyrics';
@@ -189,8 +190,9 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     else if (prev === 'queue') closeQueueOverlay({ keepDrawer });
     picking = false;
     if (pendingPick) {
-      const { item, idx } = pendingPick;
+      const { item, idx, hide } = pendingPick;
       pendingPick = null;
+      hide();
       onPickQueue(item, idx, { instant: true });
     }
   }
@@ -247,12 +249,13 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     if (!item || mode !== 'queue' || picking) return;
     if (onPickQueue && showingCovers() && !calm.matches) {
       picking = true;
-      pendingPick = { item, idx };
       qveil.classList.add('picking');
       const my = seq;
-      queueCarousel.extractDisc(idx).then(rect => {
-        if (my !== seq || mode !== 'queue') return;
-        const from = { rect, ...qTilt.pose() };
+      const { done, hide } = queueCarousel.extractDisc(idx);
+      pendingPick = { item, idx, hide };
+      done.then(rect => {
+        if (my !== seq || mode !== 'queue' || !rect) return;
+        const from = { rect, ...qTilt.pose(), hideSleeve: hide };
         pendingPick = null;
         close({ keepDrawer: true });
         onPickQueue(item, idx, from);
@@ -444,6 +447,11 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     banner.show({ message, kind, actionLabel: onRetry ? 'Retry' : null, onAction: onRetry });
   }
 
+  listenForCoverPickSkip(() => {
+    if (!pendingPick) return false;
+    close();
+    return true;
+  });
   addEventListener('keydown', (e) => {
     if (mode !== 'queue' || sheetOpen()) return;
     if (picking) { e.preventDefault(); e.stopImmediatePropagation(); return; }

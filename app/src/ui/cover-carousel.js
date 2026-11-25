@@ -311,16 +311,23 @@ export function createCoverCarousel({ onPick, onActiveChange, orientation = 'ver
     card.classList.add('is-picked');
     const timing = { duration: 240, easing: 'cubic-bezier(.32,.02,.56,1)', fill: 'forwards' };
     const shift = Math.max(0, start.right + start.width * 0.82 - innerWidth);
-    if (shift) card.animate([{ translate: '0' }, { translate: `${-shift}px` }], timing);
+    const shifted = shift ? card.animate([{ translate: '0' }, { translate: `${-shift}px` }], timing) : null;
     const slide = disc.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(102%)' }],
       timing);
-    return slide.finished.then(() => {
+    let fade;
+    const done = slide.finished.then(() => {
       const rect = disc.getBoundingClientRect();
       disc.style.visibility = 'hidden';
       slide.cancel();
-      card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: MOTION.dur.mid, fill: 'forwards' });
+      fade = card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: MOTION.dur.mid, fill: 'forwards' });
       return rect;
-    });
+    }, () => null);
+    return { done, hide() {
+      card.style.visibility = 'hidden';
+      shifted?.cancel();
+      slide.cancel();
+      fade?.cancel();
+    } };
   }
 
   function setItems(next, label, { index = 0 } = {}) {

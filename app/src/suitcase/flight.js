@@ -93,7 +93,7 @@ export function createFlights({ scene, suitcase, camera, view, worldCase = false
     return receiveAt(poseIn(camera, disc.matrixWorld, true), disc.cover);
   }
 
-  function receiveAt(from, cover, screenOrigin = false) {
+  function receiveAt(from, cover, extra = {}) {
     for (const f of [...flights]) if (f.kind === 'in') land(f);      // a quicker pick: the last one lands now
     // whatever is on the platter lifts off and flies away
     const old = suitcase.liftRecord();
@@ -103,10 +103,10 @@ export function createFlights({ scene, suitcase, camera, view, worldCase = false
       launch('out', { pos: sp, quat: sq, scale: ss.x }, old.cover, { spin: old.spin });
     }
     suitcase.held = true;
-    return launch('in', from, cover, { baseVideoId: suitcase.videoId, screenOrigin });
+    return launch('in', from, cover, { baseVideoId: suitcase.videoId, ...extra });
   }
 
-  function receiveFromScreen({ rect, yaw, pitch, instant }, viewport, cover) {
+  function receiveFromScreen({ rect, yaw, pitch, instant, hideSleeve }, viewport, cover) {
     if (instant) {
       finish();
       suitcase.placeRecord(cover, { claimFor: { baseVideoId: suitcase.videoId } });
@@ -121,7 +121,7 @@ export function createFlights({ scene, suitcase, camera, view, worldCase = false
       _e.set(THREE.MathUtils.degToRad(-pitch), THREE.MathUtils.degToRad(yaw), 0, 'YXZ'),
     ).multiply(Q_FLAT_TO_DISC);
     const scale = Math.max(rect.width, rect.height) / height * d * th() / L.recordRadius;
-    return receiveAt({ pos, quat, scale }, cover, true);
+    return receiveAt({ pos, quat, scale }, cover, { screenOrigin: true, hideSleeve });
   }
 
   function remove(f) {
@@ -130,11 +130,11 @@ export function createFlights({ scene, suitcase, camera, view, worldCase = false
     flights.splice(flights.indexOf(f), 1);
   }
 
-  function land(f) {
+  function land(f, animate = true) {
     remove(f);
     suitcase.held = false;
     suitcase.placeRecord(f.cover, { claimFor: { baseVideoId: f.baseVideoId } });
-    suitcase.thump(0.05);
+    if (animate) suitcase.thump(0.05);
   }
 
   // Where the incoming record is at time f.t: pop, fly, drop.
@@ -211,13 +211,21 @@ export function createFlights({ scene, suitcase, camera, view, worldCase = false
   }
 
   // Jump to the end: incoming records land now, outgoing ones are gone.
-  function finish() {
-    for (const f of [...flights]) (f.kind === 'in' ? land(f) : remove(f));
+  function finish({ animate = true } = {}) {
+    for (const f of [...flights]) (f.kind === 'in' ? land(f, animate) : remove(f));
     frozen = false;
   }
 
+  function finishScreenPick() {
+    const pick = flights.find(f => f.kind === 'in' && f.screenOrigin);
+    if (!pick) return false;
+    pick.hideSleeve?.();
+    finish({ animate: false });
+    return true;
+  }
+
   return {
-    receive, receiveFromScreen, update, finish,
+    receive, receiveFromScreen, update, finish, finishScreenPick,
     get active() { return flights.length > 0; },
     duration: T_IN,
     get list() { return flights; },

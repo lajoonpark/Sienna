@@ -28,6 +28,7 @@ import { registerLamp, glowMesh } from './env.js';
 import { LISTENING_TABLE, LOUNGE_LAMP, buildLoungeCore, buildCourtyardVista } from './loungecorner.js';
 import { createLiner, showWebGLError } from './liner.js';
 import { injectTokens } from './ui/tokens.js';
+import { listenForCoverPickSkip } from './ui/cover-pick-input.js';
 import { settings } from './settings.js';
 
 injectTokens();
@@ -257,6 +258,7 @@ const search = timePart('search', () => createSearch({
     return listenAgain ?? busy;
   },
 }));
+listenForCoverPickSkip(flights.finishScreenPick);
 caption.show(true, true);
 
 // ---- player state ----

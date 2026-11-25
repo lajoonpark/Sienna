@@ -868,6 +868,54 @@ try {
   pass('Listen again: drawer discs land in covers, keyboard/Enter, side and centre clicks, wheel, drag, reduced motion and paper fallback');
   pass('typed search: five covers above the full ruled list, independent keyboard navigation, native typing, centered click/Enter, reduced motion and live setting');
   pass('typed search covers: each result\'s own artwork across query changes, covers clipped by the paper while it rolls up and unrolls');
+
+  await page.setViewportSize({ width: 540, height: 620 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`http://127.0.0.1:${port}/mini.html?shot&wc=0`);
+  await page.waitForFunction(() => window.__mini && window.__ready, null, { timeout: 60000 });
+  await page.evaluate(async () => {
+    const { settings } = await import('/src/settings.js');
+    settings.set('coverCarousel', true);
+    settings.set('miniAutoClose', false);
+    settings.set('playOnArm', true);
+    await window.__seek(0.4);
+    window.__mini.music.onState(s => { window.pickState = s; });
+  });
+  for (const queue of [true, false]) {
+    const cover = page.locator(`${queue ? '.ln-qveil.show' : '.cs.show'} .la-full .la-cover[aria-selected="true"]`);
+    for (const phase of ['extraction', 'flight']) {
+      for (const input of ['Escape', 'Enter', 'click']) {
+        const label = `${queue ? 'Up next' : 'Listen again'} / ${phase} / ${input}`;
+        if (queue) await page.evaluate(() => window.__mini.liner.openQueue());
+        else await page.keyboard.press('Control+Alt+J');
+        await cover.waitFor();
+        const title = await cover.evaluate((card, phase) => {
+          const title = card.closest('.la-full').querySelector('.la-title').textContent;
+          document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          const [slide] = card.querySelector('.la-disc').getAnimations();
+          if (phase === 'flight') slide.finish();
+          else slide.pause();
+          return title;
+        }, phase);
+        if (phase === 'flight') await page.waitForFunction(() => window.__mini.flights.list.some(f => f.screenOrigin));
+        if (input === 'click') await page.mouse.click(2, 2);
+        else await page.keyboard.press(input);
+        assert.deepEqual(await page.evaluate(queue => {
+          const { flights, suitcase, phase } = window.__mini;
+          const picked = document.querySelector(`${queue ? '.ln-qveil' : '.cs'} .is-picked`);
+          return [flights.active, suitcase.debug.seatHas, suitcase.held, suitcase.debug.cue?.landed, phase,
+            getComputedStyle(picked).visibility];
+        }, queue), [false, true, false, true, 'open', 'hidden'], label);
+        await page.waitForFunction(() => window.__mini.suitcase.debug.cue?.ready === true);
+        await page.evaluate(() => { for (let i = 0; i < 90; i++) window.__mini.step(1 / 60); });
+        await page.waitForFunction(title => window.pickState?.title === title && window.pickState?.playerState === 1, title);
+        await page.keyboard.press('Control+Alt+J');
+        await page.locator('.cs.show .cs-input').waitFor();
+        await page.keyboard.press('Control+Alt+J');
+      }
+    }
+  }
+  pass('Up next and Listen again: Esc, Enter and click skip extraction or flight, seat and play the pick, and leave Search usable');
   assert.deepEqual(errors, []);
   console.log(`all lists checks passed -> ${out}`);
 } finally { await browser.close(); await server.close(); }

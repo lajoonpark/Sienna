@@ -2,6 +2,7 @@ import { setOverlayOpen } from './ui/sheet.js';
 import { shortcuts } from './shortcuts.js';
 import { createList } from './ui/list.js';
 import { createCoverCarousel, createCoverTilt } from './ui/cover-carousel.js';
+import { listenForCoverPickSkip } from './ui/cover-pick-input.js';
 import { segmented, inkButton } from './ui/inputs.js';
 import { createListBar, createListVeil } from './list-bar.js';
 import { paperSurface } from './ui/paper.js';
@@ -178,15 +179,16 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     if (item.kind === 'artist' && item.browseId && music.artistSongs) { openArtist(item); return; }
     const openCollection = ['album', 'playlist'].includes(item.kind) && onOpenCollection;
     if (fromCoverPicker && onPlay && !openCollection && !calm.matches) {
-      pendingCover = item;
       root.classList.add('cover-picking');
       veil.show(false);
       const mine = seq;
-      carousel.extractDisc(i).then(rect => {
-        if (mine !== seq || !isOpen) return;
+      const { done, hide } = carousel.extractDisc(i);
+      pendingCover = { item, hide };
+      done.then(rect => {
+        if (mine !== seq || !isOpen || !rect) return;
         pendingCover = null;
         close();
-        onPlay(item, { fromCoverPicker, from: { rect, ...coverTilt.pose() } });
+        onPlay(item, { fromCoverPicker, from: { rect, ...coverTilt.pose(), hideSleeve: hide } });
       });
       return;
     }
@@ -303,11 +305,17 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     sheet.close({ delay: coverPicking ? MOTION.dur.mid : 0 });
     if (restore?.isConnected) restore.focus({ preventScroll: true });
     if (pendingCover) {
-      const item = pendingCover;
+      const { item, hide } = pendingCover;
       pendingCover = null;
+      hide();
       onPlay(item, { fromCoverPicker: true, from: { instant: true } });
     }
   }
+  if (carousel) listenForCoverPickSkip(() => {
+    if (!pendingCover) return false;
+    close();
+    return true;
+  });
   window.addEventListener('keydown', e => {
     if (pendingCover) { e.preventDefault(); e.stopImmediatePropagation(); }
     else if (isToggle(e)) { e.preventDefault(); e.stopPropagation(); if (!e.repeat) (isOpen ? close : open)(); }

@@ -24,6 +24,7 @@ import { createFlights } from './flight.js';
 import { createRecordTray } from './tray.js';
 import { createCaseHover, isNearCaption } from './tuck.js';
 import { searchOpen } from '../search.js';
+import { listenForCoverPickSkip } from '../ui/cover-pick-input.js';
 
 // The case sits in the bottom-left corner, upright: the same three-quarter view as the small window
 // (the deck seen from about 40 degrees up, the front edge level), with a small turn in toward the
@@ -54,6 +55,7 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
   place.add(suitcase.root);
   scene.add(place);
   const flights = createFlights({ scene, suitcase, camera, view: ocam });
+  listenForCoverPickSkip(flights.finishScreenPick);
   const tray = createRecordTray({ suitcase, kit: suitcase.recordKit, camera, overlayScene: scene, view: ocam, onDisc: (d) => flights.receive(d) });
   const points = suitcase.fitPoints();
 
