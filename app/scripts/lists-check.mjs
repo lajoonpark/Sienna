@@ -236,6 +236,9 @@ try {
   await page.waitForFunction(() => document.querySelector('.ln-qbox').getBoundingClientRect().height > innerHeight * 0.9);
   assert.ok((await queueSheet.boundingBox()).width > page.viewportSize().width * 0.9);
   assert.ok((await centered.boundingBox()).width > page.viewportSize().width * 0.38);
+  const queueCoverBounds = await centered.boundingBox();
+  const queueCaptionBounds = await queueSheet.locator('.la-details').boundingBox();
+  assert.ok(queueCaptionBounds.y >= queueCoverBounds.y + queueCoverBounds.height, 'the queue caption sits below the centered cover');
   assert.match(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), /^shape\(/);
   assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'the queue wheel is focused on open');
   assert.equal(await queueWheel.getAttribute('aria-activedescendant'), await centered.getAttribute('id'));
@@ -503,7 +506,13 @@ try {
   assert.match(await searchSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), /^shape\(/);
   const desktopSize = page.viewportSize();
   await page.setViewportSize({ width: 540, height: 620 });
-  assert.ok((await activeCover.boundingBox()).width > 540 * 0.75, 'the vertical cover fills most of the mini player width');
+  const miniCoverBounds = await activeCover.boundingBox();
+  const miniCaptionBounds = await suggestionCaption.boundingBox();
+  const miniHintBounds = await page.locator('.cs > .la-full > .ui-list-foot').boundingBox();
+  assert.ok(miniCoverBounds.width > 540 * 0.65, 'the vertical cover fills most of the mini player width');
+  assert.ok(miniCaptionBounds.y >= miniCoverBounds.y + miniCoverBounds.height, 'the Listen again caption sits below the centered cover');
+  assert.ok(miniHintBounds.y >= miniCaptionBounds.y + miniCaptionBounds.height && miniHintBounds.y + miniHintBounds.height <= 620,
+    'the Listen again hint fits below the caption within the mini player');
   await page.setViewportSize(desktopSize);
   await page.evaluate(() => fixture.drawer.release());
   const discs = page.locator('.la-vinyl-flight');
@@ -520,7 +529,11 @@ try {
   assert.equal(await page.evaluate(() => fixture.drawer.closes), 1);
   await page.keyboard.press('ArrowDown');
   await expectCover(1);
-  await carousel.getByRole('option', { name: coverName(2) }).click();
+  const wheelBounds = await carousel.boundingBox();
+  const nextCoverPoint = { x: wheelBounds.x + wheelBounds.width / 2, y: wheelBounds.y + wheelBounds.height - 4 };
+  await page.waitForFunction(({ x, y, name }) => document.elementFromPoint(x, y)?.closest('.la-cover')?.getAttribute('aria-label') === name,
+    { ...nextCoverPoint, name: coverName(2) });
+  await page.mouse.click(nextCoverPoint.x, nextCoverPoint.y);
   await expectCover(2);
   assert.deepEqual(await page.evaluate(() => fixture.played), []);
   await carousel.hover();
