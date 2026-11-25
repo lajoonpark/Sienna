@@ -97,6 +97,9 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   resultStrip.listboxEl.addEventListener('pointerdown', e => {
     if (e.isPrimary && e.button === 0) setStripActive(true);
   });
+  resultStrip.listboxEl.addEventListener('wheel', e => {
+    if (e.defaultPrevented) setStripActive(true);
+  });
   list.listboxEl.addEventListener('pointerdown', () => { if (stripActive) setStripActive(false); });
   function hideCovers() {
     if (!showingCovers()) return;

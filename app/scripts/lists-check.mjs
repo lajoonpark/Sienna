@@ -542,6 +542,13 @@ try {
   assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 2');
   await page.evaluate(() => fixture.search.open());
   await strip.waitFor();
+  await strip.hover();
+  await page.mouse.wheel(0, 100);
+  await page.waitForFunction(() => document.querySelector('.cs-result-strip .la-title')?.textContent === 'Matcha result 2');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 2', 'Enter plays the cover reached by scrolling');
+  await page.evaluate(() => fixture.search.open());
+  await strip.waitFor();
   await strip.getByRole('option', { selected: true }).click();
   assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 1');
   assert.deepEqual(await page.evaluate(() => fixture.pickModes.slice(-2)), [false, false], 'search strip uses search playback');
