@@ -69,9 +69,25 @@ supported; a loader function returning a promise enables genuine Retry. Up next 
 updates its mark without rebuilding rows, and retains the suitcase drawer flight. While it is open,
 arrows and Enter belong to the queue, never the shop; normal shop/mini Space and Tab ownership is unchanged.
 
+Settings > Look > **Cover carousel** (`coverCarousel` in `src/settings.js`, on by default) swaps two
+of these surfaces for `createCoverCarousel` (`src/ui/cover-carousel.js`): Up next becomes a
+horizontal wheel of painted covers centred on the playing song (a **Now playing** button re-centres
+it; arrows, scroll, drag and Enter all work, and Tab stays inside the wheel), and the search sheet
+gains a `cs-result-strip` of the top five results above its rows — a modifier chord (Alt, Shift,
+Alt+Shift or Ctrl+Shift, the first that does not collide with the configured shortcuts, named under
+the strip) + ↑ hands it the keyboard, ←→ choose, Enter plays, ↓ returns to the list. In the mini
+window an empty search also opens its **Listen again** shelf as a vertical wheel
+(`coverSuggestions`, `suggest` in `src/mini.js`; the shop search takes no suggestions). A cover pick
+flies a vinyl disc out of its slot into the suitcase drawer (`flyIntoCovers` in
+`src/ui/cover-flight.js`); **Paper list** keeps the ruled rows and the old stack flight. The setting
+flips live in open sheets and restores the wheel's focus when Settings closes.
+
 `node scripts/lists-check.mjs <out_dir>` checks all three real components against an isolated fake store:
 focus/ARIA/keys, notes and retries, 612-song batching/filtering/actions, live queue state, bounded painting,
-no native control titles and two seconds with no kit/shared-bar callbacks. Existing `search-check`,
+no native control titles and two seconds with no kit/shared-bar callbacks. It also drives the cover
+carousels: the queue wheel (drawer landing, keyboard, wheel, drag, now-playing jump, reduced motion,
+live paper fallback), the mini-style Listen again wheel, and the search result strip (order, caption,
+chord+↑ focus, shortcut-collision fallback, Enter/↓ hand-off). Existing `search-check`,
 `search-anim-check` and `mini-suggest-check` retain their interaction, animation and prefetch coverage.
 
 ### Sheets and notes
@@ -238,7 +254,10 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 - **Search**: **⌃⌥J** (Ctrl+Alt+J on Windows/Linux) opens a search bar (`src/search.js`). The bar is
   stamped onto `.cs-fx` as chunky individual oil dabs one at a time, throwing flecks, and flicked off the right-hand end when it closes
   (`src/searchpaint.js`; the same in the shop and the mini window, no animation under the system's reduce-motion setting). Songs are
-  laid in as ruled rows on the search sheet, arrows + Enter or a click plays one. A song from search has no sleeve, so
+  laid in as ruled rows on the search sheet, arrows + Enter or a click plays one; with Cover
+  carousel on, the top five results also sit above the rows as a cover strip (chord + ↑ browses it)
+  and, in the mini window, an empty search opens its Listen again shelf as a vertical cover wheel. A
+  song from search has no sleeve, so
   the bottom of the case slides out like a drawer, the record lifts out of it, tips towards you and
   flies onto the platter, and the drawer slides home (`src/suitcase/tray.js`, in the shop and the mini
   window; the shop's case rises a little meanwhile so the drawer stays in the picture). `?tray=0.6`
@@ -257,7 +276,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   `npm run build && xvfb-run -a node scripts/shortcuts-check.mjs out`.
 - **Settings**: the SETTINGS word (top right) or **⌘,** (Ctrl+, elsewhere) opens a paper card
   (`src/settings-panel.js`, stored by `src/settings.js` in localStorage, shared with the mini window).
-  A side rail picks a page: *Account*, *Look* (Cover art, Lettering), *Playback* (Start of a song),
+  A side rail picks a page: *Account*, *Look* (Cover art, Lettering, Cover carousel), *Playback* (Start of a song),
   *Performance* (Smoothness, Sharpness, Auto cool-down, Frame rate), *Shortcuts*, *Tour*. ↑/↓ or Tab move through the rail; it opens on
   Account the first time, then where you left it. `?settings=<page>` opens a page for screenshots.
   **Oil paint**, the shop's only look (D from the optimisation plan, after blendi's oil-paint demo on patch.gg, MIT;
@@ -332,7 +351,10 @@ of time apart (`DT`, default 1/300 s; `DT=0 NUDGE=0.0002` leans the camera a hai
 `at=3`) with the cursor's lean pinned, and marks in magenta what changed: z-fighting, dabs popping, colours picked
 from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the paint off for screenshots and
   geometry checks.
-  *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Start of a song* plays
+  *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Cover carousel*
+  (default Carousel) shows Up next and the top five search results as a wheel of covers to spin
+  through, and opens the mini window's empty search on a Listen again wheel; Paper list keeps the
+  ruled rows everywhere. *Start of a song* plays
   when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Sharpness* sets how
   many pixels the shop is drawn with (`src/quality.js`): Full (every Retina pixel), Balanced (default: 3/4 of the screen's
   pixel ratio, never below 1, so 56% of Full's pixels on a Retina screen and the same as Full on a plain one) or Light
