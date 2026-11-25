@@ -19,8 +19,9 @@ const STRIP_CHORDS = ['Alt', 'Shift', 'Alt+Shift', 'Control+Shift'].map(label =>
   ctrlKey: label.includes('Control'), metaKey: false,
 }));
 const STRIP_CSS = `
-.cs > .cs-result-strip { flex: none; margin-bottom: var(--sienna-space-2); }
-.cs-result-strip .la-wheel { flex-basis: clamp(64px, 16dvh, 116px); }
+/* While the sheet rolls up to the strip, the list collapses first, then the paper clips the covers. */
+.cs > .cs-result-strip { flex: 0 0.00001 auto; min-height: 0; margin-bottom: var(--sienna-space-2); }
+.cs-result-strip .la-wheel { flex: 0 0 clamp(64px, 16dvh, 116px); }
 .cs-result-strip .la-cover { --cover-size: min(108px, 26cqw, 92cqh); }
 .cs-result-strip .la-details { padding-top: 0; }
 .cs-result-strip.is-active .la-wheel { outline: 1px solid var(--sienna-indigo); outline-offset: -1px; }
