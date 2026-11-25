@@ -63,7 +63,7 @@ try {
       },
     };
     f.emit = patch => { Object.assign(f.state, patch); for (const fn of f.listeners) fn(f.state); };
-    f.caption = createCaption({ variant: 'shop', onSeek: () => {}, onCommand: () => {} });
+    f.caption = createCaption({ variant: 'shop', onSeek: () => {}, onCommand: () => {}, onQueue: (...args) => f.liner.openQueue(...args) });
     f.caption.setState(f.state); f.caption.show(true);
     f.settings = settings;
     f.drawerOpens = [];
@@ -219,11 +219,24 @@ try {
   const queueCover = i => queueWheel.getByRole('option', { name: `Song 00${i} · Artist ${i}` });
   const expectCentered = i => page.waitForFunction(index =>
     document.querySelector('.ln-qveil .la-cover[aria-selected="true"]')?.dataset.index === String(index), i);
-  await page.evaluate(() => fixture.liner.openQueue());
+  const queueButton = page.getByRole('button', { name: 'Up next', exact: true });
+  await page.evaluate(() => {
+    const queue = fixture.music.queue;
+    fixture.music.queue = () => new Promise(resolve => {
+      fixture.releaseQueue = () => { fixture.music.queue = queue; resolve(queue()); };
+    });
+  });
+  await queueButton.focus();
+  await queueButton.click();
+  await page.evaluate(() => fixture.releaseQueue());
   await queueWheel.waitFor();
   await expectCentered(1);
   assert.equal(await queueWheel.getAttribute('aria-orientation'), 'horizontal');
   assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'the queue wheel is focused on open');
+  await page.keyboard.press('ArrowRight');
+  await expectCentered(2);
+  await page.keyboard.press('ArrowLeft');
+  await expectCentered(1);
   assert.equal(await queueWheel.getAttribute('aria-activedescendant'), await centered.getAttribute('id'));
   assert.equal(await current.getAttribute('data-index'), '1');
   assert.equal(await page.locator('.ln-qveil .la-title').innerText(), 'Song 001');
@@ -239,6 +252,10 @@ try {
   assert.equal(await page.evaluate(() => fixture.search.isOpen()), true, 'the focused queue wheel lets the modified Search shortcut through');
   await expectCentered(1);
   await page.keyboard.press('Escape');
+  await page.keyboard.press('ArrowRight');
+  await expectCentered(2);
+  await page.keyboard.press('ArrowLeft');
+  await expectCentered(1);
   await page.evaluate(async () => {
     const { shortcuts } = await import('/src/shortcuts.js');
     await shortcuts.reset();
