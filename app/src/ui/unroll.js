@@ -38,7 +38,7 @@ export function unrollSheet(el) {
 
   // Everything above the list plus the bottom padding: the strip the paper unrolls from and rolls back to.
   const strip = () => {
-    const list = el.querySelector(':scope > .ui-list');
+    const list = el.querySelector(':scope > .ui-list:not([hidden])');
     return list?.offsetParent ? list.offsetTop + parseFloat(getComputedStyle(el).paddingBottom) : el.offsetHeight;
   };
   const running = () => size?.playState === 'running';

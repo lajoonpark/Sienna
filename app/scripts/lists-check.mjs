@@ -223,6 +223,7 @@ try {
   await queueWheel.waitFor();
   await expectCentered(1);
   assert.equal(await queueWheel.getAttribute('aria-orientation'), 'horizontal');
+  assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'the queue wheel is focused on open');
   assert.equal(await queueWheel.getAttribute('aria-activedescendant'), await centered.getAttribute('id'));
   assert.equal(await current.getAttribute('data-index'), '1');
   assert.equal(await page.locator('.ln-qveil .la-title').innerText(), 'Song 001');

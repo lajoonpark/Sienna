@@ -21,7 +21,7 @@ const CSS = `
 /* ---- Queue overlay ---- */
 .ln-qveil { position: fixed; inset: 0; z-index: var(--sienna-z-list); pointer-events: none; visibility: hidden; opacity: 0;
   transition: opacity var(--sienna-dur-mid), visibility var(--sienna-dur-mid); font-family: var(--sienna-font); }
-.ln-qveil.show { pointer-events: auto; visibility: visible; opacity: 1; }
+.ln-qveil.show { pointer-events: auto; visibility: visible; opacity: 1; transition: opacity var(--sienna-dur-mid); }
 .ln-qveil.closing { visibility: visible; opacity: 1; }
 .ln-qveil.closing .ln-qbackdrop { opacity: 0; transition: opacity var(--sienna-dur-mid); }
 .ln-qveil.closing .la-carousel { opacity: 0; transition: opacity var(--sienna-dur-fast); }
