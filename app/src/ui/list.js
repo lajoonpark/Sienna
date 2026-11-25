@@ -9,6 +9,7 @@ import { COLORS, injectTokens } from './tokens.js';
 import { paperSurface, PAPER_STEP, quantizePaperSize } from './paper.js';
 import { inkButton } from './inputs.js';
 import { icon, kindIcon } from './icons.js';
+import { smoothWheel } from './smooth-scroll.js';
 
 const ROW_H = 66;
 const SLIP_SEEDS = 4;
@@ -247,6 +248,7 @@ export function createList({
 
   const scroll = document.createElement('div');
   scroll.className = 'ui-list-scroll';
+  const stopScroll = smoothWheel(scroll);
   if (maxHeight) scroll.style.maxHeight = maxHeight;
 
   const listbox = document.createElement('ul');
@@ -511,7 +513,10 @@ export function createList({
       row.classList.toggle('is-focus', keyboard);
       row.setAttribute('aria-selected', 'true');
       listbox.setAttribute('aria-activedescendant', row.id);
-      if (reveal) row.scrollIntoView({ block: 'nearest' });
+      if (reveal) {
+        stopScroll();
+        row.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+      }
     } else {
       listbox.removeAttribute('aria-activedescendant');
     }
@@ -581,6 +586,7 @@ export function createList({
   listbox.addEventListener('keydown', handleKeyDown);
 
   function setItems(nextItems, { animate = true, active = -1, emptyMessage = 'Nothing here yet.' } = {}) {
+    stopScroll();
     clearNote();
     data = Array.isArray(nextItems) ? nextItems : [];
     listbox.replaceChildren();
@@ -653,6 +659,7 @@ export function createList({
   return {
     el: root,
     scrollEl: scroll,
+    stopScroll,
     listboxEl: listbox,
     setItems,
     setActive,

@@ -5,6 +5,7 @@ import { MOTION, injectTokens } from './tokens.js';
 import { paperSurface, torn } from './paper.js';
 import { stamp } from './inputs.js';
 import { onCursorTilt, tiltCSS } from '../cursortilt.js';
+import { smoothWheel } from './smooth-scroll.js';
 
 // ---- Shared overlay signal (sheets, search, lists, queue) ----
 const openOverlays = new Set();
@@ -203,6 +204,7 @@ export function createSheet({
 
   const body = document.createElement('div');
   body.className = 'ui-sheet-body';
+  const stopScroll = smoothWheel(body);
 
   const footer = document.createElement('div');
   footer.className = 'ui-sheet-foot';
@@ -301,6 +303,7 @@ export function createSheet({
 
   function close() {
     if (!openNow) return;
+    stopScroll();
     const wasTopmost = isTopmost();
     openNow = false;
     openSheets.splice(openSheets.indexOf(veil), 1);

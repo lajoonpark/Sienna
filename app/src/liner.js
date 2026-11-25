@@ -154,6 +154,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     clearTimeout(qCloseTimer);
     clearTimeout(qRefreshTimer);
     clearTimeout(qRetryTimer);
+    queueList.stopScroll();
     if (showingCovers()) queueCarousel.stop();
     else queueList.playDrawerFlight(drawerOrigin(), { entering: false });
     drawerReady = null;
@@ -260,6 +261,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     const movingFocus = queueList.el.contains(focused) || queueCarousel.el.contains(focused) || focused === qNowBtn;
     const selectedIdx = renderedItems.findIndex(it => it.selected);
     if (settings.get('coverCarousel') && renderedItems.length) {
+      queueList.stopScroll();
       queueList.el.hidden = true;
       queueCarousel.el.hidden = false;
       queueCarousel.setItems(renderedItems, 'Up next', { index: Math.max(0, preferred < 0 ? selectedIdx : preferred), entrance: animate });

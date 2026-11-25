@@ -1,7 +1,8 @@
 import { paintedCoverURL } from '../coverpaint.js';
 import { flyIntoCovers } from './cover-flight.js';
 import { icon } from './icons.js';
-import { MOTION, injectTokens } from './tokens.js';
+import { followScroll, wheelPixels } from './smooth-scroll.js';
+import { injectTokens } from './tokens.js';
 
 const CSS = `
 .la-carousel { text-align: center; }
@@ -66,7 +67,8 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   root.append(wheel, details, hint);
 
   const calm = matchMedia('(prefers-reduced-motion: reduce)');
-  let items = [], cards = [], position = 0, active = -1, target = null, frame = 0, wheelTimer = 0, drag = null, dragged = false;
+  let items = [], cards = [], position = 0, active = -1, wheelTimer = 0, drag = null, dragged = false;
+  let motionSource;
   let cancelEntrance = null, now = -1;
   const loaded = new Set();
   const itemArtist = item => item.subtitle || item.artist || '';
@@ -74,6 +76,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   const bound = n => clamp(n, 0, Math.max(0, items.length - 1));
   const activeId = () => cards[active]?.id;
   const pointerAxis = e => horizontal ? e.clientX : e.clientY;
+  const motion = followScroll({ read: () => position, write: next => draw(next, motionSource), epsilon: 0.005 });
 
   function loadArt(i) {
     const { art } = items[i];
@@ -121,8 +124,9 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
 
   function stopMotion() {
     clearTimeout(wheelTimer);
-    cancelAnimationFrame(frame);
-    target = null;
+    wheelTimer = 0;
+    motion.stop();
+    motionSource = undefined;
   }
 
   function stopEntrance() {
@@ -131,35 +135,40 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   }
   calm.addEventListener('change', () => {
     if (!items.length) return;
-    if (calm.matches) { stopEntrance(); snap(target ?? position); }
+    if (calm.matches) { stopEntrance(); snap(motion.target ?? position, motionSource); }
     else draw(position);
   });
 
-  function snap(next) {
-    stopMotion();
-    target = bound(Math.round(next));
-    const from = position, to = target;
-    if (calm.matches || from === to) { draw(to); target = null; return; }
-    const start = performance.now(), duration = Math.min(MOTION.dur.mid, MOTION.dur.fast + Math.abs(to - from) * 24);
-    function step(now) {
-      const t = clamp((now - start) / duration, 0, 1);
-      draw(from + (to - from) * (1 - (1 - t) ** 3));
-      if (t < 1) frame = requestAnimationFrame(step);
-      else target = null;
+  function snap(next, source) {
+    clearTimeout(wheelTimer);
+    wheelTimer = 0;
+    const to = bound(Math.round(next));
+    if (calm.matches || position === to) {
+      stopMotion();
+      draw(to, source);
+      return;
     }
-    frame = requestAnimationFrame(step);
+    motionSource = source;
+    motion.to(to);
   }
 
   wheel.addEventListener('wheel', e => {
+    const mode = e.deltaMode;
     const delta = horizontal && Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (e.ctrlKey || !delta) return;
     e.preventDefault();
     stopEntrance();
     if (drag?.moved) return;
-    stopMotion();
-    const pixels = delta * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? (horizontal ? wheel.clientWidth : wheel.clientHeight) : 1);
-    draw(position + pixels / WHEEL_STEP, 'wheel');
-    wheelTimer = setTimeout(() => snap(position), 95);
+    clearTimeout(wheelTimer);
+    const pixels = wheelPixels(delta, mode, horizontal ? wheel.clientWidth : wheel.clientHeight);
+    const from = motionSource === 'wheel' ? motion.target ?? position : position;
+    const to = bound(from + pixels / WHEEL_STEP);
+    if (calm.matches) draw(to, 'wheel');
+    else {
+      motionSource = 'wheel';
+      motion.to(to);
+    }
+    wheelTimer = setTimeout(() => snap(to, 'wheel'), 95);
   }, { passive: false });
 
   wheel.addEventListener('pointerdown', e => {
@@ -180,12 +189,11 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       wheel.setPointerCapture(e.pointerId);
       wheel.classList.add('is-dragging');
     }
-    const step = Math.max(40, (cards[active]?.offsetWidth || WHEEL_STEP) * 0.9);
-    const velocity = (drag.point - point) / step / Math.max(8, e.timeStamp - drag.at);
+    const velocity = (drag.point - point) / WHEEL_STEP / Math.max(8, e.timeStamp - drag.at);
     drag.velocity = 0.4 * drag.velocity + 0.6 * velocity;
     drag.point = point;
     drag.at = e.timeStamp;
-    draw(drag.from + (drag.start - point) / step);
+    draw(drag.from + (drag.start - point) / WHEEL_STEP);
   });
   function release(e) {
     if (!drag || e.pointerId !== drag.id) return;
@@ -247,7 +255,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   }
 
   function handleKeyDown(e, { passHorizontalEdges = false } = {}) {
-    const index = target ?? active;
+    const index = Math.round(motion.target ?? active);
     let next;
     if (e.key === 'ArrowUp' || (horizontal && e.key === 'ArrowLeft')) next = index - 1;
     else if (e.key === 'ArrowDown' || (horizontal && e.key === 'ArrowRight')) next = index + 1;

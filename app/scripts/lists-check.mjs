@@ -274,6 +274,14 @@ try {
   await queueWheel.hover();
   await page.mouse.wheel(100, 0);
   await expectCentered(2);
+  const initialCover = await queueWheel.evaluate(wheel => {
+    for (let i = 0; i < 2; i++) wheel.dispatchEvent(new WheelEvent('wheel', { deltaY: -50, bubbles: true, cancelable: true }));
+    return wheel.querySelector('[aria-selected="true"]').dataset.index;
+  });
+  assert.equal(initialCover, '2', 'wheel bursts do not move the carousel synchronously');
+  await expectCentered(1);
+  await page.mouse.wheel(100, 0);
+  await expectCentered(2);
   await page.mouse.wheel(0, -100);
   await expectCentered(1);
   const queueBounds = await queueWheel.boundingBox();
@@ -365,6 +373,18 @@ try {
   await page.waitForSelector('.ln-qveil .is-pinned', { state: 'visible' });
   assert.equal(await page.evaluate(() => fixture.drawerOpens.at(-1)), true);
   await wait(1000);
+  const pinnedScroll = page.locator('.ln-qbox .ui-list-scroll');
+  const initialScroll = await pinnedScroll.evaluate(scroll => {
+    const from = scroll.scrollTop;
+    const handled = !scroll.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }));
+    return { from, top: scroll.scrollTop, handled };
+  });
+  assert.deepEqual(initialScroll, { from: initialScroll.from, top: initialScroll.from, handled: true },
+    'wheel motion is handled without jumping the pinned list');
+  await page.waitForFunction(from => {
+    const scroll = document.querySelector('.ln-qbox .ui-list-scroll');
+    return scroll.scrollTop > from && getComputedStyle(scroll).scrollSnapType === 'y mandatory';
+  }, initialScroll.from);
   await page.evaluate(async () => {
     const scroll = document.querySelector('.ln-qbox .ui-list-scroll');
     for (let i = 0; i < 3; i++) {
