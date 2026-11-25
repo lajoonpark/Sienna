@@ -36,6 +36,10 @@ const CSS = `
   display: flex; align-items: center; justify-content: space-between; gap: var(--sienna-space-3);
   color: var(--sienna-indigo); }
 .ln-qbox > .ui-list { min-height: 0; flex: 1; }
+.ln-qbox:has(> .la-full:not([hidden])) {
+  inset: var(--sienna-space-2); width: auto; height: 100dvh;
+  max-height: calc(100dvh - 2 * var(--sienna-space-2)); transform: none; }
+.ln-qbox:has(> .la-full:not([hidden])) > .ln-qtop { margin-inline: min(4vw, 56px); }
 .ln-qbox .ui-list-scroll { min-height: 0; }
 .ln-qclose { display: flex; align-items: center; gap: var(--sienna-space-2); }
 .ln-qclose .ui-ink[hidden] { display: none; }
@@ -105,7 +109,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   const queueList = createList({ label: 'Up next', pinNowPlaying: true, showNowBadge: true,
     showIndex: true, showKind: true, lines: true, onPick: pickQueue,
   });
-  const queueCarousel = createCoverCarousel({ orientation: 'horizontal',
+  const queueCarousel = createCoverCarousel({ orientation: 'horizontal', fullSize: true,
     onPick: idx => pickQueue(renderedItems[idx], idx),
     drawer: { open: () => drawerReady, position: drawerOrigin, close() {} },
   });

@@ -26,6 +26,35 @@ const CSS = `
 .la-title { font: bold var(--sienna-text-lg)/1.05 var(--sienna-font); }
 .la-artist { min-height: 1em; font: var(--sienna-text-sm)/1.15 var(--sienna-serif); color: var(--sienna-ink-2); }
 .la-carousel .ui-list-foot { justify-content: center; padding-top: var(--sienna-space-1); padding-bottom: 0; }
+.la-full { display: grid; grid-template: minmax(0, 1fr) auto auto / minmax(0, 1fr); }
+.la-full[hidden] { display: none; }
+.la-full .la-wheel { --cover-size: min(96cqw, 92cqh); grid-area: 1 / 1; isolation: isolate; }
+.la-full.la-horizontal .la-wheel { --cover-size: min(50cqw, 98cqh); }
+.la-full.la-horizontal .la-wheel:focus-visible { outline: none; }
+.la-full.la-horizontal .la-wheel:focus-visible .la-cover[aria-selected="true"] {
+  outline: 2px solid var(--sienna-indigo); outline-offset: -2px; }
+.la-full .la-cover { --cover-size: inherit; }
+.la-full .la-details { grid-area: 2 / 1; justify-self: center; pointer-events: none;
+  width: max-content; max-width: 88%; box-sizing: border-box; padding: var(--sienna-space-1) var(--sienna-space-3); }
+.la-full:not(.la-horizontal) .la-details { padding-block: 0; }
+.la-full > .ui-list-foot { grid-area: 3 / 1; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .ui-paper:has(> .la-full:not([hidden])) > .ui-paper-layer {
+    --paper-axis: to bottom;
+    clip-path: shape(from 10% 0, line to 90% 0, curve to 90% 100% with 103.3% 25% / 103.3% 75%,
+      line to 10% 100%, curve to 10% 0 with -3.3% 75% / -3.3% 25%, close);
+  }
+  .ui-paper:has(> .la-full.la-horizontal:not([hidden])) > .ui-paper-layer {
+    --paper-axis: to right;
+    clip-path: shape(from 0 5%, curve to 100% 5% with 25% -1.5% / 75% -1.5%, line to 100% 95%,
+      curve to 0 95% with 75% 101.5% / 25% 101.5%, close);
+  }
+  .ui-paper:has(> .la-full:not([hidden])) > .ui-paper-layer > .ui-paper-bg::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(var(--paper-axis), #60402845, transparent 30%, #fff9 48%, transparent 68%, #60402855);
+  }
+}
 .la-vinyl-flight { position: fixed; top: 0; left: 0; z-index: calc(var(--sienna-z-list) + 1);
   display: grid; place-items: center; aspect-ratio: 1; border-radius: 50%; pointer-events: none;
   background: repeating-radial-gradient(circle, #1c1920 0 2px, #28242b 2px 3px);
@@ -40,7 +69,7 @@ const angleStep = Math.PI / 5.6;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 let nextId = 0;
 
-export function createCoverCarousel({ onPick, onActiveChange, drawer, orientation = 'vertical' }) {
+export function createCoverCarousel({ onPick, onActiveChange, drawer, orientation = 'vertical', fullSize = false }) {
   injectTokens();
   if (!document.getElementById('sienna-cover-carousel')) {
     const style = document.createElement('style');
@@ -49,6 +78,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   const horizontal = orientation === 'horizontal';
   const root = document.createElement('div'); root.className = 'la-carousel ui-list'; root.hidden = true;
   if (horizontal) root.classList.add('la-horizontal');
+  if (fullSize) root.classList.add('la-full');
   const wheel = document.createElement('div'); wheel.className = 'la-wheel';
   wheel.id = `la-wheel-${++nextId}`; wheel.setAttribute('role', 'listbox');
   wheel.setAttribute('aria-orientation', orientation);
@@ -83,7 +113,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     if (!art || loaded.has(i)) return;
     loaded.add(i);
     const card = cards[i];
-    paintedCoverURL(art, horizontal ? 160 : undefined).then(src => {
+    paintedCoverURL(art, fullSize ? 256 : horizontal ? 160 : undefined).then(src => {
       if (!src || !card.isConnected) return;
       const img = new Image(); img.alt = ''; img.decoding = 'async'; img.draggable = false;
       img.onerror = () => img.remove();
@@ -112,13 +142,15 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       const axisOffset = calm.matches ? offset * 83 : 167 * Math.sin(angle);
       const z = (Math.cos(angle) - 1) * 178;
       const scale = 1 - Math.min(distance, 2) * 0.10;
-      card.style.transform = `perspective(420px) translate(-50%, -50%) translate${horizontal ? 'X' : 'Y'}(${axisOffset}%) `
-        + (calm.matches ? '' : `translateZ(${z}px) ${horizontal ? `rotateY(${angle}rad)` : `rotateX(${-angle}rad)`} `)
+      const perspective = fullSize ? 'calc(var(--cover-size) * 3.75)' : '420px';
+      const depth = fullSize ? `calc(var(--cover-size) * ${z / 112})` : `${z}px`;
+      card.style.transform = `perspective(${perspective}) translate(-50%, -50%) translate${horizontal ? 'X' : 'Y'}(${axisOffset}%) `
+        + (calm.matches ? '' : `translateZ(${depth}) ${horizontal ? `rotateY(${angle}rad)` : `rotateX(${-angle}rad)`} `)
         + `scale(${scale})`;
       card.style.opacity = String(clamp(1 - distance * 0.38, 0, 1));
       card.style.zIndex = String(Math.round(100 - distance * 10));
       card.style.pointerEvents = distance < 2.35 ? '' : 'none';
-      if (horizontal && distance < 3) loadArt(i);
+      if ((horizontal || fullSize) && distance < 3) loadArt(i);
     });
   }
 
@@ -246,7 +278,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       return card;
     });
     wheel.replaceChildren(...cards);
-    if (!horizontal) items.forEach((_, i) => loadArt(i));
+    if (!horizontal && !fullSize) items.forEach((_, i) => loadArt(i));
     draw(index);
     if (drawer && entrance && !calm.matches && cards.length) {
       const nearby = [active, active + 1, active - 1, active + 2].map(i => cards[i]).filter(Boolean).slice(0, 3);
