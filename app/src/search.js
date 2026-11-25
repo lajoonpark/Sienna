@@ -229,7 +229,9 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     } else if (e.key === 'Tab') {
       e.preventDefault(); tabs.setValue(FILTERS[(FILTERS.indexOf(filter) + (e.shiftKey ? -1 : 1) + FILTERS.length) % FILTERS.length], { notify: true });
     } else if (showingCovers()) carousel.handleKeyDown(e);
-    else if (stripActive && ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'].includes(e.key)) resultStrip.handleKeyDown(e);
+    else if (stripActive && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      if (!e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) resultStrip.handleKeyDown(e, { passHorizontalEdges: true });
+    } else if (stripActive && ['Home', 'End', 'Enter'].includes(e.key)) resultStrip.handleKeyDown(e);
     else if (e.key === 'Enter') {
       e.preventDefault(); const q = input.value.trim();
       if (!q) { if (list.getActive() >= 0) pick(list.getActive()); return; }

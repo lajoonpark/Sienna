@@ -536,6 +536,20 @@ try {
   });
   await page.keyboard.press('Alt+ArrowUp');
   assert.equal(await input.getAttribute('aria-controls'), await strip.getAttribute('id'));
+  const stripTitle = page.locator('.cs-result-strip .la-title');
+  const selection = () => input.evaluate(el => [el.selectionStart, el.selectionEnd]);
+  await input.evaluate(el => el.setSelectionRange(2, 2));
+  await page.keyboard.press('Shift+ArrowRight');
+  assert.deepEqual(await selection(), [2, 3]);
+  assert.equal(await stripTitle.innerText(), 'Match result 1');
+  await input.evaluate(el => el.setSelectionRange(2, 2));
+  await page.keyboard.press('ArrowLeft');
+  assert.deepEqual(await selection(), [1, 1], 'at the first cover, Left moves the input caret');
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowRight');
+  assert.deepEqual(await selection(), [2, 2], 'at the last cover, Right moves the input caret');
+  assert.equal(await stripTitle.innerText(), 'Match result 5');
+  await page.keyboard.press('Home');
   await page.keyboard.press('ArrowRight');
   assert.equal(await page.locator('.cs-result-strip .la-title').innerText(), 'Match result 2');
   assert.equal(await input.getAttribute('aria-activedescendant'), await strip.getByRole('option', { selected: true }).getAttribute('id'));
@@ -544,6 +558,7 @@ try {
   assert.equal(await input.getAttribute('aria-controls'), await results.getAttribute('id'));
   assert.equal(await results.getByRole('option', { selected: true }).locator('.ui-list-title').innerText(), 'Match result 2');
   await page.keyboard.press('Alt+ArrowUp');
+  await input.evaluate(el => el.setSelectionRange(el.value.length, el.value.length));
   await page.keyboard.type('a');
   assert.equal(await input.inputValue(), 'Matcha');
   await page.waitForFunction(() => document.querySelector('.cs-result-strip .la-title')?.textContent === 'Matcha result 1');

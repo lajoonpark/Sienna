@@ -246,7 +246,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     }
   }
 
-  function handleKeyDown(e) {
+  function handleKeyDown(e, { passHorizontalEdges = false } = {}) {
     const index = target ?? active;
     let next;
     if (e.key === 'ArrowUp' || (horizontal && e.key === 'ArrowLeft')) next = index - 1;
@@ -256,6 +256,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = items.length - 1;
     else if (e.key !== 'Enter' || e.repeat || !items[index]) return;
+    if (passHorizontalEdges && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && (next < 0 || next >= items.length)) return;
     e.preventDefault();
     stopEntrance();
     if (next === undefined) onPick(index);
