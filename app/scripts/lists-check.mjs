@@ -327,6 +327,7 @@ try {
     await fixture.liner.openQueue();
   });
   await page.locator('.ln-qveil').getByRole('listbox', { name: 'Up next' }).focus();
+  await page.keyboard.press('Home');
   await page.evaluate(() => fixture.panel.open('look'));
   const settingsDialog = page.getByRole('dialog', { name: 'Settings', exact: true });
   await settingsDialog.getByRole('radio', { name: 'Carousel', exact: true }).click();
