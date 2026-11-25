@@ -139,6 +139,13 @@ try {
   await lettering.getByRole('radio', { name: 'Amatic', exact: true }).click();
   await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--sienna-font').includes('Amatic'));
   await wait(500);
+  const coverCarousel = active().getByRole('radiogroup', { name: 'Cover carousel', exact: true });
+  assert.equal(await coverCarousel.getByRole('radio', { checked: true }).innerText(), 'Carousel');
+  await coverCarousel.getByRole('radio', { name: 'Paper list', exact: true }).click();
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('sienna.settings')).coverCarousel), false);
+  await coverCarousel.getByRole('radio', { name: 'Carousel', exact: true }).click();
+  assert.equal(await page.evaluate(() => fixture.settings.get('coverCarousel')), true);
+  pass('Settings: Cover carousel defaults on and the paper-list choice is persisted');
   await rail('performance').click();
   await active().getByRole('radiogroup', { name: 'Sharpness' }).getByRole('radio', { name: 'Light', exact: true }).click();
   assert.equal(await page.evaluate(() => fixture.settings.get('sharp')), 'light');

@@ -1,18 +1,20 @@
 import { setOverlayOpen } from './ui/sheet.js';
 import { shortcuts } from './shortcuts.js';
 import { createList } from './ui/list.js';
+import { createCoverCarousel } from './ui/cover-carousel.js';
 import { segmented, inkButton } from './ui/inputs.js';
 import { createListBar, createListVeil } from './list-bar.js';
 import { paperSurface } from './ui/paper.js';
 import { unrollSheet } from './ui/unroll.js';
 import { MOTION } from './ui/tokens.js';
+import { settings } from './settings.js';
 
 const FILTERS = ['songs', 'albums', 'playlists', 'artists'];
 const DEBOUNCE = 250;
 let openCount = 0;
 export const searchOpen = () => openCount > 0;
 
-export function createSearch({ music, onPlay, suggest = null, onOpenCollection = null }) {
+export function createSearch({ music, onPlay, suggest = null, coverSuggestions = false, coverDrawer = null, onOpenCollection = null }) {
   const root = document.createElement('div'); root.className = 'cs list-overlay';
   const veil = createListVeil(() => close());
   const bar = createListBar({ prefix: 'cs', label: 'Search', placeholder: 'search songs', onClosed: () => root.classList.remove('closing') });
@@ -29,19 +31,33 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
     footerHints: ['↑↓ choose · Enter play · Tab type · Esc close'], onPick: (_, i) => pick(i),
     onActiveChange: () => syncActive(),
   });
+  const carousel = coverSuggestions && suggest ? createCoverCarousel({ onPick: i => pick(i, true), onActiveChange: syncActive, drawer: coverDrawer }) : null;
   list.el.classList.add('cs-list');
   input.setAttribute('role', 'combobox'); input.setAttribute('aria-controls', list.listboxEl.id);
   input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false');
-  root.append(bar.el, tabs.el, head, list.el); document.body.appendChild(root);
+  root.append(bar.el, tabs.el, head, list.el);
+  if (carousel) root.appendChild(carousel.el);
+  document.body.appendChild(root);
   paperSurface(root, { seed: 71, elevation: 'lift', amp: 5, cap: 10, crop: true });
   const sheet = unrollSheet(root);
   root.addEventListener('pointerdown', e => { if (e.target !== input) e.preventDefault(); });
   root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
   let isOpen = false, seq = 0, timer = 0, shown = [], shownFor = null, filter = 'songs', artistView = null, pendingEnter = false;
+  let suggestion = null;
   const cache = new Map();
+  const showingCovers = () => carousel && !carousel.el.hidden;
   function syncActive() {
-    const id = list.listboxEl.getAttribute('aria-activedescendant');
+    const box = showingCovers() ? carousel.listboxEl : list.listboxEl;
+    const id = showingCovers() ? carousel.activeId() : box.getAttribute('aria-activedescendant');
+    input.setAttribute('aria-controls', box.id);
     if (id) input.setAttribute('aria-activedescendant', id); else input.removeAttribute('aria-activedescendant');
+  }
+  function hideCovers() {
+    if (!showingCovers()) return;
+    carousel.stop();
+    carousel.el.hidden = true;
+    list.el.hidden = false;
+    syncActive();
   }
   function setFilter(next) {
     if (filter === next && !artistView) return;
@@ -57,10 +73,17 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
     else list.setEmpty(text);
     syncActive();
   }
-  function render(items, title = null, { back: withBack = false } = {}) {
+  function render(items, title = null, { back: withBack = false, covers = false } = {}) {
     shown = items.slice(0, 20); head.hidden = !title; head.style.display = title ? 'flex' : 'none';
     heading.textContent = title || ''; back.style.display = withBack ? '' : 'none';
     if (title) head.animate([{ opacity: 0 }, { opacity: 1 }], { delay: bar.lead(), duration: MOTION.dur.mid, fill: 'backwards' });
+    if (covers && shown.length) {
+      list.el.hidden = true;
+      carousel.el.hidden = false;
+      carousel.setItems(shown, title || 'Listen again');
+      return;
+    }
+    hideCovers();
     list.el.style.setProperty('--list-lead', `${bar.lead()}ms`);
     list.setStale(false);
     list.setItems(shown, { emptyMessage: 'nothing found' }); syncActive();
@@ -74,18 +97,26 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
       render(res?.items ?? [], res?.name || item.title, { back: true });
     } catch { if (mine === seq && isOpen) note('error', 'could not open artist', () => openArtist(item)); }
   }
-  function pick(i) {
+  function pick(i, fromCoverPicker = false) {
     const item = shown[i]; if (!item) return;
     if (item.kind === 'artist' && item.browseId && music.artistSongs) { openArtist(item); return; }
     close();
     if (['album', 'playlist'].includes(item.kind) && onOpenCollection) onOpenCollection(item);
-    else onPlay?.(item);
+    else onPlay?.(item, { fromCoverPicker });
   }
   function apply(items, key) {
     render(items); shownFor = key;
     if (pendingEnter) { pendingEnter = false; if (shown.length) pick(0); }
   }
+  function renderSuggestions() {
+    render(suggestion?.items ?? [], suggestion?.title ?? null, { covers: carousel && settings.get('coverCarousel') });
+  }
+  if (carousel) settings.on('coverCarousel', () => {
+    if (isOpen && !input.value.trim() && suggestion) renderSuggestions();
+  });
   async function showSuggestions() {
+    suggestion = null;
+    hideCovers();
     shown = []; shownFor = null; head.hidden = true; head.style.display = 'none'; pendingEnter = false;
     list.setItems([], { animate: false }); list.el.hidden = !suggest;
     syncActive();
@@ -95,12 +126,14 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
     try {
       const s = await suggest();
       if (mine !== seq || input.value.trim() || !isOpen) return;
-      render(s?.items ?? [], s?.title ?? null);
+      suggestion = s;
+      renderSuggestions();
     } catch { if (mine === seq && isOpen) note('error', 'could not search', showSuggestions); }
   }
   async function run() {
     const q = input.value.trim(); artistView = null;
     if (!q) return showSuggestions();
+    hideCovers();
     list.el.hidden = false;
     const key = `${filter}|${q}`;
     if (cache.has(key)) { seq++; apply(cache.get(key), key); return; }
@@ -118,6 +151,10 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
   input.addEventListener('input', () => {
     seq++; clearTimeout(timer); pendingEnter = false; artistView = null;
     if (!input.value.trim()) { run(); return; }
+    if (showingCovers()) {
+      hideCovers();
+      note('loading', 'looking…');
+    }
     if (shown.length) list.setStale(true);
     timer = setTimeout(run, DEBOUNCE);
   });
@@ -126,7 +163,8 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
     if (e.key === 'Escape') { e.preventDefault(); if (artistView) goBack(); else close(); }
     else if (e.key === 'Tab') {
       e.preventDefault(); tabs.setValue(FILTERS[(FILTERS.indexOf(filter) + (e.shiftKey ? -1 : 1) + FILTERS.length) % FILTERS.length], { notify: true });
-    } else if (e.key === 'Enter') {
+    } else if (showingCovers()) carousel.handleKeyDown(e);
+    else if (e.key === 'Enter') {
       e.preventDefault(); const q = input.value.trim();
       if (!q) { if (list.getActive() >= 0) pick(list.getActive()); return; }
       if ((shownFor === `${filter}|${q}` || artistView) && shown.length) list.handleKeyDown(e);
@@ -147,6 +185,7 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
     if (!isOpen) return; isOpen = false; openCount--; seq++; clearTimeout(timer); pendingEnter = false;
     setOverlayOpen(root, false); veil.show(false); input.setAttribute('aria-expanded', 'false');
     root.classList.replace('show', 'closing'); bar.play(false); input.blur();
+    carousel?.stop();
     sheet.close();
   }
   window.addEventListener('keydown', e => {
@@ -159,5 +198,7 @@ export function createSearch({ music, onPlay, suggest = null, onOpenCollection =
     input.value = params.get('search'); open();
     run().then(() => { if (params.has('searchhl')) list.setActive(Number(params.get('searchhl')), { scroll: false }); });
   }
-  return { open, close, toggle: () => (isOpen ? close() : open()), isOpen: () => isOpen, ready: bar.ready };
+  return { open, close, toggle: () => (isOpen ? close() : open()), isOpen: () => isOpen, ready: bar.ready,
+    closeCoverPicker: () => { if (showingCovers()) close(); },
+  };
 }

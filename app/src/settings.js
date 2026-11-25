@@ -16,6 +16,7 @@ export const DEFAULTS = {
   font: 'amatic',       // lettering, a key of FONTS in style.js (changes live, see style.js)
   fps: false,           // frame-rate readout in the corner (for perf reports)
   miniAutoClose: true,  // the mini player shuts when the cursor leaves it (after it has been inside)
+  coverCarousel: true,
 };
 
 function load() {

@@ -162,9 +162,10 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null, overlay
     update(0);
   }
 
-  function openHold(covers = []) {
+  function openHold(covers = [], { showStack = true } = {}) {
     clearDisc();
-    buildStack(covers);
+    if (showStack) buildStack(covers);
+    else clearStack();
     frozen = false;
     if (mode === 'hold-open' && openFrac >= 0.99) {
       startFrac = 1;
