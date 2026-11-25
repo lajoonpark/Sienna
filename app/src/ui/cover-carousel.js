@@ -1,5 +1,4 @@
 import { paintedCoverURL } from '../coverpaint.js';
-import { flyIntoCovers } from './cover-flight.js';
 import { icon } from './icons.js';
 import { followScroll, wheelPixels } from './smooth-scroll.js';
 import { injectTokens, MOTION } from './tokens.js';
@@ -39,12 +38,12 @@ const CSS = `
 .la-full:not(.la-horizontal) .la-details { padding-block: 0; }
 .la-full > .ui-list-foot { grid-area: 3 / 1; }
 
-.la-spatial.la-full.la-horizontal .la-wheel { --cover-size: min(38cqw, 91cqh); }
+.la-tilt { --cover-tilt: perspective(1400px) rotateY(var(--cover-yaw, 0deg)) rotateX(var(--cover-pitch, 0deg)); }
 .la-stage { position: absolute; inset: 0; pointer-events: none;
   perspective: calc(var(--cover-size) * 3.75); transform-style: preserve-3d; }
-.la-spatial .la-cover { --sleeve-depth: 10px; display: block; overflow: visible; transform-style: preserve-3d;
+.la-full .la-cover { --sleeve-depth: 10px; display: block; overflow: visible; transform-style: preserve-3d;
   background: none; box-shadow: none; backface-visibility: visible; pointer-events: auto; }
-.la-spatial .la-cover[aria-selected="true"] { box-shadow: none; }
+.la-full .la-cover[aria-selected="true"] { box-shadow: none; }
 .la-sleeve-face, .la-sleeve-edge, .la-disc { position: absolute; pointer-events: none; }
 .la-sleeve-face { inset: 0; display: grid; place-items: center; background: var(--sienna-paper-lo); backface-visibility: hidden; }
 .la-sleeve-front { transform: translateZ(calc(var(--sleeve-depth) / 2)); box-shadow: var(--sienna-shadow-rest); pointer-events: auto; }
@@ -54,7 +53,7 @@ const CSS = `
 .la-sleeve-edge.top { top: 0; transform: translateY(-50%) rotateX(90deg); }
 .la-sleeve-edge.bottom { bottom: 0; transform: translateY(50%) rotateX(-90deg); }
 .la-sleeve-edge.spine { inset-block: 0; left: 0; width: var(--sleeve-depth); transform: translateX(-50%) rotateY(-90deg); }
-.la-spatial .la-cover[aria-current="true"]::after { transform: translateZ(calc(var(--sleeve-depth) / 2 + 1px)); }
+.la-full .la-cover[aria-current="true"]::after { transform: translateZ(calc(var(--sleeve-depth) / 2 + 1px)); }
 .la-disc { width: 91%; aspect-ratio: 1; top: 4.5%; left: 14%; transform-style: preserve-3d; }
 .la-disc-face { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%;
   background: repeating-radial-gradient(circle, #211d23 0 2px, #302b32 2px 3px); }
@@ -63,53 +62,52 @@ const CSS = `
 .la-disc-face::after { content: ''; position: absolute; width: 5%; aspect-ratio: 1;
   border-radius: 50%; background: var(--sienna-ink); }
 .la-disc-face img { position: static; width: 38%; height: auto; aspect-ratio: 1; border-radius: 50%; }
-.la-spatial.is-picking .la-cover:not(.is-picked), .la-spatial.is-picking .la-details,
-.la-spatial.is-picking > .ui-list-foot { visibility: hidden; }
-.la-spatial.is-picking .la-wheel { overflow: visible; }
-.la-spatial.is-picking :is(.la-cover, .la-sleeve-front) { pointer-events: none; }
-
-@media (prefers-reduced-motion: no-preference) {
-  .ui-paper:has(> .la-full:not(.la-spatial):not([hidden])) > .ui-paper-layer {
-    clip-path: shape(from 10% 0, line to 90% 0, curve to 90% 100% with 103.3% 25% / 103.3% 75%,
-      line to 10% 100%, curve to 10% 0 with -3.3% 75% / -3.3% 25%, close);
-  }
-  .ui-paper:has(> .la-full:not(.la-spatial):not([hidden])) > .ui-paper-layer > .ui-paper-bg::after {
-    content: ''; position: absolute; inset: 0;
-    background: linear-gradient(to bottom, #60402845, transparent 30%, #fff9 48%, transparent 68%, #60402855);
-  }
-}
-.la-vinyl-flight { position: fixed; top: 0; left: 0; z-index: calc(var(--sienna-z-list) + 1);
-  display: grid; place-items: center; aspect-ratio: 1; border-radius: 50%; pointer-events: none;
-  background: repeating-radial-gradient(circle, #1c1920 0 2px, #28242b 2px 3px);
-  box-shadow: var(--sienna-shadow-rest); }
-.la-vinyl-flight img { width: 38%; aspect-ratio: 1; object-fit: cover; border-radius: 50%; }
-.la-vinyl-flight::after { content: ''; position: absolute; width: 5%; aspect-ratio: 1;
-  border-radius: 50%; background: var(--sienna-ink); }
+.la-full.is-picking .la-cover:not(.is-picked), .la-full.is-picking .la-details,
+.la-full.is-picking > .ui-list-foot { visibility: hidden; }
+.ui-unroll > .la-full.is-picking, .la-full.is-picking .la-wheel { overflow: visible; pointer-events: none; }
+.la-full.is-picking :is(.la-cover, .la-sleeve-front) { pointer-events: none; }
 `;
 
 const WHEEL_STEP = 100;
 const angleStep = Math.PI / 5.6;
-const spatialRadius = 1.82;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 let nextId = 0;
 
-export function createCoverCarousel({ onPick, onActiveChange, drawer, orientation = 'vertical', fullSize = false, spatial = false }) {
+export function createCoverTilt(el) {
+  const calm = matchMedia('(prefers-reduced-motion: reduce)');
+  let yaw = 0, pitch = 0;
+  el.classList.add('la-tilt');
+  return {
+    update(tx, ty) {
+      const nextYaw = calm.matches ? 0 : tx * 10;
+      const nextPitch = calm.matches ? 0 : -ty * 8;
+      if (yaw === nextYaw && pitch === nextPitch) return;
+      yaw = nextYaw;
+      pitch = nextPitch;
+      el.style.setProperty('--cover-yaw', `${yaw}deg`);
+      el.style.setProperty('--cover-pitch', `${pitch}deg`);
+    },
+    pose: () => ({ yaw, pitch }),
+  };
+}
+
+export function createCoverCarousel({ onPick, onActiveChange, orientation = 'vertical', fullSize = false }) {
   injectTokens();
   if (!document.getElementById('sienna-cover-carousel')) {
     const style = document.createElement('style');
     style.id = 'sienna-cover-carousel'; style.textContent = CSS; document.head.appendChild(style);
   }
   const horizontal = orientation === 'horizontal';
+  const spatialRadius = horizontal ? 1.82 : 1.72;
   const root = document.createElement('div'); root.className = 'la-carousel ui-list'; root.hidden = true;
   if (horizontal) root.classList.add('la-horizontal');
   if (fullSize) root.classList.add('la-full');
-  if (spatial) root.classList.add('la-spatial');
   const wheel = document.createElement('div'); wheel.className = 'la-wheel';
   wheel.id = `la-wheel-${++nextId}`; wheel.setAttribute('role', 'listbox');
   wheel.setAttribute('aria-orientation', orientation);
   if (horizontal) wheel.tabIndex = 0;
-  const stage = spatial ? document.createElement('div') : wheel;
-  if (spatial) { stage.className = 'la-stage'; stage.setAttribute('role', 'presentation'); wheel.appendChild(stage); }
+  const stage = fullSize ? document.createElement('div') : wheel;
+  if (fullSize) { stage.className = 'la-stage'; stage.setAttribute('role', 'presentation'); wheel.appendChild(stage); }
   const details = document.createElement('div'); details.className = 'la-details'; details.setAttribute('aria-hidden', 'true');
   const title = document.createElement('div'); title.className = 'la-title';
   const artist = document.createElement('div'); artist.className = 'la-artist';
@@ -126,7 +124,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   const calm = matchMedia('(prefers-reduced-motion: reduce)');
   let items = [], cards = [], position = 0, active = -1, wheelTimer = 0, drag = null, dragged = false;
   let motionSource;
-  let cancelEntrance = null, now = -1;
+  let now = -1;
   const loaded = new Set();
   const itemArtist = item => item.subtitle || item.artist || '';
   const itemTitle = item => item.title || 'Untitled';
@@ -145,7 +143,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       const img = new Image(); img.alt = ''; img.decoding = 'async'; img.draggable = false;
       img.onerror = () => img.remove();
       img.src = src;
-      if (spatial) {
+      if (fullSize) {
         card.querySelector('.la-sleeve-front').appendChild(img);
         for (const face of card.querySelectorAll('.la-disc-face')) face.appendChild(img.cloneNode());
       } else card.appendChild(img);
@@ -169,10 +167,11 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       const offset = i - shownPosition;
       const distance = Math.abs(offset);
       const angle = clamp(offset * angleStep, -Math.PI / 2, Math.PI / 2);
-      if (spatial) {
+      if (fullSize) {
         const travel = calm.matches ? offset * 104 : 100 * spatialRadius * Math.sin(angle);
-        card.style.transform = `translate(-50%, -50%) translateX(${travel}%)`
-          + (calm.matches ? '' : ` translateZ(calc(var(--cover-size) * ${spatialRadius * (Math.cos(angle) - 1)})) rotateY(${angle}rad)`);
+        const depth = spatialRadius * (Math.cos(angle) - 1);
+        card.style.transform = `translate(-50%, -50%) translate${horizontal ? 'X' : 'Y'}(${travel}%)`
+          + (calm.matches ? '' : ` translateZ(calc(var(--cover-size) * ${depth})) ${horizontal ? `rotateY(${angle}rad)` : `rotateX(${-angle}rad)`}`);
         card.style.visibility = distance > (calm.matches ? 2 : 2.65) ? 'hidden' : '';
         if (distance < 3) loadArt(i);
         return;
@@ -180,15 +179,13 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       const axisOffset = calm.matches ? offset * 83 : 167 * Math.sin(angle);
       const z = (Math.cos(angle) - 1) * 178;
       const scale = 1 - Math.min(distance, 2) * 0.10;
-      const perspective = fullSize ? 'calc(var(--cover-size) * 3.75)' : '420px';
-      const depth = fullSize ? `calc(var(--cover-size) * ${z / 112})` : `${z}px`;
-      card.style.transform = `perspective(${perspective}) translate(-50%, -50%) translate${horizontal ? 'X' : 'Y'}(${axisOffset}%) `
-        + (calm.matches ? '' : `translateZ(${depth}) ${horizontal ? `rotateY(${angle}rad)` : `rotateX(${-angle}rad)`} `)
+      card.style.transform = `perspective(420px) translate(-50%, -50%) translate${horizontal ? 'X' : 'Y'}(${axisOffset}%) `
+        + (calm.matches ? '' : `translateZ(${z}px) ${horizontal ? `rotateY(${angle}rad)` : `rotateX(${-angle}rad)`} `)
         + `scale(${scale})`;
       card.style.opacity = String(clamp(1 - distance * 0.38, 0, 1));
       card.style.zIndex = String(Math.round(100 - distance * 10));
       card.style.pointerEvents = distance < 2.35 ? '' : 'none';
-      if ((horizontal || fullSize) && distance < 3) loadArt(i);
+      if (horizontal && distance < 3) loadArt(i);
     });
   }
 
@@ -199,13 +196,9 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     motionSource = undefined;
   }
 
-  function stopEntrance() {
-    cancelEntrance?.();
-    cancelEntrance = null;
-  }
   calm.addEventListener('change', () => {
     if (!items.length) return;
-    if (calm.matches) { stopEntrance(); snap(motion.target ?? position, motionSource); }
+    if (calm.matches) snap(motion.target ?? position, motionSource);
     else draw(position);
   });
 
@@ -227,7 +220,6 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     const delta = horizontal && Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (e.ctrlKey || !delta) return;
     e.preventDefault();
-    stopEntrance();
     if (drag?.moved) return;
     clearTimeout(wheelTimer);
     const pixels = wheelPixels(delta, mode, horizontal ? wheel.clientWidth : wheel.clientHeight);
@@ -243,7 +235,6 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
 
   wheel.addEventListener('pointerdown', e => {
     if (!e.isPrimary || e.button !== 0) return;
-    stopEntrance();
     dragged = false;
     const point = pointerAxis(e);
     drag = { id: e.pointerId, start: point, from: position, point, at: e.timeStamp, velocity: 0, moved: false };
@@ -287,7 +278,6 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   });
 
   function stop() {
-    stopEntrance();
     stopMotion();
     const id = drag?.id;
     drag = null;
@@ -302,7 +292,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   }
 
   function pick(index) {
-    if (spatial) {
+    if (fullSize) {
       stop();
       draw(index);
     }
@@ -312,10 +302,14 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   function extractDisc(index) {
     const card = cards[index];
     const disc = card.querySelector('.la-disc');
+    const start = disc.getBoundingClientRect();
     root.classList.add('is-picking');
     card.classList.add('is-picked');
+    const timing = { duration: 240, easing: 'cubic-bezier(.32,.02,.56,1)', fill: 'forwards' };
+    const shift = Math.max(0, start.right + start.width * 0.82 - innerWidth);
+    if (shift) card.animate([{ translate: '0' }, { translate: `${-shift}px` }], timing);
     const slide = disc.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(102%)' }],
-      { duration: 240, easing: 'cubic-bezier(.32,.02,.56,1)', fill: 'forwards' });
+      timing);
     return slide.finished.then(() => {
       const rect = disc.getBoundingClientRect();
       disc.style.visibility = 'hidden';
@@ -325,7 +319,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     });
   }
 
-  function setItems(next, label, { index = 0, entrance = true } = {}) {
+  function setItems(next, label, { index = 0 } = {}) {
     stop();
     root.classList.remove('is-picking');
     items = next;
@@ -337,7 +331,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       card.id = `${wheel.id}-${i}`; card.dataset.index = i;
       card.setAttribute('role', 'option'); card.setAttribute('aria-selected', 'false');
       card.setAttribute('aria-label', [itemTitle(item), itemArtist(item)].filter(Boolean).join(' · '));
-      if (spatial) {
+      if (fullSize) {
         card.innerHTML = `<div class="la-sleeve-face la-sleeve-back"></div>
           <div class="la-sleeve-edge top"></div><div class="la-sleeve-edge bottom"></div><div class="la-sleeve-edge spine"></div>
           <div class="la-disc"><div class="la-disc-face"></div><div class="la-disc-face"></div><div class="la-disc-face"></div></div>
@@ -349,10 +343,6 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     stage.replaceChildren(...cards);
     if (!horizontal && !fullSize) items.forEach((_, i) => loadArt(i));
     draw(index);
-    if (drawer && entrance && !calm.matches && cards.length) {
-      const nearby = [active, active + 1, active - 1, active + 2].map(i => cards[i]).filter(Boolean).slice(0, 3);
-      cancelEntrance = flyIntoCovers(drawer, nearby, { horizontal });
-    }
   }
 
   function handleKeyDown(e, { passHorizontalEdges = false } = {}) {
@@ -367,7 +357,6 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     else if (e.key !== 'Enter' || e.repeat || !items[index]) return;
     if (passHorizontalEdges && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && (next < 0 || next >= items.length)) return;
     e.preventDefault();
-    stopEntrance();
     if (next === undefined) {
       stopMotion();
       if (position !== index) draw(index);
@@ -375,6 +364,6 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     } else snap(next);
   }
 
-  const center = index => { stopEntrance(); snap(index); };
+  const center = index => snap(index);
   return { el: root, listboxEl: wheel, setItems, setHint, activeId, getActive: () => active, setNowPlaying, center, stop, handleKeyDown, extractDisc };
 }

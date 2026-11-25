@@ -8,7 +8,7 @@ import { injectTokens, MOTION } from './ui/tokens.js';
 import { paperSurface } from './ui/paper.js';
 import { unrollSheet } from './ui/unroll.js';
 import { createList } from './ui/list.js';
-import { createCoverCarousel } from './ui/cover-carousel.js';
+import { createCoverCarousel, createCoverTilt } from './ui/cover-carousel.js';
 import { inkButton, stamp } from './ui/inputs.js';
 import { createBanner } from './ui/banner.js';
 import { createScrollCue } from './ui/scroll-cue.js';
@@ -27,11 +27,9 @@ const CSS = `
 .ln-qveil.closing:not(.picking) .la-carousel { opacity: 0; transition: opacity var(--sienna-dur-fast); }
 .ln-qveil.picking .ln-qbackdrop { opacity: 0; transition: opacity var(--sienna-dur-fast); }
 .ln-qveil.picking .ln-qbox > :is(.ui-paper-layer, .ui-unroll-curl, .ln-qtop) { visibility: hidden; }
-.ln-qveil.picking .ln-qbox > .la-spatial { overflow: visible; pointer-events: none; }
 .ln-qbackdrop { position: absolute; inset: 0; background: var(--sienna-veil); backdrop-filter: var(--sienna-veil-filter); }
 .ln-qbox { position: fixed; left: 50%; top: var(--sienna-space-10);
-  --queue-tilt: perspective(1400px) rotateY(var(--queue-yaw, 0deg)) rotateX(var(--queue-pitch, 0deg));
-  transform: translateX(-50%) var(--queue-tilt);
+  transform: translateX(-50%) var(--cover-tilt);
   box-sizing: border-box; padding: var(--sienna-space-6) var(--sienna-space-8) var(--sienna-space-5);
   width: min(calc(var(--sienna-space-10) * 14), 90vw); max-height: calc(100dvh - var(--sienna-space-10) * 2);
   display: flex; flex-direction: column; }
@@ -43,7 +41,7 @@ const CSS = `
 .ln-qbox > .ui-list { min-height: 0; flex: 1; }
 .ln-qbox:has(> .la-full:not([hidden])) {
   inset: var(--sienna-space-2); width: auto; height: 100dvh;
-  max-height: calc(100dvh - 2 * var(--sienna-space-2)); transform: var(--queue-tilt); }
+  max-height: calc(100dvh - 2 * var(--sienna-space-2)); transform: var(--cover-tilt); }
 .ln-qbox:has(> .la-full:not([hidden])) > .ln-qtop { margin-inline: min(4vw, 56px); }
 .ln-qbox .ui-list-scroll { min-height: 0; }
 .ln-qclose { display: flex; align-items: center; gap: var(--sienna-space-2); }
@@ -110,12 +108,13 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   document.body.appendChild(qveil);
   const qBackdrop = qveil.querySelector('.ln-qbackdrop');
   const qBox = qveil.querySelector('.ln-qbox');
+  const qTilt = createCoverTilt(qBox);
   const qCloseWrap = qveil.querySelector('.ln-qclose');
   const calm = matchMedia('(prefers-reduced-motion: reduce)');
   const queueList = createList({ label: 'Up next', pinNowPlaying: true, showNowBadge: true,
     showIndex: true, showKind: true, lines: true, onPick: pickQueue,
   });
-  const queueCarousel = createCoverCarousel({ orientation: 'horizontal', fullSize: true, spatial: true,
+  const queueCarousel = createCoverCarousel({ orientation: 'horizontal', fullSize: true,
     onPick: idx => pickQueue(renderedItems[idx], idx),
   });
   qBox.prepend(queueCarousel.el);
@@ -129,7 +128,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   let qRefreshTimer = 0;
   let qRetryTimer = 0;
   let renderedItems = [];
-  let queueOpener = null, nowIndex = -1, picking = false, pendingPick = null, yaw = 0, pitch = 0;
+  let queueOpener = null, nowIndex = -1, picking = false, pendingPick = null;
   let focusQueueAfterSettings = false;
   let seq = 0;
   const showingCovers = () => !queueCarousel.el.hidden;
@@ -253,7 +252,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
       const my = seq;
       queueCarousel.extractDisc(idx).then(rect => {
         if (my !== seq || mode !== 'queue') return;
-        const from = { rect, yaw, pitch };
+        const from = { rect, ...qTilt.pose() };
         pendingPick = null;
         close({ keepDrawer: true });
         onPickQueue(item, idx, from);
@@ -477,14 +476,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     restoreQueueFocusAfterSettings,
     setStatus,
     tilt(tx, ty) {
-      if (mode !== 'queue' || picking) return;
-      const nextYaw = calm.matches ? 0 : tx * 10;
-      const nextPitch = calm.matches ? 0 : -ty * 8;
-      if (yaw === nextYaw && pitch === nextPitch) return;
-      yaw = nextYaw;
-      pitch = nextPitch;
-      qBox.style.setProperty('--queue-yaw', `${yaw}deg`);
-      qBox.style.setProperty('--queue-pitch', `${pitch}deg`);
+      if (mode === 'queue' && !picking) qTilt.update(tx, ty);
     },
     isOpen: () => !!mode,
     isQueueCarouselOpen: () => mode === 'queue' && showingCovers(),

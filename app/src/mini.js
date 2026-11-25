@@ -240,19 +240,13 @@ music.onAccount?.(() => Promise.resolve(listenAgainBusy).then(() => { listenAgai
 const search = timePart('search', () => createSearch({
   music,
   coverSuggestions: true,
-  coverDrawer: {
-    open: () => phase === 'open' && !liner.isOpen() && !tray.moving ? tray.openHold([], { showStack: false }) : null,
-    position: drawerScreenPos,
-    close: () => { if (!liner.isOpen()) tray.closeHold(); },
-  },
-  onPlay: (item, { fromCoverPicker }) => {
+  onPlay: (item, { fromCoverPicker, from }) => {
     const cover = getCover(item.art, 512).tex;
     if (fromCoverPicker) {
       tray.finish();
       flights.finish();
-      const baseVideoId = suitcase.videoId;
       startSong(music, suitcase, item);
-      suitcase.placeRecord(cover, { claimFor: { baseVideoId } });
+      flights.receiveFromScreen(from, renderer.domElement.getBoundingClientRect(), cover);
       return;
     }
     startSong(music, suitcase, item);
@@ -346,6 +340,7 @@ function stepFrame(dt) {
   parallax.y += (parallax.ty - parallax.y) * p;
   applyCamera(parallax.x, parallax.y);
   liner.tilt(parallax.x, parallax.y);
+  search.tilt(parallax.x, parallax.y);
   suitcase.update(dt);
   tray.update(dt);
   flights.update(dt);
