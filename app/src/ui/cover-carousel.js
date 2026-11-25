@@ -25,7 +25,7 @@ const CSS = `
 .la-title { font: bold var(--sienna-text-lg)/1.05 var(--sienna-font); }
 .la-artist { min-height: 1em; font: var(--sienna-text-sm)/1.15 var(--sienna-serif); color: var(--sienna-ink-2); }
 .la-carousel .ui-list-foot { justify-content: center; padding-top: var(--sienna-space-1); padding-bottom: 0; }
-.la-full { --cover-size: min(74cqw, 60cqh); container-type: size;
+.la-full { --cover-size: min(96cqw, 90cqh); container-type: size;
   display: grid; grid-template: minmax(0, 1fr) auto / minmax(0, 1fr); }
 .la-full[hidden] { display: none; }
 .la-full .la-wheel, .la-full .la-details { grid-area: 1 / 1; }
@@ -39,7 +39,9 @@ const CSS = `
   left: 50%; translate: -50% 0; z-index: 1; pointer-events: none; width: max-content; max-width: 88%;
   box-sizing: border-box; padding: var(--sienna-space-1) var(--sienna-space-3);
   background: var(--sienna-paper); border-radius: var(--sienna-space-1); }
-.la-full > .ui-list-foot { grid-area: 2 / 1; }
+.la-full:not(.la-horizontal) > .ui-list-foot {
+  grid-area: 1 / 1; align-self: end; justify-self: center; z-index: 1; pointer-events: none;
+  padding-inline: var(--sienna-space-2); background: var(--sienna-paper); border-radius: var(--sienna-space-1); }
 .la-full.la-horizontal .la-details { position: relative; top: auto; left: auto; translate: none;
   grid-area: 2 / 1; justify-self: center; background: none; }
 .la-full.la-horizontal > .ui-list-foot { grid-area: 3 / 1; }
@@ -48,8 +50,8 @@ const CSS = `
 @media (prefers-reduced-motion: no-preference) {
   .ui-paper:has(> .la-full:not([hidden])) > .ui-paper-layer {
     --paper-axis: to bottom;
-    clip-path: shape(from 6% 0, line to 94% 0, curve to 94% 100% with 102% 25% / 102% 75%,
-      line to 6% 100%, curve to 6% 0 with -2% 75% / -2% 25%, close);
+    clip-path: shape(from 10% 0, line to 90% 0, curve to 90% 100% with 103.3% 25% / 103.3% 75%,
+      line to 10% 100%, curve to 10% 0 with -3.3% 75% / -3.3% 25%, close);
   }
   .ui-paper:has(> .la-full.la-horizontal:not([hidden])) > .ui-paper-layer {
     --paper-axis: to right;

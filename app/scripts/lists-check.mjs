@@ -501,6 +501,10 @@ try {
   assert.ok((await searchSheet.boundingBox()).height > page.viewportSize().height * 0.9);
   assert.ok((await activeCover.boundingBox()).height > page.viewportSize().height * 0.35);
   assert.match(await searchSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), /^shape\(/);
+  const desktopSize = page.viewportSize();
+  await page.setViewportSize({ width: 540, height: 620 });
+  assert.ok((await activeCover.boundingBox()).width > 540 * 0.75, 'the vertical cover fills most of the mini player width');
+  await page.setViewportSize(desktopSize);
   await page.evaluate(() => fixture.drawer.release());
   const discs = page.locator('.la-vinyl-flight');
   await discs.first().waitFor();

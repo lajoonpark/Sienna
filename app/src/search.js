@@ -21,7 +21,13 @@ const STRIP_CHORDS = ['Alt', 'Shift', 'Alt+Shift', 'Control+Shift'].map(label =>
 const STRIP_CSS = `
 .cs:has(> .la-full:not([hidden])) {
   inset: var(--sienna-space-2); width: auto; height: calc(100dvh - 2 * var(--sienna-space-2));
-  max-height: none; transform: none; }
+  max-height: none; transform: none; padding-block: var(--sienna-space-2);
+  display: grid; grid-template: auto auto minmax(0, 1fr) / minmax(0, 1fr); }
+.cs:has(> .la-full:not([hidden])) > .cs-head, .cs > .la-full { grid-area: 3 / 1; }
+.cs:has(> .la-full:not([hidden])) > .cs-head {
+  align-self: start; justify-self: start; z-index: 2; pointer-events: none; }
+.cs:has(> .la-full:not([hidden])) > .cs-head > span {
+  background: var(--sienna-paper); padding-inline: var(--sienna-space-1); border-radius: var(--sienna-space-1); }
 /* While the sheet rolls up to the strip, the list collapses first, then the paper clips the covers. */
 .cs > .cs-result-strip { flex: 0 0.00001 auto; min-height: 0; margin-bottom: var(--sienna-space-2); }
 .cs-result-strip .la-wheel { flex: 0 0 clamp(64px, 16dvh, 116px); }
