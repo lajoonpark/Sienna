@@ -80,6 +80,24 @@ try {
     window.addEventListener('keydown', e => f.leaks.push(e.key));
     await Promise.all([f.search.ready(), f.collection.ready(), f.caption.ready(), document.fonts.ready]);
   });
+  const wheelPick = await page.evaluate(async () => {
+    const { createCoverCarousel } = await import('/src/ui/cover-carousel.js');
+    let picked;
+    const covers = createCoverCarousel({ orientation: 'horizontal', onPick: index => {
+      picked = { index, selected: Number(covers.listboxEl.querySelector('[aria-selected="true"]')?.dataset.index) };
+    } });
+    document.body.append(covers.el);
+    covers.el.hidden = false;
+    covers.setItems([{ title: 'First' }, { title: 'Second' }], 'Enter during wheel motion');
+    covers.listboxEl.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, cancelable: true }));
+    const before = covers.getActive();
+    covers.handleKeyDown(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+    covers.stop();
+    covers.el.remove();
+    return { before, picked };
+  });
+  assert.deepEqual(wheelPick, { before: 0, picked: { index: 1, selected: 1 } });
+  pass('carousel Enter during wheel motion selects the destination before playing it');
   await page.evaluate(() => fixture.search.open());
   await wait(1100);
   await page.locator('.cs-input').fill('fixed');

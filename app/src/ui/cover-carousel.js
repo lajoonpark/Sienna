@@ -267,8 +267,11 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     if (passHorizontalEdges && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && (next < 0 || next >= items.length)) return;
     e.preventDefault();
     stopEntrance();
-    if (next === undefined) onPick(index);
-    else snap(next);
+    if (next === undefined) {
+      stopMotion();
+      if (position !== index) draw(index);
+      onPick(index);
+    } else snap(next);
   }
 
   const center = index => { stopEntrance(); snap(index); };
