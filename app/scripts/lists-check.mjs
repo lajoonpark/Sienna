@@ -233,16 +233,21 @@ try {
   await expectCentered(1);
   assert.equal(await queueWheel.getAttribute('aria-orientation'), 'horizontal');
   assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'the queue wheel is focused on open');
-  await page.keyboard.press('ArrowRight');
-  await expectCentered(2);
-  await page.keyboard.press('ArrowLeft');
-  await expectCentered(1);
   assert.equal(await queueWheel.getAttribute('aria-activedescendant'), await centered.getAttribute('id'));
   assert.equal(await current.getAttribute('data-index'), '1');
   assert.equal(await page.locator('.ln-qveil .la-title').innerText(), 'Song 001');
   assert.equal(await page.locator('.ln-qveil .la-artist').innerText(), 'Artist 1');
   assert.equal(await queueWheel.locator('.la-title, .la-artist').count(), 0);
   assert.equal(await page.evaluate(() => fixture.drawerOpens.at(-1)), false);
+  await wait(600);
+  await page.evaluate(() => fixture.drawerReady());
+  await page.locator('.la-vinyl-flight').first().waitFor();
+  assert.equal(await page.locator('.la-vinyl-flight').count(), 3);
+  await page.locator('.la-vinyl-flight').first().waitFor({ state: 'detached' });
+  await page.keyboard.press('ArrowRight');
+  await expectCentered(2);
+  await page.keyboard.press('ArrowLeft');
+  await expectCentered(1);
   await page.evaluate(async () => {
     const { shortcuts } = await import('/src/shortcuts.js');
     await shortcuts.set('search', 'Control+Alt+Right');
@@ -261,11 +266,6 @@ try {
     await shortcuts.reset();
   });
   await queueWheel.focus();
-  await wait(600);
-  await page.evaluate(() => fixture.drawerReady());
-  await page.locator('.la-vinyl-flight').first().waitFor();
-  assert.equal(await page.locator('.la-vinyl-flight').count(), 3);
-  await page.locator('.la-vinyl-flight').first().waitFor({ state: 'detached' });
   await queueCover(0).click();
   await expectCentered(0);
   assert.equal(await page.evaluate(() => fixture.commands.length), 0);
