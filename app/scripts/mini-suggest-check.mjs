@@ -23,7 +23,7 @@ async function load({ failFirst = false, held = false } = {}) {
     const now = performance.now.bind(performance);
     window.__skew = 0;
     performance.now = () => now() + window.__skew;   // jump ahead past the 5 minutes
-    window.__home = 0; window.__art = 0; window.__delay = 400;
+    window.__home = 0; window.__homeDone = 0; window.__art = 0; window.__delay = 400;
     window.__gate = held ? new Promise((r) => { window.__release = r; }) : null;   // held: the fetch waits for the test
     const realImage = window.Image;
     window.Image = class extends realImage {
@@ -37,6 +37,7 @@ async function load({ failFirst = false, held = false } = {}) {
         await (window.__gate ?? new Promise((r) => setTimeout(r, window.__delay)));
         if (failFirst && n === 1) throw new Error('offline');
         const items = [1, 2, 3].map((i) => ({ kind: 'song', title: `Song ${n}.${i}`, subtitle: 'Artist', art: `https://lh3.googleusercontent.com/cover/${n}-${i}.png`, play: { videoId: `v${n}${i}` } }));
+        window.__homeDone = n;
         return { shelves: [{ title: 'Quick picks', items: [] }, { title: 'Listen again', items }], next: null };
       },
       playlistArt: async () => [], search: async () => [], play: async () => {}, command: async () => {}, signIn: async () => {},
@@ -107,7 +108,7 @@ page = await load({ failFirst: true });
 await wait(600);
 await page.evaluate('window.__open()');
 assert.strictEqual(await page.evaluate('window.__home'), 2, 'retried at the summon');
-await wait(600);
+await page.waitForFunction(() => window.__homeDone >= 2);
 assert.deepStrictEqual((await page.evaluate('window.__pressSearch()')).slips, ['Song 2.1', 'Song 2.2', 'Song 2.3']);
 ok('a failed fetch is tried again at the next summon');
 

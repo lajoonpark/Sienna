@@ -43,6 +43,7 @@ function createMini({ onVisible, trusted = () => false } = {}) {
         spellcheck: false,
         sandbox: true,
         webviewTag: false,
+        backgroundThrottling: false,
         preload: path.join(__dirname, 'preload.cjs'),
         additionalArguments: extraArgs,
       },

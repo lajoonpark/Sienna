@@ -411,18 +411,18 @@ const PIN_MSAA = (() => {
   const n = Number(s);
   return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
 })();
-const msaaFor = (renderer, isLight) => (PIN_MSAA ?? (isLight?.() || renderer.getPixelRatio() >= 1.5 ? 2 : 4));
+const msaaFor = (renderer, isLight, pinned = null) => (pinned ?? PIN_MSAA ?? (isLight?.() || renderer.getPixelRatio() >= 1.5 ? 2 : 4));
 
 // { card: true } turns the unpainted border into a deckle-edged card and makes everything beyond it
 // transparent (for the small frameless window; the renderer needs alpha: true).
 // unpainted: the plain render (?wc=0).
-export function createWatercolour(renderer, { card = false, unpainted = UNPAINTED, isLight = null } = {}) {
+export function createWatercolour(renderer, { card = false, unpainted = UNPAINTED, isLight = null, msaa = null } = {}) {
   const L = unpainted ? null : card ? CARD_OIL : OIL;
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
     type: THREE.HalfFloatType,
     // hi-dpi pixels are small enough that 2x MSAA reads the same under the paint, at half the memory traffic
-    samples: msaaFor(renderer, isLight),
+    samples: msaaFor(renderer, isLight, msaa),
     depthTexture: new THREE.DepthTexture(size.x, size.y),
   });
 
@@ -1012,7 +1012,7 @@ void main() { gl_FragColor = texelFetch(tFrom, ivec2(gl_FragCoord.xy - origin), 
       const s = renderer.getDrawingBufferSize(new THREE.Vector2());
       invalidate();
       // a new pixel ratio (Sharpness, cool-down) may want another MSAA count: three makes it again on next use
-      const samples = msaaFor(renderer, isLight);
+      const samples = msaaFor(renderer, isLight, msaa);
       if (target.samples !== samples) { target.dispose(); target.samples = samples; }
       target.setSize(s.x, s.y);
       material.uniforms.resolution.value.copy(s);

@@ -121,6 +121,9 @@ function createWindow() {
   win.on('closed', () => {
     win = null;
     updateActive();
+    // The shop just released its renderer and GPU memory. That is exactly when the mini player is
+    // useful, so warm it here rather than holding a second full renderer all the time.
+    mini?.prewarm();
   });
 }
 

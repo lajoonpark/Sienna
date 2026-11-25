@@ -40,6 +40,8 @@ document.body.classList.toggle('preview', !bridge);
 document.documentElement.style.setProperty('--w', `${W}px`);
 document.documentElement.style.setProperty('--h', `${H}px`);
 const stage = document.getElementById('stage');
+const perf = { initStart: performance.now(), initEnd: 0, warmStart: 0, warmEnd: 0, openAt: 0, draws: 0, firstDrawAt: 0, firstOpenDrawAt: 0, parts: {} };
+const timePart = (name, make) => { const t = performance.now(); const out = make(); perf.parts[name] = +(performance.now() - t).toFixed(1); return out; };
 
 let renderer;
 try {
@@ -57,7 +59,9 @@ renderer.shadowMap.autoUpdate = false;
 const size = () => ({ w: stage.clientWidth || W, h: stage.clientHeight || H });
 renderer.setSize(size().w, size().h);
 stage.appendChild(renderer.domElement);
-const painter = WATERCOLOUR ? createWatercolour(renderer, { card: true }) : null;
+// Under the oil paint, hi-dpi pixels are small enough that the scene MSAA only costs memory here:
+// the card edge is anti-aliased procedurally in its shader. Keep 2x on a 1x display.
+const painter = WATERCOLOUR ? createWatercolour(renderer, { card: true, msaa: renderer.getPixelRatio() >= 1.5 ? 0 : 2 }) : null;
 
 // ---- 3D lounge corner + courtyard scene shared with the main shop ----
 const scene = new THREE.Scene();
@@ -119,7 +123,7 @@ const timeOfDay = createTimeOfDay({ scene, sun, hemi, sky });
 
 // ---- suitcase sitting flat on the walnut listening table ----
 const music = createMusic();
-const suitcase = createSuitcase({ music, ground: 'none', lights: false, sharp: true });
+const suitcase = timePart('suitcase', () => createSuitcase({ music, ground: 'none', lights: false, sharp: true }));
 suitcase.root.position.set(1.90, LISTENING_TABLE.topY, -14.34);
 suitcase.root.scale.setScalar(0.142);
 suitcase.root.rotation.y = 0.26;
@@ -151,7 +155,12 @@ applyCamera(0, 0);
 // Bake oil brushstrokes across the room and courtyard once (with margin for cursor parallax).
 timeOfDay.update(0);
 updateLod(camera);
-painter?.bakeStrokes(scene, [{ pos: BASE_POS.clone(), target: BASE_TARGET.clone(), fov: Math.min(100, BASE_FOV * 1.2) }]);
+// The mini uses one fixed view, so its stroke bake is small enough to keep in the same IndexedDB
+// stroke cache as the shop. After the first bake, later windows read the strokes back instead of
+// spending hundreds of milliseconds placing them again. Screenshots await strokesIn below.
+const strokesIn = painter
+  ? painter.bakeStrokesCached(scene, [{ pos: BASE_POS.clone(), target: BASE_TARGET.clone(), fov: Math.min(100, BASE_FOV * 1.2) }], { cacheKey: 'mini' })
+  : Promise.resolve();
 
 // ---- search (the search shortcut, as in the shop): a pick slides out of the drawer and flies onto the platter ----
 scene.add(camera);
@@ -168,7 +177,7 @@ const drawerScreenPos = () => {
   const r = renderer.domElement.getBoundingClientRect();
   return { x: r.left + ((_drawerPt.x + 1) / 2) * r.width, y: r.top + ((1 - _drawerPt.y) / 2) * r.height };
 };
-const liner = createLiner({
+const liner = timePart('liner', () => createLiner({
   music,
   onQueueOpen: () => tray.openHold(lastState?.art ? [getCover(lastState.art, 256).tex] : []),
   onQueueCovers: (items) => {
@@ -194,15 +203,15 @@ const liner = createLiner({
     }
     tray.run(getCover(it.art, 512).tex);
   },
-});
+}));
 
-const caption = createCaption({
+const caption = timePart('caption', () => createCaption({
   parent: stage,
   variant: 'mini',
   onSeek: (s) => music.command('seek', s),
   onCommand: (name, arg) => music.command(name, arg),
   onQueue: () => liner.openQueue(),
-});
+}));
 
 const LISTEN_AGAIN_MAX_AGE = 300000;
 let listenAgain = null;
@@ -225,7 +234,7 @@ function refreshListenAgain() {
 }
 refreshListenAgain();
 music.onAccount?.(() => Promise.resolve(listenAgainBusy).then(() => { listenAgainAt = -Infinity; refreshListenAgain(); }));
-const search = createSearch({
+const search = timePart('search', () => createSearch({
   music,
   onPlay: (item) => {
     startSong(music, suitcase, item);
@@ -235,7 +244,7 @@ const search = createSearch({
     const busy = refreshListenAgain();
     return listenAgain ?? busy;
   },
-});
+}));
 caption.show(true, true);
 
 // ---- player state ----
@@ -274,6 +283,8 @@ function summon() {
     refreshListenAgain();
   }
   phase = 'open';
+  perf.openAt = performance.now();
+  perf.firstOpenDrawAt = 0;
   suitcase.open();
 }
 function finishPick() {
@@ -333,7 +344,11 @@ const draw = (t) => {
   roomFill.intensity = sun.castShadow ? 1.15 : 0.18;
   updateLod(camera);
   updateShadows(t);
-  return painter ? painter.render(scene, camera, t) : renderer.render(scene, camera);
+  const out = painter ? painter.render(scene, camera, t) : renderer.render(scene, camera);
+  perf.draws++;
+  if (!perf.firstDrawAt) perf.firstDrawAt = performance.now();
+  if (perf.openAt && !perf.firstOpenDrawAt) perf.firstOpenDrawAt = performance.now();
+  return out;
 };
 let lastT = 0;
 function loop(ms) {
@@ -414,9 +429,25 @@ addEventListener('keydown', (e) => {
 });
 renderer.domElement.addEventListener('webglcontextrestored', () => { painter?.invalidate(); renderer.shadowMap.needsUpdate = true; });
 
+// Prewarming the hidden Electron window does half the job of opening it: the page and scene are
+// built, but no frame has ever been drawn. Draw one while still hidden so the first real summon does
+// not pay for shader compilation and render-target allocation. The card itself stays invisible:
+// appear is zero, so this only warms the GPU and the painter's still-frame cache.
+if (bridge && !shot) {
+  applyAppear();
+  perf.warmStart = performance.now();
+  draw(0);
+  perf.warmEnd = performance.now();
+  // The first hidden frame compiles the scene and post-processing. Once the cached strokes arrive,
+  // draw once more while still hidden so their dab shaders and instance buffers are warm too.
+  strokesIn.then(() => { if (phase === 'hidden') draw(0); });
+}
+perf.initEnd = performance.now();
+
 // ---- screenshots and browser preview ----
 if (shot) {
   window.__seek = async (t) => {
+    await strokesIn;
     await Promise.all([suitcase.ready(), caption.ready()]);
     while (!lastState?.title && !params.has('idle')) await new Promise((r) => setTimeout(r, 100));
     await new Promise((r) => setTimeout(r, 300));
@@ -453,5 +484,5 @@ const screenOf = (name, dx = 0, dz = 0) => {
   return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
 };
 if (!window.sienna || window.sienna.isDev) {
-  window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, tray, flights, liner, get phase() { return phase; }, get appear() { return appear; }, get pointerIn() { return pointerIn; } };
+  window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, tray, flights, liner, perf, get phase() { return phase; }, get appear() { return appear; }, get pointerIn() { return pointerIn; } };
 }
