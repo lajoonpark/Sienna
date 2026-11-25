@@ -19,6 +19,9 @@ const STRIP_CHORDS = ['Alt', 'Shift', 'Alt+Shift', 'Control+Shift'].map(label =>
   ctrlKey: label.includes('Control'), metaKey: false,
 }));
 const STRIP_CSS = `
+.cs:has(> .la-full:not([hidden])) {
+  inset: var(--sienna-space-2); width: auto; height: calc(100dvh - 2 * var(--sienna-space-2));
+  max-height: none; transform: none; }
 /* While the sheet rolls up to the strip, the list collapses first, then the paper clips the covers. */
 .cs > .cs-result-strip { flex: 0 0.00001 auto; min-height: 0; margin-bottom: var(--sienna-space-2); }
 .cs-result-strip .la-wheel { flex: 0 0 clamp(64px, 16dvh, 116px); }
@@ -47,7 +50,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     footerHints: ['↑↓ choose · Enter play · Tab type · Esc close'], onPick: (_, i) => pick(i),
     onActiveChange: () => { if (stripActive) setStripActive(false); else syncActive(); },
   });
-  const carousel = coverSuggestions && suggest ? createCoverCarousel({ onPick: i => pick(i, true), onActiveChange: syncActive, drawer: coverDrawer }) : null;
+  const carousel = coverSuggestions && suggest ? createCoverCarousel({ fullSize: true, onPick: i => pick(i, true), onActiveChange: syncActive, drawer: coverDrawer }) : null;
   const resultStrip = createCoverCarousel({
     orientation: 'horizontal', onPick: i => pick(i),
     onActiveChange: source => { if (source === 'wheel') setStripActive(true); else syncActive(); },

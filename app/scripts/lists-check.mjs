@@ -232,6 +232,11 @@ try {
   await queueWheel.waitFor();
   await expectCentered(1);
   assert.equal(await queueWheel.getAttribute('aria-orientation'), 'horizontal');
+  const queueSheet = page.locator('.ln-qbox');
+  await page.waitForFunction(() => document.querySelector('.ln-qbox').getBoundingClientRect().height > innerHeight * 0.9);
+  assert.ok((await queueSheet.boundingBox()).width > page.viewportSize().width * 0.9);
+  assert.ok((await centered.boundingBox()).width > page.viewportSize().width * 0.38);
+  assert.match(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), /^shape\(/);
   assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'the queue wheel is focused on open');
   assert.equal(await queueWheel.getAttribute('aria-activedescendant'), await centered.getAttribute('id'));
   assert.equal(await current.getAttribute('data-index'), '1');
@@ -310,6 +315,7 @@ try {
   await page.keyboard.press('ArrowLeft');
   await expectCentered(1);
   assert.equal(await queueCover(2).evaluate(el => el.style.transform.includes('rotateY')), false);
+  assert.equal(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), 'none');
   await page.keyboard.press('Enter');
   assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), ['queueIndex', 1]);
   await page.evaluate(() => fixture.liner.openQueue());
@@ -318,6 +324,7 @@ try {
   assert.equal(await page.locator('.la-vinyl-flight').count(), 0);
   await page.evaluate(() => fixture.settings.set('coverCarousel', false));
   await page.waitForSelector('.ln-qveil .is-pinned', { state: 'visible' });
+  assert.ok((await queueSheet.boundingBox()).width < page.viewportSize().width * 0.8);
   assert.equal(await page.locator('.ln-qveil .la-wheel').isVisible(), false);
   assert.equal(await page.getByRole('button', { name: 'Now playing', exact: true }).isVisible(), false);
   await page.keyboard.press('Escape');
@@ -490,6 +497,10 @@ try {
   await expectCover(0);
   assert.equal(await input.getAttribute('aria-controls'), await carousel.getAttribute('id'));
   await wait(550);
+  const searchSheet = page.locator('.cs');
+  assert.ok((await searchSheet.boundingBox()).height > page.viewportSize().height * 0.9);
+  assert.ok((await activeCover.boundingBox()).height > page.viewportSize().height * 0.35);
+  assert.match(await searchSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), /^shape\(/);
   await page.evaluate(() => fixture.drawer.release());
   const discs = page.locator('.la-vinyl-flight');
   await discs.first().waitFor();
@@ -547,6 +558,8 @@ try {
   const strip = page.getByRole('listbox', { name: 'Top search results' });
   const results = page.getByRole('listbox', { name: 'Search results', exact: true });
   assert.equal(await strip.getAttribute('aria-orientation'), 'horizontal');
+  assert.ok((await searchSheet.boundingBox()).width < page.viewportSize().width * 0.8);
+  assert.equal(await searchSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), 'none');
   assert.deepEqual(await strip.getByRole('option').evaluateAll(els => els.map(el => el.getAttribute('aria-label'))),
     [1, 2, 3, 4, 5].map(i => `Match result ${i} · Search artist`));
   assert.equal(await results.getByRole('option').count(), 7);
