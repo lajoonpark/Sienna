@@ -43,3 +43,15 @@ test('framing offsets are bounded by the original hover anchor', async () => {
   const held = { rec: [-0.5, 0.5, -0.5, 0.5], anchor: { x: 0, y: -0.25 } };
   assert.deepEqual(hoverPanBounds(held, 0.125, 0.125), [[-0.375, 0.375], [-0.625, 0.125]]);
 });
+
+test('the camera counts as at rest on a record only once it is up and the slide, push-in and swing are done', async () => {
+  const { framedAtRest } = await import('../src/racks/hover.js');
+  const rest = { restPx: 1.5, restZoom: 0.004, restSwing: 0.002 };
+  const done = { settled: true, panLeft: 0.5, zoomLeft: 0.001, swingLeft: 0.0005 };
+  assert.equal(framedAtRest(done, rest), true);
+  assert.equal(framedAtRest({ ...done, settled: false }, rest), false, 'record still rising');
+  assert.equal(framedAtRest({ ...done, panLeft: 6 }, rest), false, 'still sliding clear of the buttons');
+  assert.equal(framedAtRest({ ...done, panLeft: Infinity }, rest), false, 'not steered yet');
+  assert.equal(framedAtRest({ ...done, zoomLeft: 0.05 }, rest), false, 'still pushing in (or giving the zoom up)');
+  assert.equal(framedAtRest({ ...done, swingLeft: 0.02 }, rest), false, 'still swinging round');
+});

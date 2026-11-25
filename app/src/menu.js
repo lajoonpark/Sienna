@@ -107,6 +107,8 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
   let over = 0;
   let receded = false, cursorX = null;
   const buttons = [];      // { el, side, seed, key }
+  // (also when a word stops taking the pointer under a still cursor: no pointerleave comes then)
+  const leave = (b) => { if (b.in) { b.in = false; over = Math.max(0, over - 1); } };
 
   function makeButton(parent, label, seed, onClick) {
     const el = brushButton(label, { size: 'lg', seed, flipX: parent === R, onClick: (e) => {
@@ -114,10 +116,11 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
       if (e.detail) el.blur();
       onClick();
     } });
-    el.addEventListener('pointerenter', () => { over++; });
-    el.addEventListener('pointerleave', () => { over = Math.max(0, over - 1); });
+    const b = { el, side: parent, seed, label, fontPx: 0, lines: [], away: 0, out: false, inert: false, in: false, home: null };
+    el.addEventListener('pointerenter', () => { if (!b.in) { b.in = true; over++; } });
+    el.addEventListener('pointerleave', () => leave(b));
     parent.stack.appendChild(el);
-    return { el, side: parent, seed, label, fontPx: 0, lines: [], away: 0, out: false, home: null };
+    return b;
   }
   const home = makeButton(H, 'Home', 3, () => onHome?.());
   home.el.setAttribute('aria-label', 'Back to the entrance');
@@ -239,9 +242,10 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
     // Called every frame. `recede`: step the columns back (at a station or in flight). They come back
     // to full when the cursor is within 16% of their screen edge or over them. x01: cursor x in 0..1 or null.
     // `hold`: a held-up record's box on screen ({ l, t, r, b } px) or null; side words it overlaps (where
-    // they stood when last measured by blockers()) slide off to their edge and fade, letting the cursor
-    // through, until the record goes down.
-    update(dt, x01, recede, hold = null) {
+    // they stood when last measured by blockers()) let the cursor through to it at once, so a press on the
+    // record never lands on a button. `aside`: the camera has framed the record; the words it still
+    // overlaps then slide off to their edge and fade, until the record goes down.
+    update(dt, x01, recede, hold = null, aside = false) {
       receded = recede;
       cursorX = x01;
       const ke = 1 - Math.exp(-12 * Math.min(dt, 0.2)); // ~0.25 s
@@ -253,8 +257,13 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
         side.el.classList.toggle('faded', !full); // faded words let the cursor through to the racks
       }
       for (const b of buttons) {
-        const h = b.home, out = !!hold && !!h && h.left < hold.r && h.right > hold.l && h.top < hold.b && h.bottom > hold.t;
-        if (out !== b.out) { b.out = out; b.el.style.pointerEvents = out ? 'none' : ''; }
+        // the first frame a record is up comes before steerClear has measured the words (blockers): measure here
+        if (!hold && !b.away) b.home = null;
+        else if (!b.home && !b.away) b.home = b.el.getBoundingClientRect();
+        const h = b.home, inert = !!hold && !!h && h.left < hold.r && h.right > hold.l && h.top < hold.b && h.bottom > hold.t;
+        const out = inert && aside;
+        b.out = out;
+        if (inert !== b.inert) { b.inert = inert; b.el.style.pointerEvents = inert ? 'none' : ''; if (inert) leave(b); }
         b.away += ((out ? 1 : 0) - b.away) * ke;
         if (!out && b.away < 1e-3) b.away = 0;
         b.el.style.translate = b.away ? `${(b.side === L ? -1 : 1) * b.away * (h?.width ?? 0) * 1.2}px 0` : '';
