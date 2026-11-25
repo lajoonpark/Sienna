@@ -320,6 +320,7 @@ const settingsPanel = createSettingsPanel({
   music,
   onTour: () => tour.restart(),
   onRestock: () => loadShelves({ force: true }),
+  onClose: liner.restoreQueueFocusAfterSettings,
 });
 // the first-run tour (src/tour.js): paper notes in the shop once the intro reaches home on a new install
 const tour = createTour({

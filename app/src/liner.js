@@ -121,6 +121,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   let qRetryTimer = 0;
   let renderedItems = [];
   let drawerReady = null, queueOpener = null, nowIndex = -1;
+  let focusQueueAfterSettings = false;
   let seq = 0;
   const showingCovers = () => !queueCarousel.el.hidden;
 
@@ -156,6 +157,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     if (showingCovers()) queueCarousel.stop();
     else queueList.playDrawerFlight(drawerOrigin(), { entering: false });
     drawerReady = null;
+    focusQueueAfterSettings = false;
     if (qveil.contains(document.activeElement)) {
       document.activeElement.blur();
       if (queueOpener?.isConnected) queueOpener.focus({ preventScroll: true });
@@ -294,8 +296,16 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
 
   settings.on('coverCarousel', () => {
     if (mode !== 'queue' || !renderedItems.length) return;
-    renderQueueView({ preferred: showingCovers() ? queueCarousel.getActive() : queueList.getActive() });
+    const hadCovers = showingCovers();
+    renderQueueView({ preferred: hadCovers ? queueCarousel.getActive() : queueList.getActive() });
+    focusQueueAfterSettings = !hadCovers && showingCovers() && sheetOpen();
   });
+
+  function restoreQueueFocusAfterSettings() {
+    const restore = focusQueueAfterSettings && mode === 'queue' && showingCovers() && !sheetOpen();
+    focusQueueAfterSettings = false;
+    if (restore) queueCarousel.listboxEl.focus({ preventScroll: true });
+  }
 
   async function refreshQueue({ retryIfStale = true, expectedVideoId = null } = {}) {
     if (mode !== 'queue') return;
@@ -417,6 +427,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     openLyrics,
     openQueue,
     close,
+    restoreQueueFocusAfterSettings,
     setStatus,
     isOpen: () => !!mode,
     isQueueCarouselOpen: () => mode === 'queue' && showingCovers(),

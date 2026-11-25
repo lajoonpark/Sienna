@@ -312,6 +312,24 @@ try {
   assert.equal(await page.locator('.ln-qveil .la-wheel').isVisible(), false);
   assert.equal(await page.getByRole('button', { name: 'Now playing', exact: true }).isVisible(), false);
   await page.keyboard.press('Escape');
+  await page.evaluate(async () => {
+    const { createSettingsPanel } = await import('/src/settings-panel.js');
+    fixture.panel = createSettingsPanel({ onClose: fixture.liner.restoreQueueFocusAfterSettings });
+    await fixture.liner.openQueue();
+  });
+  await page.locator('.ln-qveil').getByRole('listbox', { name: 'Up next' }).focus();
+  await page.evaluate(() => fixture.panel.open('look'));
+  const settingsDialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+  await settingsDialog.getByRole('radio', { name: 'Carousel', exact: true }).click();
+  assert.equal(await settingsDialog.evaluate(el => el.contains(document.activeElement)), true);
+  await page.keyboard.press('Escape');
+  assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'closing Settings focuses the new queue wheel');
+  await expectCentered(2);
+  await page.keyboard.press('ArrowLeft');
+  await expectCentered(1);
+  await page.keyboard.press('Enter');
+  assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), ['queueIndex', 1]);
+  await page.evaluate(() => fixture.settings.set('coverCarousel', false));
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.evaluate(() => {
     fixture.queue.forEach(it => { it.selected = it.videoId === 's1'; });

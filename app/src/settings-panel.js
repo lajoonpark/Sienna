@@ -60,7 +60,7 @@ const CSS = `
 
 const action = (text, seed, onClick, danger = false) => inkButton(text, { seed, onClick, danger });
 
-export function createSettingsPanel({ music = null, onTour = null, onRestock = null } = {}) {
+export function createSettingsPanel({ music = null, onTour = null, onRestock = null, onClose = null } = {}) {
   injectTokens();
   const style = document.createElement('style');
   style.textContent = CSS;
@@ -125,7 +125,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
 
   const sheet = createSheet({ title: 'Settings', seed: 7,
     width: 'min(calc(var(--sienna-space-10) * 21), 92vw)',
-    onClose: () => { openNow = false; stopRecording(); },
+    onClose: () => { openNow = false; stopRecording(); onClose?.(); },
   });
   const veil = sheet.el;
   veil.classList.add('st-settings');
