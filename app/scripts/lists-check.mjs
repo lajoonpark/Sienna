@@ -339,6 +339,16 @@ try {
   await expectCentered(1);
   await page.keyboard.press('Enter');
   assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), ['queueIndex', 1]);
+  const commandsBeforeClose = await page.evaluate(() => fixture.commands.length);
+  await page.evaluate(() => { fixture.settings.set('coverCarousel', false); return fixture.liner.openQueue(); });
+  await closeQueue.focus();
+  await page.evaluate(() => fixture.panel.open('look'));
+  await settingsDialog.getByRole('radio', { name: 'Carousel', exact: true }).click();
+  await page.keyboard.press('Escape');
+  assert.equal(await closeQueue.evaluate(el => el === document.activeElement), true, 'Settings preserves a usable queue opener');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => fixture.liner.isOpen()), false);
+  assert.equal(await page.evaluate(() => fixture.commands.length), commandsBeforeClose, 'Enter on Close does not play a track');
   await page.evaluate(() => fixture.settings.set('coverCarousel', false));
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.evaluate(() => {
