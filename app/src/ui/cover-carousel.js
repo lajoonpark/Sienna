@@ -44,6 +44,8 @@ const CSS = `
 .la-full .la-cover { --sleeve-depth: 10px; display: block; overflow: visible; transform-style: preserve-3d;
   background: none; box-shadow: none; backface-visibility: visible; pointer-events: auto; }
 .la-full .la-cover[aria-selected="true"] { box-shadow: none; }
+.la-full .la-cover.is-outside :is(.la-sleeve-face, .la-sleeve-edge, .la-disc),
+.la-full .la-cover.is-outside::after { visibility: hidden; }
 .la-sleeve-face, .la-sleeve-edge, .la-disc { position: absolute; pointer-events: none; }
 .la-sleeve-face { inset: 0; display: grid; place-items: center; background: var(--sienna-paper-lo); backface-visibility: hidden; }
 .la-sleeve-front { transform: translateZ(calc(var(--sleeve-depth) / 2)); box-shadow: var(--sienna-shadow-rest); pointer-events: auto; }
@@ -172,7 +174,9 @@ export function createCoverCarousel({ onPick, onActiveChange, orientation = 'ver
         const depth = spatialRadius * (Math.cos(angle) - 1);
         card.style.transform = `translate(-50%, -50%) translate${horizontal ? 'X' : 'Y'}(${travel}%)`
           + (calm.matches ? '' : ` translateZ(calc(var(--cover-size) * ${depth})) ${horizontal ? `rotateY(${angle}rad)` : `rotateX(${-angle}rad)`}`);
-        card.style.visibility = distance > (calm.matches ? 2 : 2.65) ? 'hidden' : '';
+        const outside = distance > (calm.matches ? 2 : 2.65);
+        card.classList.toggle('is-outside', outside);
+        card.style.pointerEvents = outside ? 'none' : '';
         if (distance < 3) loadArt(i);
         return;
       }

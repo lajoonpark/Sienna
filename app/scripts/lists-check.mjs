@@ -576,6 +576,8 @@ try {
   }
   await carousel.waitFor();
   await expectCover(0);
+  assert.equal(await carousel.getByRole('option').count(), 8, 'off-screen carousel options remain accessible');
+  assert.equal(await carousel.locator('[data-index="7"] .la-sleeve-front').evaluate(el => getComputedStyle(el).visibility), 'hidden');
   assert.equal(await input.getAttribute('aria-controls'), await carousel.getAttribute('id'));
   await wait(550);
   const searchSheet = page.locator('.cs');
