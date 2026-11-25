@@ -299,6 +299,99 @@ try {
   assert.deepEqual(await page.evaluate(() => ({ ...window.__kitCallbacks })), idle);
   await page.screenshot({ path: `${out}/collection-612.png` });
   pass('idle: zero kit/shared-bar rAF/timer callbacks for 2 seconds with an open list; no native control titles');
+
+  await page.reload();
+  await page.evaluate(async () => {
+    const { createSearch } = await import('/src/search.js');
+    const { settings } = await import('/src/settings.js');
+    const items = Array.from({ length: 8 }, (_, i) => ({ title: `Record ${i}`, subtitle: `Artist ${i}`, kind: 'song' }));
+    const played = [], pickModes = [];
+    const drawer = { opens: 0, closes: 0,
+      open() { this.opens++; return new Promise(resolve => { this.release = resolve; }); },
+      position: () => ({ x: 560, y: 640 }),
+      close() { this.closes++; },
+    };
+    const search = createSearch({
+      music: { search: async () => [{ title: 'Matched result', kind: 'song' }] },
+      suggest: () => ({ title: 'Listen again', items }),
+      coverSuggestions: true, coverDrawer: drawer, onPlay: (item, { fromCoverPicker }) => {
+        played.push(item.title);
+        pickModes.push(fromCoverPicker);
+      },
+    });
+    window.fixture = { search, played, pickModes, settings, drawer };
+    search.open();
+  });
+  const carousel = page.locator('.la-wheel');
+  const activeCover = carousel.locator('[aria-selected="true"]');
+  const input = page.locator('.cs-input');
+  const coverName = n => `Record ${n} · Artist ${n}`;
+  async function expectCover(n) {
+    await page.waitForFunction(name => document.querySelector('.la-wheel [aria-selected="true"]')?.getAttribute('aria-label') === name, coverName(n));
+    assert.equal(await input.getAttribute('aria-activedescendant'), await activeCover.getAttribute('id'));
+    assert.equal(await page.locator('.la-title').innerText(), `Record ${n}`);
+    assert.equal(await page.locator('.la-artist').innerText(), `Artist ${n}`);
+  }
+  await carousel.waitFor();
+  await expectCover(0);
+  assert.equal(await input.getAttribute('aria-controls'), await carousel.getAttribute('id'));
+  await wait(550);
+  await page.evaluate(() => fixture.drawer.release());
+  const discs = page.locator('.la-vinyl-flight');
+  await discs.first().waitFor();
+  assert.equal(await discs.count(), 3);
+  const landing = await discs.first().evaluate(el => {
+    const [entry, , , finish] = el.getAnimations()[0].effect.getKeyframes();
+    return { entryX: new DOMMatrix(entry.transform).e, finishX: new DOMMatrix(finish.transform).e, width: el.offsetWidth };
+  });
+  const firstSlot = await activeCover.boundingBox();
+  assert.ok(Math.abs(landing.entryX + landing.width / 2 - 560) < 1);
+  assert.ok(Math.abs(landing.finishX + landing.width / 2 - firstSlot.x - firstSlot.width / 2) < 1);
+  await discs.first().waitFor({ state: 'detached' });
+  assert.equal(await page.evaluate(() => fixture.drawer.closes), 1);
+  await page.keyboard.press('ArrowDown');
+  await expectCover(1);
+  await carousel.getByRole('option', { name: coverName(2) }).click();
+  await expectCover(2);
+  assert.deepEqual(await page.evaluate(() => fixture.played), []);
+  await carousel.hover();
+  await page.mouse.wheel(0, 100);
+  await expectCover(3);
+  const rect = await carousel.boundingBox();
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height * 0.7);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height * 0.2, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForFunction(() => Number(document.querySelector('.la-wheel [aria-selected="true"]')?.dataset.index) >= 4);
+  assert.deepEqual(await page.evaluate(() => fixture.played), [], 'drag release does not play a cover');
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.keyboard.press('Home');
+  await expectCover(0);
+  assert.equal(await carousel.getByRole('option', { name: coverName(1) }).evaluate(el => el.style.transform.includes('rotateX')), false);
+  await page.keyboard.press('Enter');
+  assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0']);
+  await page.evaluate(() => fixture.search.open());
+  await carousel.waitFor();
+  assert.equal(await page.evaluate(() => fixture.drawer.opens), 1, 'reduced motion leaves the drawer closed');
+  await activeCover.click();
+  assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0', 'Record 0']);
+  await page.evaluate(() => { fixture.search.open(); fixture.settings.set('coverCarousel', false); });
+  await page.locator('.cs .ui-list-row').first().waitFor();
+  assert.equal(await carousel.isVisible(), false);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('sienna.settings')).coverCarousel), false);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0', 'Record 0', 'Record 0']);
+  assert.deepEqual(await page.evaluate(() => fixture.pickModes), [true, true, false]);
+  await page.evaluate(() => { fixture.search.open(); fixture.settings.set('coverCarousel', true); });
+  await carousel.waitFor();
+  await input.fill('match');
+  await page.waitForFunction(() => document.querySelector('.cs .ui-list-title')?.textContent === 'Matched result');
+  assert.equal(await carousel.isVisible(), false, 'typed search remains a paper list');
+  await input.fill('');
+  await carousel.waitFor();
+  pass('Listen again: drawer discs land in covers, keyboard/Enter, side and centre clicks, wheel, drag, reduced motion, paper fallback and unchanged typed results');
   assert.deepEqual(errors, []);
   console.log(`all lists checks passed -> ${out}`);
 } finally { await browser.close(); await server.close(); }

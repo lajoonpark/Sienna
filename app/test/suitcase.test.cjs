@@ -7,6 +7,25 @@ const assert = require('node:assert');
 const load = (name) => import(`../src/${name}.js`);
 const near = (a, b, eps = 1e-9, msg) => assert.ok(Math.abs(a - b) <= eps, msg ?? `${a} !~ ${b}`);
 
+test('carousel drawer opens and closes without launching the queue vinyl stack', async () => {
+  const THREE = await import('three');
+  const { createRecordTray } = await load('suitcase/tray');
+  const drawer = new THREE.Group();
+  const tray = createRecordTray({ suitcase: { parts: { drawer }, thump() {} }, kit: {
+    build() { assert.fail('the queue vinyl stack should not be built'); },
+  } });
+  const opened = tray.openHold([], { showStack: false });
+  tray.update(0.4);
+  await opened;
+  assert.strictEqual(tray.isOpen, true);
+  assert.strictEqual(tray.moving, false);
+  assert.ok(drawer.position.z > 0);
+  tray.closeHold();
+  tray.update(0.4);
+  assert.strictEqual(tray.isOpen, false);
+  assert.strictEqual(drawer.position.z, 0);
+});
+
 test('tuck: a real strip hit stays awake beneath a stationary pointer', async () => {
   const { createCaseHover } = await load('suitcase/tuck');
   const hover = createCaseHover();

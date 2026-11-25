@@ -236,9 +236,24 @@ refreshListenAgain();
 music.onAccount?.(() => Promise.resolve(listenAgainBusy).then(() => { listenAgainAt = -Infinity; refreshListenAgain(); }));
 const search = timePart('search', () => createSearch({
   music,
-  onPlay: (item) => {
+  coverSuggestions: true,
+  coverDrawer: {
+    open: () => phase === 'open' && !liner.isOpen() && !tray.moving ? tray.openHold([], { showStack: false }) : null,
+    position: drawerScreenPos,
+    close: () => { if (!liner.isOpen()) tray.closeHold(); },
+  },
+  onPlay: (item, { fromCoverPicker }) => {
+    const cover = getCover(item.art, 512).tex;
+    if (fromCoverPicker) {
+      tray.finish();
+      flights.finish();
+      const baseVideoId = suitcase.videoId;
+      startSong(music, suitcase, item);
+      suitcase.placeRecord(cover, { claimFor: { baseVideoId } });
+      return;
+    }
     startSong(music, suitcase, item);
-    tray.run(getCover(item.art, 512).tex);
+    tray.run(cover);
   },
   suggest: () => {
     const busy = refreshListenAgain();
@@ -298,6 +313,7 @@ function finishPick() {
 }
 function dismiss() {
   if (phase !== 'open') return;
+  search.closeCoverPicker();
   liner.close();
   finishPick();
   phase = 'closing';
