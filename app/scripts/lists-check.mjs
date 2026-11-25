@@ -225,6 +225,14 @@ try {
     fixture.music.queue = () => new Promise(resolve => {
       fixture.releaseQueue = () => { fixture.music.queue = queue; resolve(queue()); };
     });
+    const sheet = document.querySelector('.ln-qbox');
+    const paper = sheet.querySelector('.ui-paper-bg');
+    const sizes = new Set();
+    const observer = new MutationObserver(() => {
+      if (sheet.querySelector('.la-full:not([hidden])')) sizes.add(paper.style.backgroundSize);
+    });
+    observer.observe(paper, { attributes: true, attributeFilter: ['style'] });
+    fixture.queuePaperSizes = () => { observer.disconnect(); return [...sizes]; };
   });
   await queueButton.focus();
   await queueButton.click();
@@ -248,6 +256,7 @@ try {
   assert.equal(await queueWheel.locator('.la-title, .la-artist').count(), 0);
   assert.equal(await page.evaluate(() => fixture.drawerOpens.at(-1)), false);
   await wait(600);
+  assert.equal((await page.evaluate(() => fixture.queuePaperSizes())).length, 1, 'the unrolling queue uses one full-size paper texture');
   await page.evaluate(() => fixture.drawerReady());
   await page.locator('.la-vinyl-flight').first().waitFor();
   assert.equal(await page.locator('.la-vinyl-flight').count(), 3);

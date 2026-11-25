@@ -37,8 +37,8 @@ const CSS = `
   color: var(--sienna-indigo); }
 .ln-qbox > .ui-list { min-height: 0; flex: 1; }
 .ln-qbox:has(> .la-full:not([hidden])) {
-  inset: var(--sienna-space-2); width: auto; height: calc(100dvh - 2 * var(--sienna-space-2));
-  max-height: none; transform: none; }
+  inset: var(--sienna-space-2); width: auto; height: 100dvh;
+  max-height: calc(100dvh - 2 * var(--sienna-space-2)); transform: none; }
 .ln-qbox:has(> .la-full:not([hidden])) > .ln-qtop { margin-inline: min(4vw, 56px); }
 .ln-qbox .ui-list-scroll { min-height: 0; }
 .ln-qclose { display: flex; align-items: center; gap: var(--sienna-space-2); }

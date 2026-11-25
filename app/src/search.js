@@ -20,8 +20,8 @@ const STRIP_CHORDS = ['Alt', 'Shift', 'Alt+Shift', 'Control+Shift'].map(label =>
 }));
 const STRIP_CSS = `
 .cs:has(> .la-full:not([hidden])) {
-  inset: var(--sienna-space-2); width: auto; height: calc(100dvh - 2 * var(--sienna-space-2));
-  max-height: none; transform: none; padding-block: var(--sienna-space-2);
+  inset: var(--sienna-space-2); width: auto; height: 100dvh;
+  max-height: calc(100dvh - 2 * var(--sienna-space-2)); transform: none; padding-block: var(--sienna-space-2);
   display: grid; grid-template: auto auto minmax(0, 1fr) / minmax(0, 1fr); }
 .cs:has(> .la-full:not([hidden])) > .cs-head, .cs > .la-full { grid-area: 3 / 1; }
 .cs:has(> .la-full:not([hidden])) > .cs-head {
