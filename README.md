@@ -109,10 +109,12 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
   list as a strip of painted covers — the chord it names (⌥/⇧, whichever is free of your
   shortcuts) + ↑ hands it the keyboard, `←` `→` choose, `Enter` plays and `↓` goes back to the
   list. In the mini player an empty search instead opens your **Listen again** shelf as a vertical
-  wheel of covers to spin through.
+  wheel of huge covers filling the window to spin through.
 - **Shared paper lists.** Search, collection songs and Up next each sit on one paper sheet with
-  ruled rows. Up next can instead spin as a horizontal wheel of painted covers centred on the playing
-  song — Settings > Look > **Cover carousel** (on by default) switches it and the search cover
+  ruled rows. Up next can instead spin as a horizontal wheel of painted covers filling the window,
+  centred on the playing song with the paper behind it curved round to the cylinder and the title
+  and artist lettered beneath the centred cover — Settings > Look > **Cover carousel** (on by
+  default) switches it and the search cover
   strip between **Carousel** and the ruled **Paper list**. terracotta marks the keyboard cursor and indigo marks the playing song, and a small
   hand-drawn kind icon on a paper dab at the end of each row tells songs, albums, playlists, artists
   and podcasts apart. Collections
@@ -123,6 +125,9 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
   keyboard focus kept inside and returned to the opener on close. Settings has a page rail and
   painted choice chips; long pages show a scroll hint. Lyrics and tour body text use a book serif
   for reading, while titles keep your chosen hand lettering. Lyrics offers Retry if loading fails.
+  Every scrollable surface — lists, sheets, Settings and tour notes — eases wheel scrolling with a
+  heavy smooth glide rather than a jump, picking the keyboard, the pointer or a program scroll back
+  up the moment one takes over (off under reduced motion).
 - **Privacy-first extras.** Settings lets macOS users choose between **Mac system volume** and
   **Sienna only**, toggle **Start at login**, opt in to **Discord Rich Presence** (off by default,
   local Discord IPC only), manually **Check for updates** on GitHub Releases (never phones home in
