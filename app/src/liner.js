@@ -121,6 +121,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   let qRetryTimer = 0;
   let renderedItems = [];
   let drawerReady = null, queueOpener = null, nowIndex = -1;
+  let focusQueueAfterSettings = false;
   let seq = 0;
   const showingCovers = () => !queueCarousel.el.hidden;
 
@@ -156,6 +157,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     if (showingCovers()) queueCarousel.stop();
     else queueList.playDrawerFlight(drawerOrigin(), { entering: false });
     drawerReady = null;
+    focusQueueAfterSettings = false;
     if (qveil.contains(document.activeElement)) {
       document.activeElement.blur();
       if (queueOpener?.isConnected) queueOpener.focus({ preventScroll: true });
@@ -294,8 +296,16 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
 
   settings.on('coverCarousel', () => {
     if (mode !== 'queue' || !renderedItems.length) return;
-    renderQueueView({ preferred: showingCovers() ? queueCarousel.getActive() : queueList.getActive() });
+    const hadCovers = showingCovers();
+    renderQueueView({ preferred: hadCovers ? queueCarousel.getActive() : queueList.getActive() });
+    focusQueueAfterSettings = !hadCovers && showingCovers() && sheetOpen();
   });
+
+  function restoreQueueFocusAfterSettings() {
+    const restore = focusQueueAfterSettings && mode === 'queue' && showingCovers() && !sheetOpen();
+    focusQueueAfterSettings = false;
+    if (restore) queueCarousel.listboxEl.focus({ preventScroll: true });
+  }
 
   async function refreshQueue({ retryIfStale = true, expectedVideoId = null } = {}) {
     if (mode !== 'queue') return;
@@ -402,6 +412,16 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   addEventListener('keydown', (e) => {
     if (mode !== 'queue' || sheetOpen()) return;
     if (mode === 'queue' && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
+    if (showingCovers() && e.key === 'Tab' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      const controls = [queueCarousel.listboxEl, ...(!qNowBtn.hidden ? [qNowBtn] : []), qCloseBtn];
+      const index = controls.indexOf(document.activeElement);
+      const next = index < 0 ? (e.shiftKey ? controls.length - 1 : 0)
+        : (index + (e.shiftKey ? -1 : 1) + controls.length) % controls.length;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      controls[next].focus({ preventScroll: true });
+      return;
+    }
     if (['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Enter'].includes(e.key)
       || showingCovers() && ['ArrowLeft', 'ArrowRight'].includes(e.key)) {
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
@@ -417,6 +437,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     openLyrics,
     openQueue,
     close,
+    restoreQueueFocusAfterSettings,
     setStatus,
     isOpen: () => !!mode,
     isQueueCarouselOpen: () => mode === 'queue' && showingCovers(),
