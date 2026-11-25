@@ -573,6 +573,15 @@ try {
   assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 2');
   await page.evaluate(() => fixture.search.open());
   await strip.waitFor();
+  await page.keyboard.press('Home');
+  await page.keyboard.press('ArrowDown');
+  await strip.dispatchEvent('wheel', { deltaY: -100, cancelable: true, bubbles: true });
+  assert.equal(await input.getAttribute('aria-controls'), await results.getAttribute('id'));
+  assert.equal(await stripTitle.innerText(), 'Matcha result 1');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => fixture.played.at(-1)), 'Matcha result 2', 'scrolling past the first cover does not redirect playback');
+  await page.evaluate(() => fixture.search.open());
+  await strip.waitFor();
   await strip.hover();
   await page.mouse.wheel(0, 100);
   await page.waitForFunction(() => document.querySelector('.cs-result-strip .la-title')?.textContent === 'Matcha result 2');

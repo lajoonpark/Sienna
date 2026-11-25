@@ -89,7 +89,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     });
   }
 
-  function draw(next) {
+  function draw(next, source) {
     position = bound(next);
     const index = Math.round(position);
     if (index !== active && items[index]) {
@@ -99,7 +99,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       if (horizontal) wheel.setAttribute('aria-activedescendant', activeId());
       titleText.data = itemTitle(items[index]);
       artistText.data = itemArtist(items[index]);
-      onActiveChange?.();
+      onActiveChange?.(source);
     }
     const shownPosition = calm.matches ? index : position;
     cards.forEach((card, i) => {
@@ -158,7 +158,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     if (drag?.moved) return;
     stopMotion();
     const pixels = delta * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? (horizontal ? wheel.clientWidth : wheel.clientHeight) : 1);
-    draw(position + pixels / WHEEL_STEP);
+    draw(position + pixels / WHEEL_STEP, 'wheel');
     wheelTimer = setTimeout(() => snap(position), 95);
   }, { passive: false });
 

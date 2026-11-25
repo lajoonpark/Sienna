@@ -42,7 +42,8 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   });
   const carousel = coverSuggestions && suggest ? createCoverCarousel({ onPick: i => pick(i, true), onActiveChange: syncActive, drawer: coverDrawer }) : null;
   const resultStrip = createCoverCarousel({
-    orientation: 'horizontal', onPick: i => pick(i), onActiveChange: syncActive,
+    orientation: 'horizontal', onPick: i => pick(i),
+    onActiveChange: source => { if (source === 'wheel') setStripActive(true); else syncActive(); },
   });
   resultStrip.el.classList.add('cs-result-strip');
   resultStrip.listboxEl.tabIndex = -1;
@@ -102,9 +103,6 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   }
   resultStrip.listboxEl.addEventListener('pointerdown', e => {
     if (e.isPrimary && e.button === 0) setStripActive(true);
-  });
-  resultStrip.listboxEl.addEventListener('wheel', e => {
-    if (e.defaultPrevented) setStripActive(true);
   });
   list.listboxEl.addEventListener('pointerdown', () => { if (stripActive) setStripActive(false); });
   function hideCovers() {
