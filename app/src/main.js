@@ -236,7 +236,7 @@ const liner = createLiner({
     suitcase.closeDrawer();
   },
   getDrawerPos: () => suitcase.drawerScreenPos(),
-  onPickQueue: (it, idx) => {
+  onPickQueue: (it, idx, from) => {
     pacer?.kick();
     if (it.videoId) {
       const play = {
@@ -249,7 +249,9 @@ const liner = createLiner({
     } else {
       music.command('queueIndex', it.index ?? idx);
     }
-    suitcase.dispense(getCover(it.art, 512).tex);
+    const cover = getCover(it.art, 512).tex;
+    if (from) suitcase.receiveFromScreen(from, cover);
+    else suitcase.dispense(cover);
   },
 });
 // the suitcase record player in the bottom-left corner (drawn in an overlay pass, subscribes to the player state itself)
@@ -1097,6 +1099,7 @@ function frame(t, dtOverride, draw = true) {
   const uiTiltY = THREE.MathUtils.clamp(tilt.y + focus.pitch * 2.2, -1.2, 1.2);
   menu.tilt(uiTiltX, uiTiltY);
   settingsPanel.tilt(uiTiltX, uiTiltY);
+  liner.tilt(uiTiltX, uiTiltY);
   // at a station (or flying to one) the side words step back so the racks stay reachable
   // side words the record still overlaps once the zoom has given up all it can step aside
   const hold = held && focus.cut >= 1 ? { l: (held.all[0] + 1) / 2 * innerWidth, r: (held.all[1] + 1) / 2 * innerWidth, t: (1 - held.all[3]) / 2 * innerHeight, b: (1 - held.all[2]) / 2 * innerHeight } : null;

@@ -236,6 +236,11 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
     suitcase,
     update,
     receive: (disc) => flights.receive(disc),
+    receiveFromScreen(from, cover) {
+      tray.closeHold();
+      hold = Math.max(hold, TUCK.hold);
+      flights.receiveFromScreen(from, renderer.domElement.getBoundingClientRect(), cover);
+    },
     dispense(cover) { hold = Math.max(hold, TUCK.hold); tray.run(cover); },
     openDrawer(covers = [], options) { hold = Math.max(hold, 4); return tray.openHold(covers, options); },
     setDrawerCovers(covers = []) { tray.setStackCovers(covers); },

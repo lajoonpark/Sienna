@@ -2,7 +2,7 @@ import { paintedCoverURL } from '../coverpaint.js';
 import { flyIntoCovers } from './cover-flight.js';
 import { icon } from './icons.js';
 import { followScroll, wheelPixels } from './smooth-scroll.js';
-import { injectTokens } from './tokens.js';
+import { injectTokens, MOTION } from './tokens.js';
 
 const CSS = `
 .la-carousel { text-align: center; }
@@ -39,20 +39,43 @@ const CSS = `
 .la-full:not(.la-horizontal) .la-details { padding-block: 0; }
 .la-full > .ui-list-foot { grid-area: 3 / 1; }
 
+.la-spatial.la-full.la-horizontal .la-wheel { --cover-size: min(38cqw, 91cqh); }
+.la-stage { position: absolute; inset: 0; pointer-events: none;
+  perspective: calc(var(--cover-size) * 3.75); transform-style: preserve-3d; }
+.la-spatial .la-cover { --sleeve-depth: 10px; display: block; overflow: visible; transform-style: preserve-3d;
+  background: none; box-shadow: none; backface-visibility: visible; pointer-events: auto; }
+.la-spatial .la-cover[aria-selected="true"] { box-shadow: none; }
+.la-sleeve-face, .la-sleeve-edge, .la-disc { position: absolute; pointer-events: none; }
+.la-sleeve-face { inset: 0; display: grid; place-items: center; background: var(--sienna-paper-lo); backface-visibility: hidden; }
+.la-sleeve-front { transform: translateZ(calc(var(--sleeve-depth) / 2)); box-shadow: var(--sienna-shadow-rest); pointer-events: auto; }
+.la-sleeve-back { transform: rotateY(180deg) translateZ(calc(var(--sleeve-depth) / 2)); }
+.la-sleeve-edge { background: #a6977d; }
+.la-sleeve-edge.top, .la-sleeve-edge.bottom { inset-inline: 0; height: var(--sleeve-depth); }
+.la-sleeve-edge.top { top: 0; transform: translateY(-50%) rotateX(90deg); }
+.la-sleeve-edge.bottom { bottom: 0; transform: translateY(50%) rotateX(-90deg); }
+.la-sleeve-edge.spine { inset-block: 0; left: 0; width: var(--sleeve-depth); transform: translateX(-50%) rotateY(-90deg); }
+.la-spatial .la-cover[aria-current="true"]::after { transform: translateZ(calc(var(--sleeve-depth) / 2 + 1px)); }
+.la-disc { width: 91%; aspect-ratio: 1; top: 4.5%; left: 14%; transform-style: preserve-3d; }
+.la-disc-face { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%;
+  background: repeating-radial-gradient(circle, #211d23 0 2px, #302b32 2px 3px); }
+.la-disc-face:first-child { transform: translateZ(1px); backface-visibility: hidden; }
+.la-disc-face:last-child { transform: rotateY(180deg) translateZ(1px); backface-visibility: hidden; }
+.la-disc-face::after { content: ''; position: absolute; width: 5%; aspect-ratio: 1;
+  border-radius: 50%; background: var(--sienna-ink); }
+.la-disc-face img { position: static; width: 38%; height: auto; aspect-ratio: 1; border-radius: 50%; }
+.la-spatial.is-picking .la-cover:not(.is-picked), .la-spatial.is-picking .la-details,
+.la-spatial.is-picking > .ui-list-foot { visibility: hidden; }
+.la-spatial.is-picking .la-wheel { overflow: visible; }
+.la-spatial.is-picking :is(.la-cover, .la-sleeve-front) { pointer-events: none; }
+
 @media (prefers-reduced-motion: no-preference) {
-  .ui-paper:has(> .la-full:not([hidden])) > .ui-paper-layer {
-    --paper-axis: to bottom;
+  .ui-paper:has(> .la-full:not(.la-spatial):not([hidden])) > .ui-paper-layer {
     clip-path: shape(from 10% 0, line to 90% 0, curve to 90% 100% with 103.3% 25% / 103.3% 75%,
       line to 10% 100%, curve to 10% 0 with -3.3% 75% / -3.3% 25%, close);
   }
-  .ui-paper:has(> .la-full.la-horizontal:not([hidden])) > .ui-paper-layer {
-    --paper-axis: to right;
-    clip-path: shape(from 0 5%, curve to 100% 5% with 25% -1.5% / 75% -1.5%, line to 100% 95%,
-      curve to 0 95% with 75% 101.5% / 25% 101.5%, close);
-  }
-  .ui-paper:has(> .la-full:not([hidden])) > .ui-paper-layer > .ui-paper-bg::after {
+  .ui-paper:has(> .la-full:not(.la-spatial):not([hidden])) > .ui-paper-layer > .ui-paper-bg::after {
     content: ''; position: absolute; inset: 0;
-    background: linear-gradient(var(--paper-axis), #60402845, transparent 30%, #fff9 48%, transparent 68%, #60402855);
+    background: linear-gradient(to bottom, #60402845, transparent 30%, #fff9 48%, transparent 68%, #60402855);
   }
 }
 .la-vinyl-flight { position: fixed; top: 0; left: 0; z-index: calc(var(--sienna-z-list) + 1);
@@ -66,10 +89,11 @@ const CSS = `
 
 const WHEEL_STEP = 100;
 const angleStep = Math.PI / 5.6;
+const spatialRadius = 1.82;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 let nextId = 0;
 
-export function createCoverCarousel({ onPick, onActiveChange, drawer, orientation = 'vertical', fullSize = false }) {
+export function createCoverCarousel({ onPick, onActiveChange, drawer, orientation = 'vertical', fullSize = false, spatial = false }) {
   injectTokens();
   if (!document.getElementById('sienna-cover-carousel')) {
     const style = document.createElement('style');
@@ -79,10 +103,13 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   const root = document.createElement('div'); root.className = 'la-carousel ui-list'; root.hidden = true;
   if (horizontal) root.classList.add('la-horizontal');
   if (fullSize) root.classList.add('la-full');
+  if (spatial) root.classList.add('la-spatial');
   const wheel = document.createElement('div'); wheel.className = 'la-wheel';
   wheel.id = `la-wheel-${++nextId}`; wheel.setAttribute('role', 'listbox');
   wheel.setAttribute('aria-orientation', orientation);
   if (horizontal) wheel.tabIndex = 0;
+  const stage = spatial ? document.createElement('div') : wheel;
+  if (spatial) { stage.className = 'la-stage'; stage.setAttribute('role', 'presentation'); wheel.appendChild(stage); }
   const details = document.createElement('div'); details.className = 'la-details'; details.setAttribute('aria-hidden', 'true');
   const title = document.createElement('div'); title.className = 'la-title';
   const artist = document.createElement('div'); artist.className = 'la-artist';
@@ -118,7 +145,10 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       const img = new Image(); img.alt = ''; img.decoding = 'async'; img.draggable = false;
       img.onerror = () => img.remove();
       img.src = src;
-      card.appendChild(img);
+      if (spatial) {
+        card.querySelector('.la-sleeve-front').appendChild(img);
+        for (const face of card.querySelectorAll('.la-disc-face')) face.appendChild(img.cloneNode());
+      } else card.appendChild(img);
     });
   }
 
@@ -139,6 +169,14 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       const offset = i - shownPosition;
       const distance = Math.abs(offset);
       const angle = clamp(offset * angleStep, -Math.PI / 2, Math.PI / 2);
+      if (spatial) {
+        const travel = calm.matches ? offset * 104 : 100 * spatialRadius * Math.sin(angle);
+        card.style.transform = `translate(-50%, -50%) translateX(${travel}%)`
+          + (calm.matches ? '' : ` translateZ(calc(var(--cover-size) * ${spatialRadius * (Math.cos(angle) - 1)})) rotateY(${angle}rad)`);
+        card.style.visibility = distance > (calm.matches ? 2 : 2.65) ? 'hidden' : '';
+        if (distance < 3) loadArt(i);
+        return;
+      }
       const axisOffset = calm.matches ? offset * 83 : 167 * Math.sin(angle);
       const z = (Math.cos(angle) - 1) * 178;
       const scale = 1 - Math.min(distance, 2) * 0.10;
@@ -244,7 +282,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     if (dragged && e.detail) return;
     const i = Number(e.target.closest('.la-cover')?.dataset.index);
     if (!items[i]) return;
-    if (i === active) onPick(i);
+    if (i === active) pick(i);
     else snap(i);
   });
 
@@ -263,8 +301,33 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     now = index;
   }
 
+  function pick(index) {
+    if (spatial) {
+      stop();
+      draw(index);
+    }
+    onPick(index);
+  }
+
+  function extractDisc(index) {
+    const card = cards[index];
+    const disc = card.querySelector('.la-disc');
+    root.classList.add('is-picking');
+    card.classList.add('is-picked');
+    const slide = disc.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(102%)' }],
+      { duration: 240, easing: 'cubic-bezier(.32,.02,.56,1)', fill: 'forwards' });
+    return slide.finished.then(() => {
+      const rect = disc.getBoundingClientRect();
+      disc.style.visibility = 'hidden';
+      slide.cancel();
+      card.animate([{ opacity: 1 }, { opacity: 0 }], { duration: MOTION.dur.mid, fill: 'forwards' });
+      return rect;
+    });
+  }
+
   function setItems(next, label, { index = 0, entrance = true } = {}) {
     stop();
+    root.classList.remove('is-picking');
     items = next;
     active = now = -1;
     loaded.clear();
@@ -274,10 +337,16 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
       card.id = `${wheel.id}-${i}`; card.dataset.index = i;
       card.setAttribute('role', 'option'); card.setAttribute('aria-selected', 'false');
       card.setAttribute('aria-label', [itemTitle(item), itemArtist(item)].filter(Boolean).join(' · '));
-      card.appendChild(icon('album', { size: 32 }));
+      if (spatial) {
+        card.innerHTML = `<div class="la-sleeve-face la-sleeve-back"></div>
+          <div class="la-sleeve-edge top"></div><div class="la-sleeve-edge bottom"></div><div class="la-sleeve-edge spine"></div>
+          <div class="la-disc"><div class="la-disc-face"></div><div class="la-disc-face"></div><div class="la-disc-face"></div></div>
+          <div class="la-sleeve-face la-sleeve-front"></div>`;
+        card.querySelector('.la-sleeve-front').appendChild(icon('album', { size: 32 }));
+      } else card.appendChild(icon('album', { size: 32 }));
       return card;
     });
-    wheel.replaceChildren(...cards);
+    stage.replaceChildren(...cards);
     if (!horizontal && !fullSize) items.forEach((_, i) => loadArt(i));
     draw(index);
     if (drawer && entrance && !calm.matches && cards.length) {
@@ -302,10 +371,10 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
     if (next === undefined) {
       stopMotion();
       if (position !== index) draw(index);
-      onPick(index);
+      pick(index);
     } else snap(next);
   }
 
   const center = index => { stopEntrance(); snap(index); };
-  return { el: root, listboxEl: wheel, setItems, setHint, activeId, getActive: () => active, setNowPlaying, center, stop, handleKeyDown };
+  return { el: root, listboxEl: wheel, setItems, setHint, activeId, getActive: () => active, setNowPlaying, center, stop, handleKeyDown, extractDisc };
 }

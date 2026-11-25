@@ -72,7 +72,10 @@ try {
         f.drawerOpens.push(showStack);
         return new Promise(resolve => { f.drawerReady = resolve; });
       },
-      onPickQueue: (item, i) => music.command('queueIndex', item.index ?? i),
+      onPickQueue: (item, i, from) => {
+        f.queuePickOrigin = from;
+        music.command('queueIndex', item.index ?? i);
+      },
     });
     f.search = createSearch({ music, onPlay: item => f.played.push(item), onOpenCollection: item => f.collections.push(item) });
     f.collection = createCollectionList({ music, onPlay: item => f.played.push(item), onShuffle: (item, col, pool) => f.shuffled.push({ item, col, pool }) });
@@ -261,11 +264,16 @@ try {
   const queueSheet = page.locator('.ln-qbox');
   await page.waitForFunction(() => document.querySelector('.ln-qbox').getBoundingClientRect().height > innerHeight * 0.9);
   assert.ok((await queueSheet.boundingBox()).width > page.viewportSize().width * 0.9);
-  assert.ok((await centered.boundingBox()).width > page.viewportSize().width * 0.38);
+  assert.ok((await centered.boundingBox()).width > page.viewportSize().width * 0.32);
   const queueCoverBounds = await centered.boundingBox();
   const queueCaptionBounds = await queueSheet.locator('.la-details').boundingBox();
   assert.ok(queueCaptionBounds.y >= queueCoverBounds.y + queueCoverBounds.height, 'the queue caption sits below the centered cover');
-  assert.match(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), /^shape\(/);
+  assert.equal(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), 'none');
+  assert.equal(await queueSheet.locator('.ui-paper-bg').evaluate(el => getComputedStyle(el, '::after').content), 'none');
+  assert.equal(await queueWheel.locator('.la-stage').evaluate(el => parseFloat(getComputedStyle(el).perspective) > 0), true);
+  assert.match(await queueCover(2).evaluate(el => el.style.transform), /translateZ.*rotateY/);
+  assert.equal(await centered.locator('.la-sleeve-face').count(), 2);
+  assert.equal(await centered.locator('.la-disc-face').count(), 3);
   assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'the queue wheel is focused on open');
   assert.equal(await queueWheel.getAttribute('aria-activedescendant'), await centered.getAttribute('id'));
   assert.equal(await current.getAttribute('data-index'), '1');
@@ -276,9 +284,11 @@ try {
   await wait(600);
   assert.equal((await page.evaluate(() => fixture.queuePaperSizes())).length, 1, 'the unrolling queue uses one full-size paper texture');
   await page.evaluate(() => fixture.drawerReady());
-  await page.locator('.la-vinyl-flight').first().waitFor();
-  assert.equal(await page.locator('.la-vinyl-flight').count(), 3);
-  await page.locator('.la-vinyl-flight').first().waitFor({ state: 'detached' });
+  assert.equal(await page.locator('.la-vinyl-flight').count(), 0);
+  const neutralTransform = await queueSheet.evaluate(el => getComputedStyle(el).transform);
+  await page.evaluate(() => fixture.liner.tilt(0.8, -0.6));
+  assert.notEqual(await queueSheet.evaluate(el => getComputedStyle(el).transform), neutralTransform);
+  await page.evaluate(() => fixture.liner.tilt(0, 0));
   await page.keyboard.press('ArrowRight');
   await expectCentered(2);
   await page.keyboard.press('ArrowLeft');
@@ -349,13 +359,22 @@ try {
   await expectCentered(1);
   await page.keyboard.press('Space');
   await expectCentered(2);
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.ln-qveil.picking .is-picked');
+  assert.equal(await queueCover(1).count(), 0, 'other records leave the accessibility tree during the pick');
+  assert.equal(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).visibility), 'hidden');
+  await page.waitForFunction(() => fixture.queuePickOrigin?.rect.width > 0);
+  assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), ['queueIndex', 2]);
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(() => fixture.liner.openQueue());
+  await expectCentered(2);
   await page.keyboard.press('ArrowLeft');
   await expectCentered(1);
   assert.equal(await queueCover(2).evaluate(el => el.style.transform.includes('rotateY')), false);
   assert.equal(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), 'none');
   await page.keyboard.press('Enter');
   assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), ['queueIndex', 1]);
+  assert.deepEqual(await page.evaluate(() => fixture.queuePickOrigin), { instant: true });
   await page.evaluate(() => fixture.liner.openQueue());
   await expectCentered(2);
   assert.equal(await page.evaluate(() => fixture.drawerOpens.length), 1, 'reduced motion leaves the queue drawer closed');
@@ -366,6 +385,21 @@ try {
   assert.equal(await page.locator('.ln-qveil .la-wheel').isVisible(), false);
   assert.equal(await page.getByRole('button', { name: 'Now playing', exact: true }).isVisible(), false);
   await page.keyboard.press('Escape');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.evaluate(async () => {
+    fixture.settings.set('coverCarousel', true);
+    await fixture.liner.openQueue();
+  });
+  await expectCentered(2);
+  const interruptedPick = await queueWheel.evaluate(el => {
+    const before = fixture.commands.length;
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    fixture.liner.close();
+    return [fixture.commands.length - before, fixture.commands.at(-1), fixture.queuePickOrigin];
+  });
+  assert.deepEqual(interruptedPick, [1, ['queueIndex', 2], { instant: true }], 'closing mid-extraction still plays the pick');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(() => fixture.settings.set('coverCarousel', false));
   await page.evaluate(async () => {
     const { createSettingsPanel } = await import('/src/settings-panel.js');
     fixture.panel = createSettingsPanel({ onClose: fixture.liner.restoreQueueFocusAfterSettings });
