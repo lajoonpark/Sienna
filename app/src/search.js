@@ -75,7 +75,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   if (carousel) root.appendChild(carousel.el);
   document.body.appendChild(root);
   paperSurface(root, { seed: 71, elevation: 'lift', amp: 5, cap: 10, crop: true });
-  const sheet = unrollSheet(root);
+  const sheet = unrollSheet(root, tabs.el);
   root.addEventListener('pointerdown', e => { if (e.target !== input) e.preventDefault(); });
   root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
   let isOpen = false, seq = 0, timer = 0, shown = [], shownFor = null, filter = 'songs', artistView = null, pendingEnter = false;

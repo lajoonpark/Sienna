@@ -6,7 +6,7 @@ import { createSheet, setOverlayOpen, sheetOpen } from './ui/sheet.js';
 //   - WebGL initialization fallback screen
 import { injectTokens, MOTION } from './ui/tokens.js';
 import { paperSurface } from './ui/paper.js';
-import { unrollSheet } from './ui/unroll.js';
+import { CLOSE_MS, unrollSheet } from './ui/unroll.js';
 import { createList } from './ui/list.js';
 import { createCoverCarousel } from './ui/cover-carousel.js';
 import { inkButton, stamp } from './ui/inputs.js';
@@ -117,7 +117,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   qBox.appendChild(queueList.el);
   const qScroll = queueList.scrollEl;
   paperSurface(qBox, { seed: 61, elevation: 'lift', amp: 5, cap: 10, crop: true });
-  const qSheet = unrollSheet(qBox);
+  const qSheet = unrollSheet(qBox, qBox.querySelector('.ln-qtop'));
 
   let mode = null; // null | 'lyrics' | 'queue'
   let qCloseTimer = 0;
@@ -173,7 +173,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     qCloseTimer = setTimeout(() => {
       qveil.classList.remove('closing');
       if (!keepDrawer) onQueueClose?.();
-    }, MOTION.dur.mid + MOTION.dur.fast);
+    }, CLOSE_MS + MOTION.dur.fast);
   }
 
   function close({ keepDrawer = false } = {}) {
