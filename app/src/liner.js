@@ -304,7 +304,11 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   function restoreQueueFocusAfterSettings() {
     const restore = focusQueueAfterSettings && mode === 'queue' && showingCovers() && !sheetOpen();
     focusQueueAfterSettings = false;
-    if (restore) queueCarousel.listboxEl.focus({ preventScroll: true });
+    if (!restore) return;
+    const focused = document.activeElement;
+    if (qBox.contains(focused) && !focused.matches(':disabled') && focused.getClientRects().length
+      && getComputedStyle(focused).visibility === 'visible') return;
+    queueCarousel.listboxEl.focus({ preventScroll: true });
   }
 
   async function refreshQueue({ retryIfStale = true, expectedVideoId = null } = {}) {
