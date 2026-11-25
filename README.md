@@ -105,9 +105,15 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
   globally.
 - **Richer Search.** Press **⌃⌥J** to search **Songs**, **Albums**, **Playlists**, or **Artists**
   (`Tab` switches tabs). Songs slide out of the suitcase drawer; albums and playlists fan open into
-  records; artists open into their top songs and releases.
+  records; artists open into their top songs and releases. The top five results also sit above the
+  list as a strip of painted covers — the chord it names (⌥/⇧, whichever is free of your
+  shortcuts) + ↑ hands it the keyboard, `←` `→` choose, `Enter` plays and `↓` goes back to the
+  list. In the mini player an empty search instead opens your **Listen again** shelf as a vertical
+  wheel of covers to spin through.
 - **Shared paper lists.** Search, collection songs and Up next each sit on one paper sheet with
-  ruled rows: terracotta marks the keyboard cursor and indigo marks the playing song, and a small
+  ruled rows. Up next can instead spin as a horizontal wheel of painted covers centred on the playing
+  song — Settings > Look > **Cover carousel** (on by default) switches it and the search cover
+  strip between **Carousel** and the ruled **Paper list**. terracotta marks the keyboard cursor and indigo marks the playing song, and a small
   hand-drawn kind icon on a paper dab at the end of each row tells songs, albums, playlists, artists
   and podcasts apart. Collections
   filter as you type; **Play** starts the first filtered song and **Shuffle** uses the filtered
@@ -141,6 +147,7 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
 | `L` | Like |
 | `Tab` / `Shift+Tab` | Next / previous section |
 | `Esc` | Close open sheet/spread, return home, or close the mini player |
+| Chord shown under the search cover strip + `↑` | Browse the top-five result covers (`←` `→` choose, `Enter` play, `↓` back to the list) |
 | `⌘,` (`Ctrl+,` on Windows/Linux) | Settings |
 
 The first three shortcuts can be changed in **Settings → Shortcuts**. Click or press any key to skip the intro.
