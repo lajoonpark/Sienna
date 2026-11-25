@@ -257,9 +257,9 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
         side.el.classList.toggle('faded', !full); // faded words let the cursor through to the racks
       }
       for (const b of buttons) {
-        // the first frame a record is up comes before steerClear has measured the words (blockers): measure here
-        if (!hold && !b.away) b.home = null;
-        else if (!b.home && !b.away) b.home = b.el.getBoundingClientRect();
+        // where the word sits while it is in place, measured every frame a record is up: steerClear (blockers)
+        // stops measuring once the record is framed, and the side can still grow over it (cursor near the edge)
+        if (!b.away) b.home = hold ? b.el.getBoundingClientRect() : null;
         const h = b.home, inert = !!hold && !!h && h.left < hold.r && h.right > hold.l && h.top < hold.b && h.bottom > hold.t;
         const out = inert && aside;
         b.out = out;
