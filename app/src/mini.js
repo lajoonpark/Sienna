@@ -437,7 +437,7 @@ addEventListener('wheel', (e) => {
 
 // ---- keys: Esc shuts it; Space, arrows, L, M as in the shop ----
 addEventListener('keydown', (e) => {
-  if (search.isOpen()) return;
+  if (search.isOpen() || liner.isQueueCarouselOpen()) return;
   const cmd = { ' ': 'toggle', ArrowRight: 'next', ArrowLeft: 'previous', l: 'like', L: 'like', m: 'mute', M: 'mute' }[e.key];
   if (e.key === 'Escape') { e.preventDefault(); dismiss(); }
   else if (cmd) { e.preventDefault(); music.command(cmd); }

@@ -31,7 +31,7 @@ const CSS = `
   width: min(calc(var(--sienna-space-10) * 14), 90vw); max-height: calc(100dvh - var(--sienna-space-10) * 2);
   display: flex; flex-direction: column; }
 .ln-qtop { display: flex; align-items: center; justify-content: space-between; gap: var(--sienna-space-3);
-  margin: 0 var(--sienna-space-2) var(--sienna-space-2); }
+  order: -1; margin: 0 var(--sienna-space-2) var(--sienna-space-2); }
 .ln-qtitle { font: 700 var(--sienna-text-2xl)/1.02 var(--sienna-font); width: 100%;
   display: flex; align-items: center; justify-content: space-between; gap: var(--sienna-space-3);
   color: var(--sienna-indigo); }
@@ -109,7 +109,8 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     onPick: idx => pickQueue(renderedItems[idx], idx),
     drawer: { open: () => drawerReady, position: drawerOrigin, close() {} },
   });
-  qBox.append(queueList.el, queueCarousel.el);
+  qBox.prepend(queueCarousel.el);
+  qBox.appendChild(queueList.el);
   const qScroll = queueList.scrollEl;
   paperSurface(qBox, { seed: 61, elevation: 'lift', amp: 5, cap: 10, crop: true });
   const qSheet = unrollSheet(qBox);
@@ -403,6 +404,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     if (mode === 'queue' && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
     if (['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Enter'].includes(e.key)
       || showingCovers() && ['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      if (showingCovers() && e.target !== queueCarousel.listboxEl) return;
       if (e.key === 'Enter' && e.target.closest?.('button')) return;
       (showingCovers() ? queueCarousel : queueList).handleKeyDown(e);
       e.preventDefault(); e.stopImmediatePropagation(); return;
@@ -416,5 +418,6 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     close,
     setStatus,
     isOpen: () => !!mode,
+    isQueueCarouselOpen: () => mode === 'queue' && showingCovers(),
   };
 }

@@ -954,7 +954,7 @@ const typing = (e) => {
 const searchOpen = () => search.isOpen() || collectionList.isOpen();
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock']);
 addEventListener('keydown', (e) => {
-  if (typing(e) || searchOpen()) return;
+  if (typing(e) || searchOpen() || liner.isQueueCarouselOpen()) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (nav.intro) {
     if (MODIFIER_KEYS.has(e.key)) return;

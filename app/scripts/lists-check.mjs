@@ -258,7 +258,12 @@ try {
   await page.evaluate(() => { fixture.queue.forEach(it => { it.selected = it.videoId === 's2'; }); fixture.emit({ videoId: 's2', queueSig: 2 }); });
   await page.waitForFunction(() => document.querySelector('.ln-qveil .la-cover[aria-current="true"]')?.dataset.index === '2');
   await expectCentered(1);
-  await page.getByRole('button', { name: 'Now playing', exact: true }).click();
+  const nowPlaying = page.getByRole('button', { name: 'Now playing', exact: true });
+  await page.keyboard.press('Tab');
+  assert.equal(await nowPlaying.evaluate(el => el === document.activeElement), true);
+  await page.keyboard.press('ArrowLeft');
+  await expectCentered(1);
+  await page.keyboard.press('Space');
   await expectCentered(2);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.keyboard.press('ArrowLeft');
