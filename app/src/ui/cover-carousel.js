@@ -39,7 +39,7 @@ const angleStep = Math.PI / 5.6;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 let nextId = 0;
 
-export function createCoverCarousel({ onPick, onActiveChange, drawer, orientation = 'vertical' }) {
+export function createCoverCarousel({ onPick, onActiveChange, drawer, orientation = 'vertical', hintText }) {
   injectTokens();
   if (!document.getElementById('sienna-cover-carousel')) {
     const style = document.createElement('style');
@@ -60,7 +60,7 @@ export function createCoverCarousel({ onPick, onActiveChange, drawer, orientatio
   details.append(title, artist);
   const hint = document.createElement('div'); hint.className = 'ui-list-foot';
   hint.id = `${wheel.id}-hint`;
-  hint.textContent = `Scroll or drag · ${horizontal ? '←→' : '↑↓'} choose · Enter play · Esc close`;
+  hint.textContent = hintText ?? `Scroll or drag · ${horizontal ? '←→' : '↑↓'} choose · Enter play · Esc close`;
   wheel.setAttribute('aria-describedby', hint.id);
   root.append(wheel, details, hint);
 

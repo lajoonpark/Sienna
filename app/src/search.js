@@ -11,6 +11,16 @@ import { settings } from './settings.js';
 
 const FILTERS = ['songs', 'albums', 'playlists', 'artists'];
 const DEBOUNCE = 250;
+const STRIP_LIMIT = 5;
+const STRIP_SHORTCUT = 'Alt+ArrowUp';
+const STRIP_CSS = `
+.cs > .cs-result-strip { flex: none; margin-bottom: var(--sienna-space-2); }
+.cs-result-strip .la-wheel { flex-basis: clamp(64px, 16dvh, 116px); }
+.cs-result-strip .la-cover { --cover-size: min(108px, 26cqw, 92cqh); }
+.cs-result-strip .la-details { padding-top: 0; }
+.cs-result-strip.is-active .la-wheel { outline: 1px solid var(--sienna-indigo); outline-offset: -1px; }
+.cs-result-strip .ui-list-foot { white-space: normal; }
+`;
 let openCount = 0;
 export const searchOpen = () => openCount > 0;
 
@@ -32,10 +42,21 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     onActiveChange: () => syncActive(),
   });
   const carousel = coverSuggestions && suggest ? createCoverCarousel({ onPick: i => pick(i, true), onActiveChange: syncActive, drawer: coverDrawer }) : null;
+  const resultStrip = createCoverCarousel({
+    orientation: 'horizontal', onPick: i => pick(i), onActiveChange: syncActive,
+    hintText: 'Alt+↑ browse covers · ←→ choose · Enter play · ↓ list',
+  });
+  resultStrip.el.classList.add('cs-result-strip');
+  resultStrip.listboxEl.tabIndex = -1;
+  if (!document.getElementById('sienna-search-strip')) {
+    const style = document.createElement('style');
+    style.id = 'sienna-search-strip'; style.textContent = STRIP_CSS;
+    document.head.appendChild(style);
+  }
   list.el.classList.add('cs-list');
   input.setAttribute('role', 'combobox'); input.setAttribute('aria-controls', list.listboxEl.id);
   input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false');
-  root.append(bar.el, tabs.el, head, list.el);
+  root.append(bar.el, tabs.el, head, resultStrip.el, list.el);
   if (carousel) root.appendChild(carousel.el);
   document.body.appendChild(root);
   paperSurface(root, { seed: 71, elevation: 'lift', amp: 5, cap: 10, crop: true });
@@ -43,15 +64,40 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   root.addEventListener('pointerdown', e => { if (e.target !== input) e.preventDefault(); });
   root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
   let isOpen = false, seq = 0, timer = 0, shown = [], shownFor = null, filter = 'songs', artistView = null, pendingEnter = false;
-  let suggestion = null;
+  let suggestion = null, stripActive = false;
   const cache = new Map();
   const showingCovers = () => carousel && !carousel.el.hidden;
   function syncActive() {
-    const box = showingCovers() ? carousel.listboxEl : list.listboxEl;
-    const id = showingCovers() ? carousel.activeId() : box.getAttribute('aria-activedescendant');
+    const picker = showingCovers() ? carousel : stripActive ? resultStrip : null;
+    const box = picker?.listboxEl ?? list.listboxEl;
+    const id = picker ? picker.activeId() : box.getAttribute('aria-activedescendant');
     input.setAttribute('aria-controls', box.id);
     if (id) input.setAttribute('aria-activedescendant', id); else input.removeAttribute('aria-activedescendant');
   }
+  function setStripActive(next) {
+    stripActive = next;
+    resultStrip.el.classList.toggle('is-active', next);
+    syncActive();
+  }
+  function hideResultStrip() {
+    resultStrip.stop();
+    resultStrip.el.hidden = true;
+    input.removeAttribute('aria-keyshortcuts');
+    if (stripActive) setStripActive(false);
+  }
+  function syncResultStrip() {
+    if (!settings.get('coverCarousel') || !shown.length || artistView || shownFor !== `${filter}|${input.value.trim()}`) {
+      hideResultStrip();
+      return;
+    }
+    resultStrip.el.hidden = false;
+    input.setAttribute('aria-keyshortcuts', STRIP_SHORTCUT);
+    resultStrip.setItems(shown.slice(0, STRIP_LIMIT), 'Top search results');
+  }
+  resultStrip.listboxEl.addEventListener('pointerdown', e => {
+    if (e.isPrimary && e.button === 0) setStripActive(true);
+  });
+  list.listboxEl.addEventListener('pointerdown', () => { if (stripActive) setStripActive(false); });
   function hideCovers() {
     if (!showingCovers()) return;
     carousel.stop();
@@ -66,6 +112,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   }
   function goBack() { if (!artistView) return; artistView = null; run(); }
   function note(kind, text, retry = null) {
+    hideResultStrip();
     shown = []; shownFor = null; head.hidden = true; head.style.display = 'none';
     list.setItems([], { animate: false });
     if (kind === 'loading') list.setLoading(text);
@@ -107,15 +154,19 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   function apply(items, key) {
     render(items); shownFor = key;
     if (pendingEnter) { pendingEnter = false; if (shown.length) pick(0); }
+    if (isOpen && !artistView) syncResultStrip();
   }
   function renderSuggestions() {
     render(suggestion?.items ?? [], suggestion?.title ?? null, { covers: carousel && settings.get('coverCarousel') });
   }
-  if (carousel) settings.on('coverCarousel', () => {
-    if (isOpen && !input.value.trim() && suggestion) renderSuggestions();
+  settings.on('coverCarousel', () => {
+    if (!isOpen) return;
+    if (input.value.trim()) syncResultStrip();
+    else if (carousel && suggestion) renderSuggestions();
   });
   async function showSuggestions() {
     suggestion = null;
+    hideResultStrip();
     hideCovers();
     shown = []; shownFor = null; head.hidden = true; head.style.display = 'none'; pendingEnter = false;
     list.setItems([], { animate: false }); list.el.hidden = !suggest;
@@ -133,6 +184,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   async function run() {
     const q = input.value.trim(); artistView = null;
     if (!q) return showSuggestions();
+    hideResultStrip();
     hideCovers();
     list.el.hidden = false;
     const key = `${filter}|${q}`;
@@ -150,6 +202,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   }
   input.addEventListener('input', () => {
     seq++; clearTimeout(timer); pendingEnter = false; artistView = null;
+    hideResultStrip();
     if (!input.value.trim()) { run(); return; }
     if (showingCovers()) {
       hideCovers();
@@ -161,15 +214,21 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   input.addEventListener('keydown', e => {
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); if (artistView) goBack(); else close(); }
-    else if (e.key === 'Tab') {
+    else if (e.altKey && e.key === 'ArrowUp' && !resultStrip.el.hidden) {
+      e.preventDefault(); setStripActive(true);
+    } else if (e.key === 'Tab') {
       e.preventDefault(); tabs.setValue(FILTERS[(FILTERS.indexOf(filter) + (e.shiftKey ? -1 : 1) + FILTERS.length) % FILTERS.length], { notify: true });
     } else if (showingCovers()) carousel.handleKeyDown(e);
+    else if (stripActive && ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'].includes(e.key)) resultStrip.handleKeyDown(e);
     else if (e.key === 'Enter') {
       e.preventDefault(); const q = input.value.trim();
       if (!q) { if (list.getActive() >= 0) pick(list.getActive()); return; }
       if ((shownFor === `${filter}|${q}` || artistView) && shown.length) list.handleKeyDown(e);
       else { pendingEnter = true; clearTimeout(timer); run(); }
-    } else list.handleKeyDown(e);
+    } else {
+      if (stripActive && ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(e.key)) setStripActive(false);
+      list.handleKeyDown(e);
+    }
   });
   for (const type of ['keyup', 'keypress']) input.addEventListener(type, e => e.stopPropagation());
   input.addEventListener('blur', () => { if (isOpen) setTimeout(() => isOpen && document.hasFocus() && input.focus({ preventScroll: true }), 0); });
@@ -179,6 +238,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     setOverlayOpen(root, true); veil.show(true); root.classList.remove('closing'); root.classList.add('show');
     input.setAttribute('aria-expanded', 'true'); bar.play(true); input.focus({ preventScroll: true }); input.select();
     if (!input.value.trim()) showSuggestions();
+    else syncResultStrip();
     sheet.open();
   }
   function close() {
@@ -186,6 +246,8 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     setOverlayOpen(root, false); veil.show(false); input.setAttribute('aria-expanded', 'false');
     root.classList.replace('show', 'closing'); bar.play(false); input.blur();
     carousel?.stop();
+    resultStrip.stop();
+    if (stripActive) setStripActive(false);
     sheet.close();
   }
   window.addEventListener('keydown', e => {
