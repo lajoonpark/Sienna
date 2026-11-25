@@ -899,7 +899,12 @@ try {
         }, phase);
         if (phase === 'flight') await page.waitForFunction(() => window.__mini.flights.list.some(f => f.screenOrigin));
         if (input === 'click') await page.mouse.click(2, 2);
-        else await page.keyboard.press(input);
+        else if (input === 'Escape') {
+          await page.keyboard.down('Escape');
+          await page.keyboard.down('Escape');
+          assert.equal(await page.evaluate(() => window.__mini.phase), 'open', `${label}: holding Escape must not close the player`);
+          await page.keyboard.up('Escape');
+        } else await page.keyboard.press(input);
         assert.deepEqual(await page.evaluate(queue => {
           const { flights, suitcase, phase } = window.__mini;
           const picked = document.querySelector(`${queue ? '.ln-qveil' : '.cs'} .is-picked`);
@@ -916,6 +921,9 @@ try {
     }
   }
   pass('Up next and Listen again: Esc, Enter and click skip extraction or flight, seat and play the pick, and leave Search usable');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(() => window.__mini.phase), 'closing', 'a separate Escape press still closes the player');
+  pass('holding Escape after a skip does not close the mini player; a fresh press still closes it');
   assert.deepEqual(errors, []);
   console.log(`all lists checks passed -> ${out}`);
 } finally { await browser.close(); await server.close(); }

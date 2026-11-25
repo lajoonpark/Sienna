@@ -1,12 +1,16 @@
 export function listenForCoverPickSkip(skip) {
-  let swallowClick = false;
+  let swallowClick = false, swallowEscape = false;
   const consume = e => {
     e.preventDefault();
     e.stopImmediatePropagation();
   };
   window.addEventListener('keydown', e => {
-    if (!e.repeat && (e.key === 'Escape' || e.key === 'Enter') && skip()) consume(e);
+    if (e.key === 'Escape') {
+      if (!e.repeat) swallowEscape = skip();
+      if (swallowEscape) consume(e);
+    } else if (e.key === 'Enter' && !e.repeat && skip()) consume(e);
   }, true);
+  window.addEventListener('keyup', e => { if (e.key === 'Escape') swallowEscape = false; }, true);
   window.addEventListener('pointerdown', e => {
     if (!e.isPrimary || e.button !== 0) return;
     swallowClick = skip();
