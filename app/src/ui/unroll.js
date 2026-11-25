@@ -11,7 +11,7 @@ const CSS = `
 .ui-unroll-rolling .ui-paper-bg { --ui-paper-bottom-tear: 0; }
 .ui-unroll-roll { position: absolute; inset-inline: 0; top: calc(100% - ${ROLL_MIDLINE + 1}px);
   width: 100%; height: ${ROLL_HEIGHT}px; z-index: 3; pointer-events: none;
-  filter: drop-shadow(0 3px 3px rgba(36, 25, 18, 0.24)); }
+  filter: drop-shadow(0 2px 2px rgba(36, 25, 18, 0.18)); }
 .list-overlay.closing > .ui-unroll-roll { opacity: 0;
   transition: opacity var(--sienna-dur-fast) var(--sienna-ease-out) var(--sienna-dur-mid); }
 `;
@@ -78,7 +78,7 @@ export function unrollSheet(el, header) {
     }
     full = length;
     const mine = el.animate([{ height: `${from}px` }, { height: `${to}px` }], {
-      duration, delay, easing: closing ? 'cubic-bezier(0.48, 0.05, 0.76, 0.76)' : 'cubic-bezier(0.24, 0.48, 0.3, 1)',
+      duration, delay, easing: closing ? 'cubic-bezier(0.42, 0.05, 0.67, 0.82)' : 'cubic-bezier(0.22, 0.18, 0.35, 1)',
       fill: closing ? 'both' : 'backwards',
     });
     size = mine;
