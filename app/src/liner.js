@@ -412,6 +412,16 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   addEventListener('keydown', (e) => {
     if (mode !== 'queue' || sheetOpen()) return;
     if (mode === 'queue' && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
+    if (showingCovers() && e.key === 'Tab' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      const controls = [queueCarousel.listboxEl, ...(!qNowBtn.hidden ? [qNowBtn] : []), qCloseBtn];
+      const index = controls.indexOf(document.activeElement);
+      const next = index < 0 ? (e.shiftKey ? controls.length - 1 : 0)
+        : (index + (e.shiftKey ? -1 : 1) + controls.length) % controls.length;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      controls[next].focus({ preventScroll: true });
+      return;
+    }
     if (['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Enter'].includes(e.key)
       || showingCovers() && ['ArrowLeft', 'ArrowRight'].includes(e.key)) {
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;

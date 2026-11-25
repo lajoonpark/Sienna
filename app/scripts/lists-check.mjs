@@ -293,6 +293,15 @@ try {
   const nowPlaying = page.getByRole('button', { name: 'Now playing', exact: true });
   await page.keyboard.press('Tab');
   assert.equal(await nowPlaying.evaluate(el => el === document.activeElement), true);
+  const closeQueue = page.locator('.ln-qclose').getByRole('button', { name: 'Close (Esc)', exact: true });
+  await page.keyboard.press('Tab');
+  assert.equal(await closeQueue.evaluate(el => el === document.activeElement), true);
+  await page.keyboard.press('Tab');
+  assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'Tab after Close wraps to the queue wheel');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await closeQueue.evaluate(el => el === document.activeElement), true, 'Shift+Tab from the wheel wraps to Close');
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await nowPlaying.evaluate(el => el === document.activeElement), true);
   await page.keyboard.press('ArrowLeft');
   await expectCentered(1);
   await page.keyboard.press('Space');
