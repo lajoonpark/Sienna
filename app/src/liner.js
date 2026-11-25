@@ -404,6 +404,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     if (mode === 'queue' && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
     if (['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Enter'].includes(e.key)
       || showingCovers() && ['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       if (showingCovers() && e.target !== queueCarousel.listboxEl) return;
       if (e.key === 'Enter' && e.target.closest?.('button')) return;
       (showingCovers() ? queueCarousel : queueList).handleKeyDown(e);

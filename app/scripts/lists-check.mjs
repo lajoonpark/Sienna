@@ -229,6 +229,20 @@ try {
   assert.equal(await page.locator('.ln-qveil .la-artist').innerText(), 'Artist 1');
   assert.equal(await queueWheel.locator('.la-title, .la-artist').count(), 0);
   assert.equal(await page.evaluate(() => fixture.drawerOpens.at(-1)), false);
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.set('search', 'Control+Alt+Right');
+  });
+  await queueWheel.focus();
+  await page.keyboard.press('Control+Alt+ArrowRight');
+  assert.equal(await page.evaluate(() => fixture.search.isOpen()), true, 'the focused queue wheel lets the modified Search shortcut through');
+  await expectCentered(1);
+  await page.keyboard.press('Escape');
+  await page.evaluate(async () => {
+    const { shortcuts } = await import('/src/shortcuts.js');
+    await shortcuts.reset();
+  });
+  await queueWheel.focus();
   await wait(600);
   await page.evaluate(() => fixture.drawerReady());
   await page.locator('.la-vinyl-flight').first().waitFor();
