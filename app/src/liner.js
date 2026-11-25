@@ -262,7 +262,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
       queueCarousel.el.hidden = false;
       queueCarousel.setItems(renderedItems, 'Up next', { index: Math.max(0, preferred < 0 ? selectedIdx : preferred), entrance: animate });
       applySelectedToDom(selectedIdx);
-      if ((animate && focused === queueOpener) || queueList.el.contains(focused)) {
+      if ((animate && (focused === queueOpener || focused === document.body)) || queueList.el.contains(focused)) {
         queueCarousel.listboxEl.focus({ preventScroll: true });
       }
       return;
