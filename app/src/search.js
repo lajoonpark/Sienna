@@ -174,7 +174,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     } catch { if (mine === seq && isOpen) note('error', 'could not open artist', () => openArtist(item)); }
   }
   function pick(i, fromCoverPicker = false) {
-    const item = shown[i]; if (!item || pendingCover) return;
+    const item = shown[i]; if (!isOpen || !item || pendingCover) return;
     if (item.kind === 'artist' && item.browseId && music.artistSongs) { openArtist(item); return; }
     const openCollection = ['album', 'playlist'].includes(item.kind) && onOpenCollection;
     if (fromCoverPicker && onPlay && !openCollection && !calm.matches) {

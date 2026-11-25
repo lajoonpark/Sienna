@@ -601,6 +601,23 @@ try {
     'the Listen again hint fits below the caption within the mini player');
   await page.setViewportSize(desktopSize);
   assert.equal(await page.locator('.la-vinyl-flight').count(), 0);
+  const closingCover = await activeCover.evaluate(card => {
+    fixture.search.close();
+    const { x, y, width, height } = card.getBoundingClientRect();
+    const hit = document.elementFromPoint(x + width / 2, y + height / 2);
+    if (hit?.closest('.la-cover') !== card) return null;
+    hit.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    return card.classList.contains('is-picked');
+  });
+  assert.notEqual(closingCover, null, 'the centered sleeve can still be hit during the close transition');
+  await wait(300);
+  await page.keyboard.press('Control+Alt+J');
+  assert.equal(await page.evaluate(() => fixture.search.isOpen()), true, 'the Search shortcut works after clicking during close');
+  assert.equal(closingCover, false, 'a click during close does not extract the record');
+  assert.deepEqual(await page.evaluate(() => fixture.played), []);
+  await expectCover(0);
+  await wait(550);
+  pass('Listen again ignores clicks during close and Search can reopen from the keyboard');
   await page.keyboard.press('ArrowDown');
   await expectCover(1);
   const wheelBounds = await carousel.boundingBox();
