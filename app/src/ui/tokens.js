@@ -12,7 +12,12 @@ export const COLORS = Object.freeze({
   indigo: '#2d3158',            // indigo oil paint (plates, headings, progress, now-playing)
   terracotta: '#a6442f',        // terracotta oil paint (hover, active, selected, liked)
   danger: '#963420',            // deeper burnt-sienna red (errors, confirmations, destructive actions)
-  veil: 'rgba(46, 34, 26, 0.24)', // warm umber overlay backdrop
+  kraft: '#c49c6c',             // kraft board: the divider tabs standing behind the open one
+  edge: '#a07c55',              // the cut edge of the card board (its visible thickness)
+  veil: 'rgba(24, 15, 22, 0.46)',  // lights down behind a card
+  night: 'rgba(22, 13, 20, 0.74)', // lights further down behind the floating record carousel
+  onNight: '#f6eddc',           // lettering straight on the dimmed shop
+  onNight2: '#dccbae',          // secondary lettering on the dimmed shop
 });
 
 // Readable book serif for small text, meta, hints, times, lyrics, Settings copy and tour body.
@@ -110,6 +115,11 @@ export const CONTRAST_PAIRS = Object.freeze([
   { name: 'paper on terracotta (hot plates, selected tabs/rows)', fg: COLORS.paper, bg: COLORS.terracotta },
   { name: 'paperLo on terracotta (secondary text on selected row)', fg: COLORS.paperLo, bg: COLORS.terracotta },
   { name: 'paper on danger (destructive action button)', fg: COLORS.paper, bg: COLORS.danger },
+  { name: 'ink on kraft (divider tabs behind the open one)', fg: COLORS.ink, bg: COLORS.kraft },
+  // the veil over the brightest wall in either window (#f4c98a): what text on the dimmed shop sits on at worst
+  { name: 'onNight on the carousel veil (record captions)', fg: COLORS.onNight, bg: '#4f3c30' },
+  { name: 'onNight2 on the carousel veil (artist, place in the queue)', fg: COLORS.onNight2, bg: '#4f3c30' },
+  { name: 'onNight2 on the key-hint plate', fg: COLORS.onNight2, bg: '#33262a' },
 ]);
 
 export const CSS_VARS = Object.freeze({
@@ -121,7 +131,12 @@ export const CSS_VARS = Object.freeze({
   '--sienna-indigo': COLORS.indigo,
   '--sienna-terracotta': COLORS.terracotta,
   '--sienna-danger': COLORS.danger,
+  '--sienna-kraft': COLORS.kraft,
+  '--sienna-edge': COLORS.edge,
   '--sienna-veil': COLORS.veil,
+  '--sienna-night': COLORS.night,
+  '--sienna-on-night': COLORS.onNight,
+  '--sienna-on-night-2': COLORS.onNight2,
 
   '--sienna-serif': SERIF,
 
@@ -151,7 +166,6 @@ export const CSS_VARS = Object.freeze({
   '--sienna-hairline': 'rgba(112, 87, 66, 0.28)',
   '--sienna-scroll-thumb': 'rgba(112, 87, 66, 0.45)',
   '--sienna-disabled': '0.44',
-  '--sienna-veil-filter': 'saturate(0.76) brightness(0.94)',
 
   '--sienna-dur-fast': `${MOTION.dur.fast}ms`,
   '--sienna-dur-mid': `${MOTION.dur.mid}ms`,
@@ -172,7 +186,7 @@ export const CSS_VARS = Object.freeze({
 
 export const TOKENS_CSS = `:root {\n${
   Object.entries(CSS_VARS).map(([k, v]) => `  ${k}: ${v};`).join('\n')
-}\n}\n@media (prefers-reduced-motion: reduce) {\n  :root {\n    --sienna-dur-fast: 0ms;\n    --sienna-dur-mid: 0ms;\n    --sienna-dur-slow: 0ms;\n  }\n  *, *::before, *::after {\n    animation-duration: 0.01ms !important;\n    animation-delay: 0ms !important;\n    animation-iteration-count: 1 !important;\n    transition-duration: 0ms !important;\n    scroll-behavior: auto !important;\n  }\n  .st-flap, .ln-flap, .tr-amb, .ui-sheet-flap { display: none !important; }\n  .cs .cs-slipwrap, .cl .cl-slipwrap { mask-image: none !important; }\n}\n`;
+}\n}\n@media (prefers-reduced-motion: reduce) {\n  :root {\n    --sienna-dur-fast: 0ms;\n    --sienna-dur-mid: 0ms;\n    --sienna-dur-slow: 0ms;\n  }\n  *, *::before, *::after {\n    animation-duration: 0.01ms !important;\n    animation-delay: 0ms !important;\n    animation-iteration-count: 1 !important;\n    transition-duration: 0ms !important;\n    scroll-behavior: auto !important;\n  }\n  .st-flap, .ln-flap, .tr-amb { display: none !important; }\n  .cs .cs-slipwrap, .cl .cl-slipwrap { mask-image: none !important; }\n}\n`;
 
 export function injectTokens(doc = globalThis.document) {
   if (!doc?.head || doc.getElementById('sienna-tokens')) return;

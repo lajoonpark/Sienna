@@ -1,13 +1,12 @@
 import { createSheet } from './ui/sheet.js';
 import { createScrollCue } from './ui/scroll-cue.js';
 import { smoothWheel } from './ui/smooth-scroll.js';
-// Settings: a SETTINGS word top-right (like HOME top-left) and Cmd+, (Ctrl+, elsewhere) open a
-// torn paper card in the middle of the screen. A side rail of brush-stroke words on the left picks a
-// page (Account, Look, Playback, Performance, Shortcuts, Tour); the page shows on the right. Each
-// setting is a row of radio chips; the chosen one is painted terracotta. Changes apply at once
-// and are remembered (settings.js). The card leans toward the cursor (cursortilt.js), like the tour's notes.
-// Esc, clicking outside the card, or DONE closes it. While it is open the shop's keys stay quiet
-// (main.js checks isOpen()); Up/Down (or Tab) move through the rail.
+// Settings: the Settings sign top-right and Cmd+, (Ctrl+, elsewhere) tip up a crate card in the middle
+// of the screen. Its divider tabs pick a page (Account, Look, Playback, Performance, Shortcuts, Tour,
+// About). Each setting is a row: what it is on the left, a switch (or its buttons) on the right. Changes
+// apply at once and are remembered (settings.js). Esc, the close stamp or clicking outside the card
+// closes it. While it is open the shop's keys stay quiet (main.js checks isOpen()); the arrows (or
+// Tab) move through the tabs.
 //
 //   const panel = createSettingsPanel({ music, onTour });   panel.open(page?) / close() / toggle() / isOpen()
 //   music: the store (music.js), for Settings > Account (who is signed in, switch, add, sign out)
@@ -18,45 +17,83 @@ import { smoothWheel } from './ui/smooth-scroll.js';
 import { FONTS } from './style.js';
 import { injectTokens } from './ui/tokens.js';
 import { inkButton, segmented } from './ui/inputs.js';
-import { torn, tornDepths } from './ui/paper.js';
+import { brushButton } from './ui/brush.js';
 import { settings } from './settings.js';
 import { shortcuts, fromEvent } from './shortcuts.js';
 
-
-export { torn, tornDepths };
-
 const CSS = `
 .st-btn { position: fixed; top: max(calc(var(--sienna-space-8) + var(--sienna-space-6)), 7vh); right: max(calc(var(--sienna-space-10) * 2), 8vw); z-index: var(--sienna-z-chrome); pointer-events: none; perspective: 900px; perspective-origin: 80% 50%;
-  font-family: var(--sienna-font); color: var(--sienna-paper); font-size: var(--sienna-text-lg); line-height: 1; user-select: none; opacity: 0; transition: opacity var(--sienna-dur-slow) ease; }
-.st-btn.show { opacity: .94; }
-.st-btn-stack { display: flex; align-items: center; gap: var(--sienna-space-2); transform-style: preserve-3d; transform-origin: 100% 50%; will-change: transform; }
-.st-btn .ui-ink { pointer-events: auto; }
-.st-btn:not(.show) .ui-ink { pointer-events: none; }
-.st-settings .ui-sheet-body { display: flex; gap: var(--sienna-space-6); overflow: hidden; }
-.st-settings .ui-sheet-card { height: min(calc(var(--sienna-space-10) * 13), 82dvh); }
-.st-side { flex: none; width: calc(var(--sienna-space-10) * 4 + var(--sienna-space-4)); padding: var(--sienna-space-1); box-sizing: border-box; display: flex; flex-direction: column;
-  align-items: flex-start; gap: var(--sienna-space-1); overflow-y: auto; }
-.st-side .ui-ink { font-size: var(--sienna-text-lg); }
-.st-scroll { flex: 1; min-width: 0; overflow-y: auto; padding: 0 var(--sienna-space-2) var(--sienna-space-4); }
+  line-height: 1; user-select: none; opacity: 0; transition: opacity var(--sienna-dur-slow) ease; }
+.st-btn.show { opacity: .96; }
+.st-btn-stack { display: flex; align-items: center; gap: var(--sienna-space-1); transform-style: preserve-3d; transform-origin: 100% 50%; will-change: transform; }
+.st-btn .ui-brush { pointer-events: auto; }
+.st-btn:not(.show) .ui-brush { pointer-events: none; }
+
+.st-settings .ui-sheet-card { width: var(--ui-sheet-w); height: min(560px, calc(100dvh - var(--sienna-space-10) * 3));
+  margin-top: var(--sienna-space-8); }
+.st-settings .ui-sheet-head { align-items: center; margin-bottom: 0; padding-bottom: var(--sienna-space-2);
+  border-bottom: 2px solid var(--sienna-indigo); }
+.st-settings .ui-sheet-body { display: flex; overflow: hidden; padding: 0; }
+.st-settings .ui-sheet-foot { display: none; }
+/* the page tabs, along the card's top edge */
+.st-side.crate-tabs .ui-ink { gap: 0; margin: 0; padding: 6px var(--sienna-space-3) 4px;
+  font-size: var(--sienna-text-md); color: var(--sienna-ink); }
+.st-side.crate-tabs .ui-ink-line { display: none; }
+.st-side.crate-tabs .ui-ink:not(:disabled):hover { transform: none; color: var(--sienna-terracotta); }
+.st-side.crate-tabs .ui-ink[aria-current="page"],
+.st-side.crate-tabs .ui-ink[aria-current="page"]:hover { padding: 10px var(--sienna-space-3) 6px; color: var(--sienna-indigo); }
+.st-side.crate-tabs .ui-ink:focus-visible { border-radius: 0; box-shadow: none; }
+.st-scroll { flex: 1; min-width: 0; overflow-y: auto; padding: 0 var(--sienna-space-3) var(--sienna-space-5) 0; }
 .st-page { display: none; }
 .st-page.on { display: block; }
-.st-page-title { margin: 0 0 var(--sienna-space-1); font-family: var(--sienna-font); font-size: var(--sienna-text-xl); line-height: 1.1; color: var(--sienna-indigo); }
-.st-page-desc, .st-hint { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.4; color: var(--sienna-ink-2); }
-.st-page-desc { margin: 0 0 var(--sienna-space-4); }
-.st-row { margin: 0 0 var(--sienna-space-5); }
-.st-label, .st-name { font-family: var(--sienna-font); font-size: var(--sienna-text-lg); color: var(--sienna-indigo); line-height: 1.2; }
-.st-opts { display: flex; flex-wrap: wrap; gap: var(--sienna-space-2) var(--sienna-space-4); margin-top: var(--sienna-space-2); }
-.st-small, .st-handle, .st-kname { font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); line-height: 1.4; color: var(--sienna-ink-3); }
-.st-confirm { display: none; margin-top: var(--sienna-space-3); }
+/* the open tab already names the page */
+.st-page-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.st-page-desc, .st-hint { font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); line-height: 1.45; color: var(--sienna-ink-2); }
+.st-page-desc { margin: var(--sienna-space-3) 0 0; font-style: italic; }
+.st-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: var(--sienna-space-2) var(--sienna-space-6); padding: var(--sienna-space-4) 0; border-bottom: 1px solid var(--sienna-hairline); }
+.st-page > .st-row:last-child { border-bottom: 0; }
+.st-text { flex: 1 1 260px; min-width: 0; }
+.st-label { font-family: var(--sienna-serif); font-size: 17px; font-weight: 600; line-height: 1.35; color: var(--sienna-ink); }
+.st-opts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sienna-space-2) var(--sienna-space-4); max-width: 100%; }
+.st-opts:empty { display: none; }
+/* a setting's buttons are little cards you can press */
+.st-opts > .ui-ink, .st-alt > .ui-ink { margin-bottom: 3px; padding: 5px var(--sienna-space-4) 6px; border-radius: 7px;
+  font-size: var(--sienna-text-md); background: var(--sienna-paper) var(--sienna-grain);
+  box-shadow: 0 0 0 1px rgba(120, 90, 58, 0.34), 0 3px 0 var(--sienna-edge); }
+.st-opts > .ui-ink .ui-ink-line, .st-alt > .ui-ink .ui-ink-line { display: none; }
+.st-opts > .ui-ink:not(:disabled):hover, .st-alt > .ui-ink:not(:disabled):hover { transform: translateY(-1px); }
+.st-opts > .ui-ink:not(:disabled):active, .st-alt > .ui-ink:not(:disabled):active { transform: translateY(2px);
+  box-shadow: 0 0 0 1px rgba(120, 90, 58, 0.34), 0 1px 0 var(--sienna-edge); }
+.st-opts > .ui-ink:focus-visible, .st-alt > .ui-ink:focus-visible { border-radius: 7px; box-shadow: var(--sienna-focus-ring); }
+.st-row > .st-hint, .st-row > .st-small, .st-row > .st-confirm { flex-basis: 100%; }
+.st-hint:empty { display: none; }
+.st-small, .st-handle, .st-kname { font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); line-height: 1.45; color: var(--sienna-ink-3); }
+.st-page > .st-small { margin: var(--sienna-space-3) 0 0; }
+.st-name { font-family: var(--sienna-font); font-size: var(--sienna-text-lg); line-height: 1.2; color: var(--sienna-indigo); }
+.st-confirm { display: none; }
 .st-confirm.on { display: block; }
-.st-who, .st-alt { display: flex; align-items: center; gap: var(--sienna-space-3); margin-bottom: var(--sienna-space-4); }
-.st-alt { flex-wrap: wrap; }
+.st-confirm .st-opts { justify-content: flex-start; margin-top: var(--sienna-space-2); }
+.st-who { display: flex; align-items: center; gap: var(--sienna-space-3); padding: var(--sienna-space-4) 0; border-bottom: 1px solid var(--sienna-hairline); }
+.st-alt { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sienna-space-3); }
 .st-face { flex: none; width: calc(var(--sienna-space-6) * 2); height: calc(var(--sienna-space-6) * 2);
   border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--sienna-paper-lo); font-size: var(--sienna-text-lg); }
 .st-face.small { width: var(--sienna-space-8); height: var(--sienna-space-8); }
 .st-face img { width: 100%; height: 100%; object-fit: cover; }
-.st-kpair { display: flex; flex-direction: column; align-items: flex-start; }
-.st-settings .ui-scroll-cue { margin-right: auto; }
+/* shortcuts: each one a row, its keys on a keycap */
+.st-keys .st-opts { flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 0; }
+.st-kpair { display: flex; align-items: center; justify-content: space-between; gap: var(--sienna-space-4);
+  padding: var(--sienna-space-3) 0; border-bottom: 1px solid var(--sienna-hairline); }
+.st-kname { font-size: var(--sienna-text-sm); color: var(--sienna-ink); }
+.st-kpair .ui-ink { margin-bottom: 3px; padding: 5px var(--sienna-space-3) 6px; border-radius: 7px;
+  font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); font-weight: 600; color: var(--sienna-ink);
+  background: var(--sienna-paper) var(--sienna-grain); box-shadow: 0 0 0 1px rgba(120, 90, 58, 0.32), 0 3px 0 var(--sienna-edge); }
+.st-kpair .ui-ink .ui-ink-line { display: none; }
+.st-kpair .ui-ink.is-on { color: var(--sienna-paper); background: var(--sienna-terracotta); box-shadow: 0 0 0 1px var(--sienna-terracotta), 0 1px 0 var(--sienna-danger); transform: translateY(2px); }
+.st-kpair .ui-ink:focus-visible { box-shadow: var(--sienna-focus-ring); }
+.st-keys .st-opts > .ui-ink { align-self: flex-start; margin-top: var(--sienna-space-3); }
+.st-settings .ui-scroll-cue { display: none; }
+@media (max-width: 720px) { .st-side.crate-tabs { overflow-x: auto; } }
 `;
 
 const action = (text, seed, onClick, danger = false) => inkButton(text, { seed, onClick, danger });
@@ -80,7 +117,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   function setRestockLabel(text, hot = false) {
     if (!restockBtn) return;
     restockBtn.setLabel(text);
-    restockBtn.setSelected(hot);
+    restockBtn.classList.toggle('is-on', hot);   // lit while it is working or has just done it
   }
 
   async function runRestock() {
@@ -112,11 +149,11 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   }
 
   if (onRestock) {
-    restockBtn = inkButton('Restock', { icon: 'restock', seed: 13, onClick: () => runRestock() });
+    restockBtn = brushButton('Restock', { icon: 'restock', size: 'sm', flipX: true, seed: 13, onClick: () => runRestock() });
     restockBtn.setAttribute('aria-description', 'Refresh shelves from YouTube Music');
     btnStack.appendChild(restockBtn);
   }
-  const btn = inkButton('Settings', { icon: 'settings', seed: 17, onClick: () => toggle() });
+  const btn = brushButton('Settings', { icon: 'settings', size: 'sm', flipX: true, seed: 17, onClick: () => toggle() });
   btnStack.appendChild(btn);
   btnStack.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -124,29 +161,32 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   });
   document.body.appendChild(btnWrap);
 
-  const sheet = createSheet({ title: 'Settings', seed: 7,
-    width: 'min(calc(var(--sienna-space-10) * 21), 92vw)',
-    onClose: () => { openNow = false; stopRailScroll(); stopPageScroll(); stopRecording(); onClose?.(); },
+  const sheet = createSheet({ title: 'Settings',
+    width: 'min(calc(var(--sienna-space-10) * 20), calc(100vw - var(--sienna-space-10)))',
+    onClose: () => { openNow = false; stopPageScroll(); stopRecording(); onClose?.(); },
   });
   const veil = sheet.el;
   veil.classList.add('st-settings');
   const side = document.createElement('nav');
-  side.className = 'st-side';
+  side.className = 'st-side crate-tabs';
   side.setAttribute('aria-label', 'Settings pages');
   const scroller = document.createElement('div');
   scroller.className = 'st-scroll';
-  const stopRailScroll = smoothWheel(side), stopPageScroll = smoothWheel(scroller);
-  sheet.body.append(side, scroller);
+  const stopPageScroll = smoothWheel(scroller);
+  sheet.card.classList.add('crate-card');
+  sheet.card.insertBefore(side, sheet.header);
+  sheet.body.append(scroller);
   const cue = createScrollCue(scroller, { parent: sheet.footer });
 
   const optWords = [];
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-  // a row: a label, a hint, and a box of words
+  // a row: what it is (a label and a hint) and a box for its switch or buttons
   function makeRow(label, hint, cls = '') {
     const row = el('div', `st-row ${cls}`.trim());
-    row.append(el('div', 'st-label', label), el('div', 'st-hint', hint));
+    const text = el('div', 'st-text');
+    text.append(el('div', 'st-label', label), el('div', 'st-hint', hint));
     const box = el('div', 'st-opts');
-    row.appendChild(box);
+    row.append(text, box);
     return { row, box };
   }
 
@@ -169,6 +209,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     page.append(el('h3', 'st-page-title', label), el('p', 'st-page-desc', descriptions[id]));
     scroller.appendChild(page);
     const w = action(label, 141 + PAGES.length * 11, () => show(id));
+    w.classList.add('crate-tab');
     w.dataset.page = id;
     side.appendChild(w);
     railWords[id] = w;
@@ -187,6 +228,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     }
     stopPageScroll();
     scroller.scrollTop = 0;
+    railWords[p.id].scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     stopRecording();
     p.onShow?.();
     requestAnimationFrame(refreshLayout);
@@ -326,7 +368,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
   settingRows(addPage('look', 'Look'), [
     { key: 'covers', label: 'Cover art', hint: 'How strongly album covers are painted over.', opts: ['Off', 'Light', 'Medium', 'Heavy'].map((l, i) => [l, i]) },
     { key: 'font', label: 'Lettering', hint: 'The handwriting on tags, signs and buttons. It changes straight away.', opts: Object.entries(FONTS).map(([k, f]) => [f.label, k, f]) },
-    { key: 'coverCarousel', label: 'Cover carousel', hint: 'Spin through Up next, Listen again, and the top five search results, or stick with ruled paper lists.', opts: [['Carousel', true], ['Paper list', false]] },
+    { key: 'coverCarousel', label: 'Cover carousel', hint: 'Spin through Up next, Listen again and the top five search results by their covers, or keep to lists.', opts: [['Carousel', true], ['List', false]] },
   ], 23);
   const isMac = /Mac/.test(navigator.platform);
   const playbackPage = addPage('playback', 'Playback');
@@ -503,8 +545,6 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     if (info?.version) verHint.textContent = `Sienna v${info.version} — free, open-source 3D vinyl shop for YouTube Music (MIT License).`;
   }).catch(() => {});
 
-  const done = action('Done', 31, () => close());
-  sheet.footer.appendChild(done);
   const refreshLayout = () => cue.refresh();
 
   let openNow = false;
@@ -513,6 +553,7 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     if (page || !current) show(page || 'account');
     else PAGES.find(x => x.id === current)?.onShow?.();
     sheet.open({ returnFocusTo: document.activeElement === document.body ? btn : document.activeElement });
+    railWords[current].focus({ preventScroll: true });
     refreshLayout();
   }
   function close() { sheet.close(); }
@@ -522,8 +563,8 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
     show(PAGES[(i + d + PAGES.length) % PAGES.length].id);
   }
 
-  // Cmd+, on macOS (the usual Preferences key), Ctrl+, elsewhere; Esc closes; Up/Down or Tab move
-  // through the rail. Capture phase, so it runs before the shop's own key handler and can swallow keys
+  // Cmd+, on macOS (the usual Preferences key), Ctrl+, elsewhere; Esc closes; the arrows or Tab move
+  // through the tabs. Capture phase, so it runs before the shop's own key handler and can swallow keys
   // while the card is up.
   const mac = /Mac/.test(navigator.platform);
   addEventListener('keydown', (e) => {
@@ -533,9 +574,9 @@ export function createSettingsPanel({ music = null, onTour = null, onRestock = n
       e.preventDefault(); e.stopImmediatePropagation(); toggle(); return;
     }
     if (!openNow) return;
-    if (side.contains(e.target) && ['ArrowDown', 'ArrowUp'].includes(e.key)) {
+    if (side.contains(e.target) && ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
       e.preventDefault(); e.stopImmediatePropagation();
-      step(e.key === 'ArrowDown' ? 1 : -1);
+      step(e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : -1);
       railWords[current].focus();
     }
   }, true);

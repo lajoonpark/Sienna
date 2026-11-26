@@ -222,16 +222,11 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
     caption.setScrub(suitcase.scrubbing ? suitcase.progress : null);
   }
 
-  const _drawerPt = new THREE.Vector3();
-  function drawerScreenPos() {
-    const W = renderer.domElement.clientWidth || innerWidth;
-    const H = renderer.domElement.clientHeight || innerHeight;
-    tray.centerPoint(_drawerPt).project(ocam);
-    return {
-      x: ((_drawerPt.x + 1) / 2) * W,
-      y: ((1 - _drawerPt.y) / 2) * H,
-    };
-  }
+  const drawerScreenPos = () => tray.screenSpan(ocam, {
+    left: 0, top: 0,
+    width: renderer.domElement.clientWidth || innerWidth,
+    height: renderer.domElement.clientHeight || innerHeight,
+  });
 
   return {
     overlay,

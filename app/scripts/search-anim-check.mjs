@@ -1,6 +1,8 @@
-// The search bar's paint-on / flick-off (src/searchpaint.js). Plays it in search-lab.html and checks that it
-// really paints in stages, rests on the same picture every time, survives a change of mind halfway, and
-// holds its frame rate on the GPU. Saves a film strip of each direction to out_dir.
+// The menus' motion. In search-lab.html: the search card flips up with typing live from the first frame,
+// hands the keys back the moment it starts to leave, survives a change of mind halfway and holds its
+// frame rate on the GPU. In the mini player: the Listen again and Up next sleeves come out of the
+// suitcase's open drawer, the centred one lands last, any key skips the deal, and closing sends them
+// back before the drawer shuts. Saves film strips to out_dir.
 // Usage: node scripts/search-anim-check.mjs out_dir      (SIENNA_PORT=5251)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -10,161 +12,172 @@ import { outDir } from './safe.mjs';
 
 const out = outDir(process.argv[2], 'sienna-search-anim');
 const port = Number(process.env.SIENNA_PORT) || 5251;
-const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
+const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true, hmr: false }, logLevel: 'error' });
 await server.listen();
 const browser = await chromium.launch({ args: ['--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || (process.platform === 'darwin' ? 'metal' : 'vulkan')}`, '--ignore-gpu-blocklist'] });
-// Film strips: the page's clock and its CSS animations run 12x slower, so every stage can be photographed.
+// Film strips: the page's clock, timers and CSS animations run slowed, so every stage can be photographed.
 const slowClock = () => {
-  const now = performance.now.bind(performance), raf = requestAnimationFrame.bind(window);
+  const now = performance.now.bind(performance), raf = requestAnimationFrame.bind(window), later = setTimeout.bind(window);
   let base = 0, from = now(), rate = 1;
   const clock = () => base + (now() - from) * rate;
   window.__rate = (x) => { base = clock(); from = now(); rate = x; };
   performance.now = clock;
   window.requestAnimationFrame = (cb) => raf(() => cb(clock()));
+  window.setTimeout = (fn, ms = 0, ...args) => later(fn, ms / rate, ...args);
 };
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.addInitScript(slowClock);
-await page.goto(`http://127.0.0.1:${port}/search-lab.html`);
-await page.waitForFunction('window.__ready === true');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const ok = (name) => console.log('ok  ', name);
+const errors = [];
+async function open(path, viewport) {
+  const page = await browser.newPage({ viewport });
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.addInitScript(slowClock);
+  await page.goto(`http://127.0.0.1:${port}/${path}`);
+  return page;
+}
 
-const renderer = await page.evaluate(() => {
-  const g = document.createElement('canvas').getContext('webgl2');
-  return g.getParameter(g.getExtension('WEBGL_debug_renderer_info').UNMASKED_RENDERER_WEBGL);
-});
-console.log('renderer:', renderer);
-assert.ok(!/swiftshader|llvmpipe/i.test(renderer), 'running on the GPU');
-
-// How much of the bar's canvas is painted, and how long frames take, while it plays.
-await page.evaluate(() => {
-  const fx = document.querySelector('.cs-fx');
-  window.__watch = (ms) => new Promise((res) => {
-    const g = fx.getContext('2d'), coverage = [], t0 = performance.now(), gaps = [];
-    let prev = t0;
-    const step = (now) => {
-      gaps.push(now - prev); prev = now;
-      const d = g.getImageData(0, 0, fx.width, fx.height).data;
-      let n = 0;
-      for (let i = 3; i < d.length; i += 64) if (d[i] > 40) n++;
-      coverage.push(n);
-      if (now - t0 < ms) requestAnimationFrame(step); else res({ coverage, gaps });
-    };
-    requestAnimationFrame(step);
-  });
-});
-const hotkey = () => page.keyboard.press('Control+Alt+KeyJ');
-const classes = () => page.evaluate(() => document.querySelector('.cs').className);
-
-async function film(p, name, act, ms, width = 900, clipH = 0.5) {
-  const cdp = await p.context().newCDPSession(p);
+async function film(page, name, act, ms, width) {
+  const cdp = await page.context().newCDPSession(page);
   await cdp.send('Animation.enable');
-  await cdp.send('Animation.setPlaybackRate', { playbackRate: 1 / 12 });
-  await p.evaluate(() => window.__rate(1 / 12));
+  await cdp.send('Animation.setPlaybackRate', { playbackRate: 1 / 10 });
+  await page.evaluate(() => window.__rate(1 / 10));
   await act();
   const shots = [], t0 = Date.now();
-  const size = p.viewportSize();
-  while (Date.now() - t0 < ms * 12) {
-    shots.push((await p.screenshot({ type: 'jpeg', quality: 80, clip: { x: 0, y: 0, width: size.width, height: size.height * clipH } })).toString('base64'));
-    await wait(ms * 12 / 12);
+  while (Date.now() - t0 < ms * 10) {
+    shots.push((await page.screenshot({ type: 'jpeg', quality: 80 })).toString('base64'));
+    await wait(ms);
   }
-  await p.evaluate(() => window.__rate(1));
+  await page.evaluate(() => window.__rate(1));
   await cdp.send('Animation.setPlaybackRate', { playbackRate: 1 });
   const picks = Array.from({ length: 8 }, (_, i) => shots[Math.floor((i * (shots.length - 1)) / 7)]);
-  const strip = await p.evaluate(async ([imgs, width]) => {
+  const strip = await page.evaluate(async ([imgs, width]) => {
     const loaded = await Promise.all(imgs.map((b) => new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.src = `data:image/jpeg;base64,${b}`; })));
     const h = Math.round(loaded[0].height * width / loaded[0].width), c = document.createElement('canvas');
-    c.width = width * 2; c.height = h * 4;
+    c.width = width * 4; c.height = h * 2;
     const g = c.getContext('2d');
-    loaded.forEach((im, i) => g.drawImage(im, (i % 2) * width, Math.floor(i / 2) * h, width, h));
+    loaded.forEach((im, i) => g.drawImage(im, (i % 4) * width, Math.floor(i / 4) * h, width, h));
     return c.toDataURL('image/jpeg', 0.82);
   }, [picks, width]);
   writeFileSync(`${out}/${name}.jpg`, Buffer.from(strip.split(',')[1], 'base64'));
 }
 
-// Opening: paint grows from nothing, no frame badly late.
-const opening = page.evaluate(() => window.__watch(760));
-await hotkey();
-const op = await opening;
-const peak = Math.max(...op.coverage);
-assert.ok(op.coverage[1] < peak * 0.35, `starts nearly bare (${op.coverage[1]} of ${peak})`);
-const stages = new Set(op.coverage.slice(0, 30)).size;
-assert.ok(stages > 8, `paint grows in stages, not at once (${stages})`);
-const worst = (g) => Math.max(...g.slice(2));
-const mean = (g) => g.slice(2).reduce((a, b) => a + b, 0) / (g.length - 2);
-console.log(`opening: ${op.gaps.length} frames, mean ${mean(op.gaps).toFixed(1)} ms, worst ${worst(op.gaps).toFixed(1)} ms`);
-assert.ok(mean(op.gaps) < 20, 'opening holds 60 fps');
-ok('opening paints on in stages');
-assert.match(await classes(), /show/);
-assert.ok(await page.evaluate(() => document.activeElement === document.querySelector('.cs-input')), 'typing works from the first frame');
+try {
+  // ---- the search card ----
+  const page = await open('search-lab.html', { width: 1280, height: 720 });
+  await page.waitForFunction('window.__ready === true');
+  const renderer = await page.evaluate(() => {
+    const g = document.createElement('canvas').getContext('webgl2');
+    return g.getParameter(g.getExtension('WEBGL_debug_renderer_info').UNMASKED_RENDERER_WEBGL);
+  });
+  console.log('renderer:', renderer);
+  assert.ok(!/swiftshader|llvmpipe/i.test(renderer), 'running on the GPU');
+  const hotkey = () => page.keyboard.press('Control+Alt+KeyJ');
+  const card = () => page.evaluate(() => {
+    const el = document.querySelector('.cs'), css = getComputedStyle(el);
+    return { show: el.classList.contains('show'), closing: el.classList.contains('closing'), visibility: css.visibility,
+      transform: css.transform, animations: el.getAnimations().length };
+  });
+  const frames = (ms) => page.evaluate((ms) => new Promise((done) => {
+    const gaps = []; let last = performance.now(); const end = last + ms;
+    (function frame() { const t = performance.now(); gaps.push(t - last); last = t; if (t < end) requestAnimationFrame(frame); else done(gaps.slice(1)); })();
+  }), ms);
+  const mean = (gaps) => gaps.reduce((a, b) => a + b, 0) / gaps.length;
 
-// At rest nothing is left animating on the bar.
-await wait(400);   // the last droplets land
-const open1 = await page.evaluate(() => document.querySelector('.cs-fx').toDataURL());
-assert.strictEqual(await page.evaluate(() => document.querySelector('.cs-bar').style.transform), '');
-ok('rests with its styles cleared');
+  const opening = frames(520);
+  await hotkey();
+  assert.ok(await page.evaluate(() => document.activeElement === document.querySelector('.cs-input')), 'typing works from the first frame');
+  assert.ok((await card()).animations > 0, 'the card flips up');
+  const open60 = await opening;
+  console.log(`opening: ${open60.length} frames, mean ${mean(open60).toFixed(1)} ms, worst ${Math.max(...open60).toFixed(1)} ms`);
+  assert.ok(mean(open60) < 22, 'opening holds 60 fps');
+  await wait(300);
+  assert.deepStrictEqual(await card(), { show: true, closing: false, visibility: 'visible', transform: 'none', animations: 0 });
+  ok('the card flips up with the keyboard live, and comes to rest');
 
-// Results fill in, then lose their masks.
-await page.keyboard.type('lemon');
-await wait(1100);
-assert.ok(await page.evaluate(() => { const s = [...document.querySelectorAll('.cs .ui-list-row')]; return s.length > 1 && s.every((e) => !e.classList.contains('is-entering')); }), 'every slip finished arriving');
-await page.screenshot({ path: `${out}/rest.png` });
-ok('slips finish arriving and clear their entrance animations');
+  await hotkey();
+  assert.ok(!(await page.evaluate('window.__search.isOpen()')), 'keys go back to the shop at once');
+  assert.ok((await card()).closing);
+  await page.waitForFunction(() => !document.querySelector('.cs').classList.contains('closing'), null, { timeout: 2000 });
+  assert.equal((await card()).visibility, 'hidden');
+  ok('closing hands the keys back at once, then hides');
 
-// Closing: isOpen flips at once (keys go back to the shop straight away), the paint leaves after.
-const closing = page.evaluate(() => window.__watch(620));
-await hotkey();
-assert.ok(!(await page.evaluate('window.__search.isOpen()')));
-assert.match(await classes(), /closing/);
-const cl = await closing;
-console.log(`closing: ${cl.gaps.length} frames, mean ${mean(cl.gaps).toFixed(1)} ms, worst ${worst(cl.gaps).toFixed(1)} ms`);
-assert.ok(mean(cl.gaps) < 20, 'closing holds 60 fps');
-await page.waitForFunction(() => !document.querySelector('.cs').classList.contains('closing'), null, { timeout: 2000 });
-assert.strictEqual(await page.evaluate(() => getComputedStyle(document.querySelector('.cs')).visibility), 'hidden');
-ok('closing hands the keys back at once, then hides');
+  for (const pauses of [[180, 90], [60, 40]]) {
+    await hotkey(); await wait(pauses[0]); await hotkey(); await wait(pauses[1]); await hotkey(); await wait(900);
+    assert.deepStrictEqual(await card(), { show: true, closing: false, visibility: 'visible', transform: 'none', animations: 0 });
+    await hotkey(); await page.waitForFunction(() => getComputedStyle(document.querySelector('.cs')).visibility === 'hidden');
+  }
+  ok('changes of mind halfway land in the right state');
+  await film(page, 'search-open', hotkey, 80, 480);
+  await film(page, 'search-close', hotkey, 50, 480);
 
-// A change of mind halfway, both ways, ends on the right state with the same picture.
-await hotkey(); await wait(180);
-await hotkey(); await wait(90);
-await hotkey(); await wait(1200);
-assert.match(await classes(), /show/);
-assert.doesNotMatch(await classes(), /closing/);
-assert.strictEqual(await page.evaluate(() => document.querySelector('.cs-fx').toDataURL()), open1, 'same paint at rest');
-await hotkey(); await wait(120);
-await hotkey(); await wait(40);
-await hotkey();
-await page.waitForFunction(() => !/show|closing/.test(document.querySelector('.cs').className), null, { timeout: 2000 });
-ok('hotkey mashing lands in the right state');
+  // ---- the mini player: sleeves out of the drawer and back ----
+  const mini = await open('mini.html?play', { width: 540, height: 620 });   // a record playing, so Up next has a queue
+  await mini.waitForFunction('window.__mini', null, { timeout: 60000 });
+  await wait(3000);
+  // for each sleeve: where it was when it first showed (and where the drawer was), and when it landed
+  const watchDeal = () => mini.evaluate(() => {
+    window.__deal = new Map();
+    const t0 = performance.now();
+    (function frame() {
+      for (const c of document.querySelectorAll('.la-full:not([hidden]) .la-cover.is-flying:not(.is-waiting)')) {
+        if (Number(c.style.opacity || 1) <= 0.02 || window.__deal.has(c)) continue;
+        const r = c.querySelector('.la-sleeve-front').getBoundingClientRect(), d = window.__mini.drawerScreenPos();
+        window.__deal.set(c, { index: Number(c.dataset.index), width: r.width, off: Math.hypot(r.x + r.width / 2 - d.x, r.y + r.height / 2 - d.y), landed: null });
+      }
+      for (const [c, seen] of window.__deal) if (seen.landed == null && !c.classList.contains('is-flying')) seen.landed = performance.now() - t0;
+      if (performance.now() - t0 < 2600) requestAnimationFrame(frame);
+    })();
+  });
+  const deal = () => mini.evaluate(() => [...window.__deal.values()]);
+  const settled = (scope = '.cs-stage') => mini.evaluate((scope) => ({
+    moving: !!document.querySelector(`${scope} .la-full.is-moving`),
+    selected: Number(document.querySelector(`${scope} .la-full .la-cover[aria-selected="true"]`)?.dataset.index),
+    drawer: window.__mini.tray.isOpen,
+  }), scope);
+  for (const [name, openIt, closeIt, shown] of [
+    ['Listen again', () => mini.keyboard.press('Control+Alt+KeyJ'), () => mini.keyboard.press('Escape'), '.cs-stage'],
+    ['Up next', () => mini.evaluate(() => { window.__mini.liner.openQueue(); }), () => mini.keyboard.press('Escape'), '.ln-qveil'],
+  ]) {
+    await watchDeal();
+    await openIt();
+    await mini.waitForSelector(`${shown}.show .la-cover`);
+    await wait(2000);
+    const seen = await deal();
+    const centre = (await settled(shown)).selected;
+    assert.ok(seen.length >= 3, `${name}: ${seen.length} sleeves dealt`);
+    for (const s of seen) {
+      assert.ok(s.off < 130, `${name}: sleeve ${s.index} starts in the drawer (${s.off.toFixed(0)}px away)`);
+      assert.ok(s.width < 220, `${name}: sleeve ${s.index} leaves the drawer record-sized (${s.width.toFixed(0)}px wide)`);
+    }
+    const lastDown = seen.reduce((a, b) => (b.landed > a.landed ? b : a));
+    assert.equal(lastDown.index, centre, `${name}: the centred sleeve lands last`);
+    assert.deepStrictEqual(await settled(shown), { moving: false, selected: centre, drawer: true });
+    await closeIt();
+    await wait(120);
+    assert.ok((await settled(shown)).moving, `${name}: the sleeves fly home`);
+    await mini.waitForFunction(() => !document.querySelector('.la-full:not([hidden]).is-moving') && !window.__mini.tray.isOpen, null, { timeout: 4000 });
+    await wait(300);
+    ok(`${name}: ${seen.length} sleeves out of the drawer, the centred one last, and back before it shuts`);
+  }
 
-// Film strips, for looking at: the shop-size lab, then the real mini window (fake store, no Electron).
-await page.fill('.cs-input', '').catch(() => {});
-await page.evaluate(() => { document.querySelector('.cs-input').value = ''; });
-await film(page, 'open', hotkey, 620);
-await page.keyboard.type('lemon');
-await wait(1100);
-await film(page, 'close', hotkey, 560);
+  // any key skips the deal, and still moves the wheel
+  await mini.keyboard.press('Control+Alt+KeyJ');
+  await mini.waitForSelector('.cs-stage.show .la-cover.is-flying');
+  await wait(250);
+  await mini.keyboard.press('ArrowDown');
+  assert.equal((await settled()).moving, false, 'a key lands every sleeve at once');
+  await wait(600);
+  assert.equal((await settled()).selected, 1);
+  await mini.keyboard.press('Escape');
+  await wait(1200);
+  ok('a key skips the deal and moves the wheel');
 
-const mini = await browser.newPage({ viewport: { width: 540, height: 620 } });
-mini.on('pageerror', (e) => errors.push(e.message));
-await mini.addInitScript(slowClock);
-await mini.goto(`http://127.0.0.1:${port}/mini.html`);
-await wait(2500);
-const miniKey = () => mini.keyboard.press('Control+Alt+KeyJ');
-await film(mini, 'mini-open', miniKey, 900, 540, 1);
-assert.ok(await mini.evaluate(() => document.querySelector('.cs').classList.contains('show')));
-await wait(600);
-await film(mini, 'mini-close', miniKey, 560, 540, 1);
-await mini.waitForFunction(() => !document.querySelector('.cs').classList.contains('closing'), null, { timeout: 3000 });
-ok('the mini window opens and closes it too');
-await miniKey();
-await wait(40);
-assert.ok(await mini.evaluate(() => Number(getComputedStyle(document.querySelector('.cs-head')).opacity) < 0.05), '"Listen again" waits for the bar to land');
-ok('the heading waits for the bar');
-
-assert.deepStrictEqual(errors, []);
-await browser.close();
-await server.close();
-console.log('all search animation checks passed');
+  await film(mini, 'mini-listen-open', () => mini.keyboard.press('Control+Alt+KeyJ'), 160, 360);
+  await film(mini, 'mini-listen-close', () => mini.keyboard.press('Escape'), 90, 360);
+  assert.deepStrictEqual(errors, []);
+  console.log(`all menu animation checks passed -> ${out}`);
+} finally {
+  await browser.close();
+  await server.close();
+}

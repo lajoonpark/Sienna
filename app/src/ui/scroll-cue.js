@@ -21,7 +21,7 @@ export function createScrollCue(scroller, { parent } = {}) {
   text.textContent = 'Scroll for more ↓';
   el.appendChild(text);
   (parent ?? scroller.parentElement).appendChild(el);
-  const paper = paperSurface(el, { seed: 83 });
+  const paper = paperSurface(el);
   function refresh() {
     const more = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop > 2;
     scroller.classList.toggle('ui-scroll-more', more);

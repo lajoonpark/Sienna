@@ -227,7 +227,7 @@ export function canvasWeavePattern(g) {
 
 // Build a deterministic layout of chunky individual oil dabs spanning w x h (used for buttons,
 // search bar, search slips, and mini caption). Each dab descriptor can be rendered into a canvas
-// at rest or animated one-by-one (searchpaint.js).
+// at rest.
 //   even: one coat of a single paint (no per-dab shade, warmth or streak swing), so overlapping dabs
 //         don't show up as lighter and darker patches; the bristle texture inside each dab stays.
 //   soft: like even, with a gentler warm bristle streak for light paper/cream coats.

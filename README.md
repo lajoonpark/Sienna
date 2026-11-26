@@ -91,10 +91,10 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
   record that plays the whole thing. Pick any song and playback continues from there.
 - **The suitcase player.** A record player in a leather case, bottom left. The record spins with the
   cover on its label and the tonearm creeps in as the song plays. Turn the knob for volume, or drag
-  the record to scrub. Its torn-paper tag shows elapsed/total time, **Mute**, **Shuffle**, **Repeat**,
-  **Up Next Queue**, and a **folded liner-note Lyrics sheet**.
-  The shop and mini player share a paper now-playing tag with a seekable progress line and stamped
-  controls with painted tooltips. The tag steps aside while a list, sheet or tour note is open.
+  the record to scrub. Its card tag shows elapsed/total time, **Mute**, **Shuffle**, **Repeat**,
+  **Up Next Queue**, and a **liner-note Lyrics card**.
+  The shop and mini player share a card now-playing tag with a seekable progress line and stamped
+  controls with tooltips. The tag steps aside while a menu or tour note is open.
 - **Mini player & System Tray.** Press **⌃⌥K** anywhere to open the suitcase at your cursor, without
   opening the shop. It also closes when the cursor leaves it, once the cursor has been over it —
   a card that opens beside the cursor stays put until the cursor comes in and leaves again
@@ -104,32 +104,30 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
 - **Hardware media keys.** Play/Pause, Next, Previous, and Stop keys on keyboards and headphones work
   globally.
 - **Richer Search.** Press **⌃⌥J** to search **Songs**, **Albums**, **Playlists**, or **Artists**
-  (`Tab` switches tabs). Songs slide out of the suitcase drawer; albums and playlists fan open into
-  records; artists open into their top songs and releases. The top five results also sit above the
-  list as a strip of painted covers — the chord it names (⌥/⇧, whichever is free of your
-  shortcuts) + ↑ hands it the keyboard, `←` `→` choose, `Enter` plays and `↓` goes back to the
-  list. In the mini player an empty search instead opens your **Listen again** shelf as a vertical
-  3D wheel of huge covers filling the window to spin through.
-- **Shared paper lists.** Search, collection songs and Up next each sit on one paper sheet with
-  ruled rows, unrolling off a little coil of the same paper when they open. Up next can instead
-  spin as a horizontal wheel of painted covers filling the window — real 3D sleeves with their
-  vinyls poking out, centred on the playing song, the sheet leaning with your cursor; pick one and
-  its record slides out of the sleeve and flies onto the platter, with the title
-  and artist lettered beneath the centred cover — Settings > Look > **Cover carousel** (on by
-  default) switches it and the search cover
-  strip between **Carousel** and the ruled **Paper list**. terracotta marks the keyboard cursor and indigo marks the playing song, and a small
-  hand-drawn kind icon on a paper dab at the end of each row tells songs, albums, playlists, artists
-  and podcasts apart. Collections
-  filter as you type; **Play** starts the first filtered song and **Shuffle** uses the filtered
-  pool. Up next pins the playing song first. Loading, empty and error notes stay in the list,
-  with Retry on fetch errors.
-- **Paper sheets & notes.** Settings and Lyrics open as folding paper dialogs with a Close stamp,
-  keyboard focus kept inside and returned to the opener on close. Settings has a page rail and
-  painted choice chips; long pages show a scroll hint. Lyrics and tour body text use a book serif
-  for reading, while titles keep your chosen hand lettering. Lyrics offers Retry if loading fails.
-  Every scrollable surface — lists, sheets, Settings and tour notes — eases wheel scrolling with a
-  heavy smooth glide rather than a jump, picking the keyboard, the pointer or a program scroll back
-  up the moment one takes over (off under reduced motion).
+  (the card's divider tabs; `Tab` switches). Songs slide out of the suitcase drawer; albums and
+  playlists fan open into records; artists open into their top songs and releases. The top five
+  results also sit above the list as a strip of sleeves — the chord named under the card (⌥/⇧,
+  whichever is free of your shortcuts) + ↑ hands it the keyboard, `←` `→` choose, `Enter` plays and
+  `↓` goes back to the list. In the mini player an empty search instead deals your **Listen again**
+  shelf out of the suitcase drawer into a vertical 3D wheel of huge covers.
+- **Record carousels.** Up next (and Listen again) float straight on the dimmed shop: the suitcase's
+  drawer slides open and the sleeves fly out of it into a 3D wheel, their vinyls poking out, the
+  playing song landing last. Close it and they fly back in before the drawer shuts; pick one and its
+  record slides out of the sleeve and flies onto the platter. Any key, scroll or click skips the
+  deal. Settings > Look > **Cover carousel** (on by default) switches these and the search cover
+  strip between **Carousel** and a plain **List**.
+- **Crate-card menus.** Search, collection songs, the Up next list, Settings and Lyrics sit on rigid
+  sleeve cards that tip up like a record flipped forward in a crate. Divider tabs on a card's top
+  edge pick search filters and Settings pages, every card has the same close stamp, and one line
+  under each menu shows its keys. Rows are set like a printed track list; terracotta marks the
+  keyboard cursor, indigo the playing song, and a hand-drawn icon marks each row's kind when a list
+  mixes songs, albums, playlists, artists or podcasts. Collections filter as you type; **Play**
+  starts the first filtered song and **Shuffle** uses the filtered pool. Up next pins the playing
+  song first. Loading, empty and error notes stay on the card, with Retry on fetch errors. Lyrics and
+  tour body text use a book serif for reading, while titles keep your chosen hand lettering. Every
+  scrollable surface eases wheel scrolling with a heavy smooth glide rather than a jump, picking the
+  keyboard, the pointer or a program scroll back up the moment one takes over (off under reduced
+  motion).
 - **Privacy-first extras.** Settings lets macOS users choose between **Mac system volume** and
   **Sienna only**, toggle **Start at login**, opt in to **Discord Rich Presence** (off by default,
   local Discord IPC only), manually **Check for updates** on GitHub Releases (never phones home in

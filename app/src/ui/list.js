@@ -6,7 +6,8 @@
 import { dabCluster, TONES } from '../brushpaint.js';
 import { paintedCoverURL } from '../coverpaint.js';
 import { COLORS, injectTokens } from './tokens.js';
-import { paperSurface, PAPER_STEP, quantizePaperSize } from './paper.js';
+import { paperSurface } from './paper.js';
+import { injectCrateCss, renderHints } from './crate.js';
 import { inkButton } from './inputs.js';
 import { icon, kindIcon } from './icons.js';
 import { smoothWheel } from './smooth-scroll.js';
@@ -14,6 +15,8 @@ import { smoothWheel } from './smooth-scroll.js';
 const ROW_H = 66;
 const SLIP_SEEDS = 4;
 const MAX_SLIP_CACHE = 48;
+const SLIP_STEP = 8;   // slip mode repaints only when the width moves by this much
+const quantizeWidth = (w) => Math.max(SLIP_STEP, Math.ceil(w / SLIP_STEP) * SLIP_STEP);
 
 const slipCache = new Map();
 let bandHotUrl = null;
@@ -25,7 +28,7 @@ export function listStats() {
 }
 
 function getSlipUrl(w, seed) {
-  const rw = quantizePaperSize(w);
+  const rw = quantizeWidth(w);
   const key = `${rw}x${ROW_H}-${seed}`;
   const cached = slipCache.get(key);
   if (cached) {
@@ -103,27 +106,6 @@ const LIST_CSS = `
   color: var(--sienna-ink); cursor: pointer;
   filter: drop-shadow(var(--sienna-shadow-rest));
   transition: transform var(--sienna-dur-fast) var(--sienna-ease-out), filter var(--sienna-dur-fast) var(--sienna-ease-out); }
-.ui-list-row.is-entering {
-  animation: ui-list-rise var(--sienna-dur-mid) var(--sienna-ease-out) calc(var(--list-lead, 0ms) + var(--i, 0) * 26ms) both; }
-@keyframes ui-list-rise {
-  0%   { opacity: 0; transform: translateY(10px) scale(.985); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-.ui-list-row.is-drawer-in {
-  animation: ui-list-drawer-in var(--sienna-dur-slow) var(--sienna-ease-out) var(--delay, 0ms) both; }
-.ui-list-row.is-drawer-out {
-  animation: ui-list-drawer-out var(--sienna-dur-mid) var(--sienna-ease-in) var(--cdelay, 0ms) both; }
-@keyframes ui-list-drawer-in {
-  0%   { opacity: 0; transform: translate(var(--fx, -200px), var(--fy, 280px)) scale(.26) rotate(-10deg); }
-  25%  { opacity: 1; }
-  75%  { opacity: 1; transform: translate(0, -5px) scale(1.015); }
-  100% { opacity: 1; transform: translate(0, 0) scale(1); }
-}
-@keyframes ui-list-drawer-out {
-  0%   { opacity: 1; transform: translate(0, 0) scale(1); }
-  100% { opacity: 0; transform: translate(var(--fx, -200px), var(--fy, 280px)) scale(.26) rotate(-10deg); }
-}
-
 .ui-list-band { position: absolute; left: 6px; top: 6px; bottom: 6px; width: 7px;
   background-size: 100% 100%; background-repeat: no-repeat; pointer-events: none;
   opacity: 0; transform: scaleY(0.5);
@@ -143,19 +125,19 @@ const LIST_CSS = `
   font-variant-numeric: lining-nums tabular-nums; color: var(--sienna-ink-3); }
 .ui-list-row.is-now .ui-list-idx { color: var(--sienna-indigo); }
 
-.ui-list-cover { position: relative; flex: none; width: 44px; height: 44px;
-  background: var(--sienna-paper-lo); transform: rotate(var(--sienna-tilt-lg));
-  overflow: hidden; box-shadow: var(--sienna-shadow-rest); }
+.ui-list-cover { position: relative; flex: none; width: 44px; height: 44px; border-radius: 3px;
+  background: var(--sienna-paper-lo); overflow: hidden; box-shadow: 0 1px 3px rgba(36, 25, 18, 0.32); }
 .ui-list-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 .ui-list-text { position: relative; flex: 1; min-width: 0; }
-.ui-list-title { font-family: var(--sienna-font); font-size: var(--sienna-text-lg); line-height: 1.06;
+.ui-list-title { font-family: var(--sienna-serif); font-size: 17px; font-weight: 600; line-height: 1.3;
   color: var(--sienna-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ui-list-row.is-now .ui-list-title { color: var(--sienna-indigo); }
 .ui-list-row.is-active .ui-list-title { color: var(--sienna-terracotta); }
 .ui-list-row.is-now.is-active .ui-list-title { color: var(--sienna-indigo); }
-.ui-list-sub { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.28;
+.ui-list-sub { font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); line-height: 1.35;
   color: var(--sienna-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.ui-list-sub em { font-style: italic; margin-left: var(--sienna-space-3); color: var(--sienna-ink-3); }
 
 .ui-list-right { position: relative; flex: none; display: flex; align-items: center; gap: var(--sienna-space-2); }
 .ui-list-kind { display: inline-flex; align-items: center; padding: 1px var(--sienna-space-2);
@@ -172,11 +154,9 @@ const LIST_CSS = `
 .ui-list-row.is-active .ui-list-kind--icon,
 .ui-list-row.is-hover .ui-list-kind--icon { color: var(--sienna-terracotta); background: var(--sienna-paper); }
 .ui-list-row.is-now .ui-list-kind--icon { color: var(--sienna-paper); background: var(--sienna-indigo); box-shadow: none; }
-.ui-list-now-tag { display: inline-flex; align-items: center; gap: 3px; padding: 1px var(--sienna-space-2);
-  font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); font-weight: 600;
-  line-height: 1.2; letter-spacing: .03em; color: var(--sienna-paper); background: var(--sienna-indigo);
-  border-radius: 3px; transform: rotate(var(--sienna-tilt-sm)); }
-.ui-list-meta { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm);
+.ui-list-now-tag { font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); font-weight: 600;
+  font-style: italic; color: var(--sienna-indigo); white-space: nowrap; }
+.ui-list-meta { font-family: var(--sienna-serif); font-size: var(--sienna-text-xs);
   font-variant-numeric: lining-nums tabular-nums; color: var(--sienna-ink-3); white-space: nowrap; min-width: 34px; text-align: right; }
 
 /* ---- paper notes (loading / empty / error) ---- */
@@ -203,9 +183,13 @@ const LIST_CSS = `
 .ui-list--lines .ui-list-row.is-active,
 .ui-list--lines .ui-list-row.is-hover { transform: none; filter: none;
   background-color: var(--sienna-paper-lo); }
-.ui-list--lines .ui-list-row.is-now.is-pinned { background-color: var(--sienna-paper); }
+.ui-list--lines .ui-list-row.is-now.is-pinned { background: var(--sienna-paper) var(--sienna-grain); }
 .ui-list--lines .ui-list-row.is-now.is-pinned.is-active,
 .ui-list--lines .ui-list-row.is-now.is-pinned.is-hover { background-color: var(--sienna-paper-lo); }
+/* on a card the cursor and now-playing marks are plain painted bars down the row's edge */
+.ui-list--lines .ui-list-band { left: 0; top: 11px; bottom: 11px; width: 4px; border-radius: 2px; }
+.ui-list--lines .ui-list-band--sel { background: var(--sienna-terracotta); }
+.ui-list--lines .ui-list-band--now { background: var(--sienna-indigo); }
 .ui-list--lines .ui-list-row.is-hover .ui-list-title { color: var(--sienna-terracotta); }
 .ui-list--lines .ui-list-row.is-now.is-hover .ui-list-title { color: var(--sienna-indigo); }
 .ui-list--lines .ui-list-foot { margin-top: auto; border-top: 1px solid var(--sienna-hairline); }
@@ -218,6 +202,7 @@ const LIST_CSS = `
 
 function injectListCss() {
   injectTokens();
+  injectCrateCss();
   if (typeof document === 'undefined' || !document.head || document.getElementById('sienna-ui-list')) return;
   const st = document.createElement('style');
   st.id = 'sienna-ui-list';
@@ -265,14 +250,15 @@ export function createList({
   const foot = document.createElement('div');
   foot.className = 'ui-list-foot';
   const footContent = document.createElement('div');
-  footContent.className = 'ui-list-foot-content';
+  footContent.className = lines ? 'ui-list-foot-content crate-hints' : 'ui-list-foot-content';
   foot.appendChild(footContent);
-  const footPaper = lines ? null : paperSurface(foot, { seed: 213 });
+  const footPaper = lines ? null : paperSurface(foot);
 
   scroll.append(listbox, noteSlot);
   root.append(scroll, foot);
 
   let data = [];
+  let mixedKinds = false;
   let renderedCount = 0;
   let activeIdx = -1;
   let nowKey = null;
@@ -282,14 +268,8 @@ export function createList({
   let destroyed = false;
 
   const setHints = (hints) => {
-    footContent.replaceChildren();
     foot.hidden = !hints?.length;
-    if (!hints || !hints.length) return;
-    for (const h of hints) {
-      const sp = document.createElement('span');
-      sp.textContent = h;
-      footContent.appendChild(sp);
-    }
+    renderHints(footContent, hints ?? []);
   };
   setHints(footerHints);
 
@@ -297,7 +277,7 @@ export function createList({
     if (destroyed) return;
     const w = Math.ceil(listbox.offsetWidth || scroll.clientWidth || root.offsetWidth);
     if (!w) return;
-    if (!force && lastW > 0 && Math.abs(w - lastW) < PAPER_STEP) return;
+    if (!force && lastW > 0 && Math.abs(w - lastW) < SLIP_STEP) return;
     lastW = w;
     for (let i = 0; !lines && i < SLIP_SEEDS; i++) {
       root.style.setProperty(`--ui-slip-${i}`, `url(${getSlipUrl(w, seed + i * 13)})`);
@@ -310,7 +290,7 @@ export function createList({
     if (destroyed || rafId) return;
     const w = Math.ceil(listbox.offsetWidth || scroll.clientWidth || root.offsetWidth);
     if (!w) return;
-    if (lastW > 0 && Math.abs(w - lastW) < PAPER_STEP) return;
+    if (lastW > 0 && Math.abs(w - lastW) < SLIP_STEP) return;
     rafId = requestAnimationFrame(() => {
       rafId = 0;
       paintSlips(false);
@@ -329,27 +309,26 @@ export function createList({
     return !!(item.nowPlaying || item.selected);
   };
 
-  const makeRow = (item, i, animate) => {
+  const makeRow = (item, i) => {
     const li = document.createElement('li');
     const isNow = isNowItem(item);
     li.id = `ui-list-${id}-opt-${i}`;
     li.dataset.listIndex = String(i);
-    li.className = `ui-list-row${animate ? ' is-entering' : ''}${isNow ? ' is-now' : ''}${isNow && pinNowPlaying ? ' is-pinned' : ''}`;
+    li.className = `ui-list-row${isNow ? ' is-now' : ''}${isNow && pinNowPlaying ? ' is-pinned' : ''}`;
     li.setAttribute('role', 'option');
     li.setAttribute('aria-selected', String(i === activeIdx));
     if (i === activeIdx) li.classList.add('is-active');
     if (!lines) li.style.backgroundImage = `var(--ui-slip-${i % SLIP_SEEDS})`;
-    if (animate) li.style.setProperty('--i', String(Math.min(i, 10)));
 
     const bandSel = document.createElement('span');
     bandSel.className = 'ui-list-band ui-list-band--sel';
     bandSel.setAttribute('aria-hidden', 'true');
-    bandSel.style.backgroundImage = 'var(--ui-band-sel)';
+    if (!lines) bandSel.style.backgroundImage = 'var(--ui-band-sel)';
 
     const bandNow = document.createElement('span');
     bandNow.className = 'ui-list-band ui-list-band--now';
     bandNow.setAttribute('aria-hidden', 'true');
-    bandNow.style.backgroundImage = 'var(--ui-band-now)';
+    if (!lines) bandNow.style.backgroundImage = 'var(--ui-band-now)';
 
     li.append(bandSel, bandNow);
 
@@ -378,12 +357,16 @@ export function createList({
     const titleEl = document.createElement('div');
     titleEl.className = 'ui-list-title';
     titleEl.textContent = item.title || 'Untitled';
-    const subText = item.subtitle != null || item.artist != null || item.album != null
-      ? [item.subtitle ?? item.artist, item.album && item.album !== item.title ? item.album : ''].filter(Boolean).join(' · ')
-      : '';
+    const by = item.subtitle ?? item.artist ?? '';
+    const album = item.album && item.album !== item.title ? item.album : '';
     const subEl = document.createElement('div');
     subEl.className = 'ui-list-sub';
-    subEl.textContent = subText;
+    subEl.textContent = by;
+    if (album) {
+      const albumEl = document.createElement('em');   // an album's title, set in italics
+      albumEl.textContent = album;
+      subEl.append(by ? ' ' : '', albumEl);
+    }
     txt.append(titleEl, subEl);
     li.appendChild(txt);
 
@@ -392,11 +375,11 @@ export function createList({
     if (showNowBadge) {
       const badge = document.createElement('span');
       badge.className = 'ui-list-now-tag';
-      badge.textContent = '♪ Now';
+      badge.textContent = 'Playing';
       badge.style.display = isNow ? '' : 'none';
       right.appendChild(badge);
     }
-    if (showKind && item.kind) {
+    if ((showKind === 'mixed' ? mixedKinds : showKind) && item.kind) {
       const kindEl = document.createElement('span');
       kindEl.className = 'ui-list-kind';
       kindEl.dataset.kind = item.kind;
@@ -426,17 +409,12 @@ export function createList({
     return li;
   };
 
-  listbox.addEventListener('animationend', (e) => {
-    if (e.animationName === 'ui-list-rise') e.target.classList.remove('is-entering');
-    if (e.animationName === 'ui-list-drawer-in') e.target.classList.remove('is-drawer-in');
-  });
-
-  const appendBatch = (animate = false) => {
+  const appendBatch = () => {
     if (renderedCount >= data.length) return 0;
     const end = Math.min(data.length, renderedCount + batchSize);
     const frag = document.createDocumentFragment();
     for (let i = renderedCount; i < end; i++) {
-      frag.appendChild(makeRow(data[i], i, animate && i < 12));
+      frag.appendChild(makeRow(data[i], i));
     }
     listbox.appendChild(frag);
     const added = end - renderedCount;
@@ -446,7 +424,7 @@ export function createList({
 
   scroll.addEventListener('scroll', () => {
     if (renderedCount < data.length && scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 240) {
-      appendBatch(false);
+      appendBatch();
     }
   }, { passive: true });
 
@@ -487,7 +465,7 @@ export function createList({
     }
 
     noteSlot.appendChild(note);
-    if (!lines) notePaper = paperSurface(note, { seed: seed + 51, elevation: 'rest', amp: 4, cap: 8 });
+    if (!lines) notePaper = paperSurface(note);
     return note;
   }
 
@@ -499,7 +477,7 @@ export function createList({
     }
     const clamped = idx < 0 ? -1 : Math.max(0, Math.min(data.length - 1, idx));
     while (clamped >= renderedCount && renderedCount < data.length) {
-      appendBatch(false);
+      appendBatch();
     }
     const old = listbox.querySelector(`[data-list-index="${activeIdx}"]`);
     if (old) {
@@ -585,10 +563,11 @@ export function createList({
 
   listbox.addEventListener('keydown', handleKeyDown);
 
-  function setItems(nextItems, { animate = true, active = -1, emptyMessage = 'Nothing here yet.' } = {}) {
+  function setItems(nextItems, { active = -1, emptyMessage = 'Nothing here yet.' } = {}) {
     stopScroll();
     clearNote();
     data = Array.isArray(nextItems) ? nextItems : [];
+    mixedKinds = new Set(data.map(item => item.kind || '')).size > 1;
     listbox.replaceChildren();
     scroll.scrollTop = 0;
     renderedCount = 0;
@@ -599,7 +578,7 @@ export function createList({
       setNote('empty', emptyMessage);
       return;
     }
-    appendBatch(animate);
+    appendBatch();
     if (pinNowPlaying) setNowPlaying(nowKey);
     if (active >= 0 && active < data.length) setActive(active, { scroll: false });
   }
@@ -607,7 +586,7 @@ export function createList({
   function setNowPlaying(key) {
     nowKey = key;
     const nowIndex = data.findIndex(isNowItem);
-    if (pinNowPlaying) while (nowIndex >= renderedCount && renderedCount < data.length) appendBatch(false);
+    if (pinNowPlaying) while (nowIndex >= renderedCount && renderedCount < data.length) appendBatch();
     const rows = [...listbox.children];
     rows.forEach((row) => {
       const i = Number(row.dataset.listIndex);
@@ -628,33 +607,7 @@ export function createList({
     }
   }
 
-  // Queue drawer-flight hook for Phase 4.
-  function playDrawerFlight(origin, { entering = true } = {}) {
-    if (!origin) return;
-    const boxRect = scroll.getBoundingClientRect();
-    // Entering mid-unroll the scroll box is still short; judge rows against the window so they fly in too.
-    const bottom = entering ? Math.max(boxRect.bottom, innerHeight) : boxRect.bottom;
-    const rows = [...listbox.children];
-    const visible = rows.filter((el) => {
-      const r = el.getBoundingClientRect();
-      return r.bottom >= boxRect.top - 40 && r.top <= bottom + 40;
-    });
-    visible.forEach((row, k) => {
-      const r = row.getBoundingClientRect();
-      row.style.setProperty('--fx', `${Math.round(origin.x - (r.left + r.width / 2))}px`);
-      row.style.setProperty('--fy', `${Math.round(origin.y - (r.top + r.height / 2))}px`);
-      row.classList.remove('is-entering', 'is-drawer-in', 'is-drawer-out');
-      if (entering) {
-        row.style.setProperty('--delay', `${Math.min(440, k * 36)}ms`);
-        row.classList.add('is-drawer-in');
-      } else {
-        row.style.setProperty('--cdelay', `${Math.min(110, (visible.length - 1 - k) * 18)}ms`);
-        row.classList.add('is-drawer-out');
-      }
-    });
-  }
-
-  if (items.length) setItems(items, { animate: false });
+  if (items.length) setItems(items);
 
   return {
     el: root,
@@ -674,8 +627,8 @@ export function createList({
     setLoading: (msg = 'Looking…') => setNote('loading', msg),
     setEmpty: (msg = 'Nothing found.') => setNote('empty', msg),
     setError: (msg = 'Could not load.', onRetry = null) => setNote('error', msg, { onRetry }),
+    footEl: foot,
     handleKeyDown,
-    playDrawerFlight,
     repaint: (force = false) => paintSlips(force),
     destroy() {
       if (destroyed) return;

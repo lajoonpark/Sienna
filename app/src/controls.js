@@ -2,15 +2,13 @@
 // (suitcase.js); what lives here is its caption: title, artist and a progress line you can click to
 // seek, plus the Sign in word.
 import { FONT, onLettering } from './style.js';
-import { dabCluster, TONES } from './brushpaint.js';
-import { COLORS, SPACE, TYPE, injectTokens } from './ui/tokens.js';
+import { TYPE, injectTokens } from './ui/tokens.js';
 import { brushButton } from './ui/brush.js';
 import { paperSurface } from './ui/paper.js';
 import { stamp } from './ui/inputs.js';
 import { onOverlay, overlayOpen } from './ui/sheet.js';
 
-// ---- the paper caption beside the suitcase ----
-const lineCache = new Map();
+// ---- the card caption beside the suitcase ----
 const TAG_CSS = `
 .cad-tag { position: fixed; z-index: var(--sienna-z-caption); pointer-events: none; opacity: 0; transition: opacity var(--sienna-dur-slow) ease; user-select: none;
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--sienna-space-1); font-family: var(--sienna-font); }
@@ -23,17 +21,21 @@ const TAG_CSS = `
 .cad-tag.shop > .turn { transform-origin: 0% 50%; will-change: transform; display: flex; flex-direction: column; align-items: flex-start; gap: var(--sienna-space-1); max-width: 100%; }
 .cad-tag.mini { position: absolute; left: 50%; bottom: 8.5%; transform: translateX(-50%); width: 76%; align-items: center; }
 .cad-tag.mini > .turn { width: 100%; }   /* else a long title's one-line width stretches it past the card */
-.cad-tag .cap { pointer-events: auto; padding: var(--sienna-space-3) var(--sienna-space-5) var(--sienna-space-4) var(--sienna-space-5); max-width: 100%; box-sizing: border-box; min-width: 220px;
-  color: var(--sienna-ink); transform: rotate(var(--sienna-tilt-lg)); transition: opacity var(--sienna-dur-mid); }
+.cad-tag .cap { pointer-events: auto; padding: var(--sienna-space-3) var(--sienna-space-5) var(--sienna-space-3) var(--sienna-space-5); max-width: 100%; box-sizing: border-box; min-width: 220px;
+  color: var(--sienna-ink); transform: rotate(var(--sienna-tilt-sm)); transition: opacity var(--sienna-dur-mid); }
 .cad-tag.mini .cap { width: 100%; }
 .cad-tag .cap .t { font-size: var(--sienna-text-lg); line-height: 1.08; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cad-tag .cap .a { font-family: var(--sienna-serif); font-size: var(--sienna-text-sm); line-height: 1.3; color: var(--sienna-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* a title still too long once shrunk (fitLine) takes a second line, and only the end of that one is cut */
 .cad-tag .cap .t.wrap { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; padding-bottom: 2px; }
 .cad-tag .cap .bar { position: relative; height: var(--sienna-space-4); margin-top: var(--sienna-space-1); cursor: pointer; }
-.cad-tag .cap .bar::before { content: ''; position: absolute; inset: 0; background: var(--track) 0 0 / 100% 100% no-repeat; }
-.cad-tag .cap .bar i { position: absolute; left: 0; top: 0; height: 100%; background: var(--fill) 0 0 / var(--barw) 100% no-repeat; }
-.cad-tag .cap .bar:hover i { background-image: var(--fillhot); }
+.cad-tag .cap .bar::before { content: ''; position: absolute; left: 0; right: 0; top: 5px; height: 6px; border-radius: 3px;
+  background: var(--sienna-paper-lo); box-shadow: inset 0 1px 2px rgba(84, 58, 32, 0.32); }
+.cad-tag .cap .bar i { position: absolute; left: 0; top: 5px; height: 6px; border-radius: 3px; background: var(--sienna-indigo); }
+.cad-tag .cap .bar i::after { content: ''; position: absolute; right: -5px; top: -2px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--sienna-terracotta); box-shadow: 0 0 0 2px var(--sienna-paper); opacity: 0; transition: opacity var(--sienna-dur-fast); }
+.cad-tag .cap .bar:is(:hover, :focus-visible) i { background: var(--sienna-terracotta); }
+.cad-tag .cap .bar:is(:hover, :focus-visible) i::after { opacity: 1; }
 .cad-tag .cap .meta { display: flex; align-items: center; justify-content: space-between; gap: var(--sienna-space-2); margin-top: var(--sienna-space-1); padding-bottom: 2px;
   font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); color: var(--sienna-ink-3); line-height: 1.25; }
 .cad-tag .cap .time { white-space: nowrap; font-variant-numeric: lining-nums tabular-nums; }
@@ -89,7 +91,7 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
   cap.innerHTML = '<div class="t"></div><div class="a"></div><div class="bar"><i></i></div><div class="meta"><span class="time"></span><span class="tools"></span></div>';
   turn.append(signin, cap);
   parent.appendChild(root);
-  paperSurface(cap, { seed: 61 });
+  paperSurface(cap);
   let suitcaseTucked = false;
   const syncTuck = () => root.classList.toggle('tucked', suitcaseTucked || overlayOpen());
   onOverlay(syncTuck);
@@ -113,29 +115,10 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
   if (onQueue) addTool('queue', 'queue', 'Up next', onQueue);
   if (onLyrics) addTool('lyrics', 'lyrics', 'Lyrics', onLyrics);
 
-  let paintedW = 0;
-  const paintCap = () => {
-    const barW = Math.round(bar.offsetWidth);
-    if (!barW || paintedW === barW) return;
-    paintedW = barW;
-    root.style.setProperty('--barw', `${barW}px`);
-    const line = (tones, seed, opts) => {
-      const key = `${barW}:${seed}`;
-      if (!lineCache.has(key)) {
-        lineCache.set(key, `url(${dabCluster(barW, SPACE[4], { tones, seed, rows: 1, tilt: 0.05, overlap: 0.56, minCols: 4, solid: true, ...opts })})`);
-        if (lineCache.size > 96) lineCache.delete(lineCache.keys().next().value);
-      }
-      return lineCache.get(key);
-    };
-    root.style.setProperty('--track', line([TONES.track[0]], 62, { impasto: 0.28, soft: true }));
-    root.style.setProperty('--fill', line([COLORS.indigo], 63, { impasto: 0.55, even: true }));
-    root.style.setProperty('--fillhot', line([COLORS.terracotta], 64, { impasto: 0.55, even: true }));
-  };
   const fit = () => { fitLine(capT, TYPE.lg, TYPE.md, 2); fitLine(capA, TYPE.sm, TYPE.xs, 1); };
-  const fontReady = (document.fonts?.load(`${TYPE.xl}px ${FONT}`) ?? Promise.resolve()).then(() => { fit(); paintCap(); }, () => { fit(); paintCap(); });
-  new ResizeObserver(() => fontReady.then(paintCap)).observe(cap);
-  addEventListener('resize', () => fontReady.then(() => { fit(); paintCap(); }));
-  onLettering(root, () => { fit(); paintCap(); }); // Settings > Lettering
+  const fontReady = (document.fonts?.load(`${TYPE.xl}px ${FONT}`) ?? Promise.resolve()).then(fit, fit);
+  addEventListener('resize', () => fontReady.then(fit));
+  onLettering(root, fit); // Settings > Lettering
 
   let duration = 0, scrubP = null, lastP = 0, lastAria = -Infinity;
   bar.tabIndex = 0;

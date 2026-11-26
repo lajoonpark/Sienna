@@ -22,7 +22,7 @@ try {
     for (const [name, kind] of [['requestAnimationFrame', 'raf'], ['setTimeout', 'timeout'], ['setInterval', 'interval']]) {
       const original = window[name].bind(window);
       window[name] = (callback, ...args) => {
-        const kit = /\/src\/ui\/|\/src\/(list-bar|searchpaint)\.js/.test(new Error().stack || '');
+        const kit = /\/src\/ui\/|\/src\/list-bar\.js/.test(new Error().stack || '');
         return original(kit && typeof callback === 'function' ? (...values) => {
           window.__kitCallbacks[kind]++; return callback(...values);
         } : callback, ...args);
@@ -59,7 +59,8 @@ try {
       },
       artistSongs: async () => {
         if (f.artistFails) throw Error('fake artist failure');
-        return { name: 'Artist One releases', items: [{ title: 'Release', kind: 'album', browseId: 'album-one' }] };
+        return { name: 'Artist One releases', items: [{ title: 'Release', kind: 'album', browseId: 'album-one' },
+          { title: 'Hit', kind: 'song', videoId: 'hit' }] };
       },
     };
     f.emit = patch => { Object.assign(f.state, patch); for (const fn of f.listeners) fn(f.state); };
@@ -116,6 +117,7 @@ try {
   assert.equal(await page.locator('.cs.ui-paper--lift > .ui-paper-layer').count(), 1);
   assert.equal(await page.locator('.cs .ui-list-foot.ui-paper').count(), 0);
   assert.equal(await page.locator('.cs .ui-list--lines').count(), 1);
+  assert.equal(await page.locator('.cs > .crate-tabs > [role="tab"].crate-tab').count(), 4, 'the filters are the card\'s divider tabs');
   assert.equal(await page.locator('.cs .ui-list-row').first().evaluate(el => el.style.backgroundImage), '');
   assert.equal(await page.locator('.cs .cs-list').evaluate(el => el.style.getPropertyValue('--ui-slip-0')), '');
   assert.equal(await page.locator('.cs .ui-list-row').first().evaluate(el => getComputedStyle(el).filter), 'none');
@@ -126,7 +128,9 @@ try {
     return { left: r.left, top: r.top, bottom: r.bottom, width: r.width, marginLeft: css.marginLeft, marginRight: css.marginRight };
   }));
   assert.equal(boxes.length, 20);
-  assert.equal(await page.locator('.cs .ui-list-kind').count(), 20);
+  assert.equal(await page.locator('.cs .ui-list-kind').count(), 0, 'a list of one kind needs no kind marks');
+  assert.deepEqual(await page.locator('.cs > .ui-list-foot kbd').allTextContents(), ['↑ ↓', 'Enter', 'Tab', 'Esc',
+    await page.evaluate(() => (/Mac/.test(navigator.platform) ? '⌥↑' : 'Alt+↑'))], 'one line of keys, for what the keyboard does now');
   for (let i = 0; i < boxes.length; i++) {
     assert.equal(boxes[i].left, boxes[0].left); assert.equal(boxes[i].width, boxes[0].width);
     assert.equal(boxes[i].marginLeft, '0px'); assert.equal(boxes[i].marginRight, '0px');
@@ -141,7 +145,7 @@ try {
   await page.keyboard.press('PageUp'); await page.keyboard.press('PageDown');
   await page.keyboard.press('Home'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
   assert.equal(await page.evaluate(() => fixture.played.at(-1).title), 'fixed 001');
-  pass('search rows: fixed aligned width, no offsets/overlap, 20 cap, kinds, cursor ARIA/band and full keyboard navigation/pick');
+  pass('search rows: fixed aligned width, no offsets/overlap, 20 cap, no kind marks on one kind, key line, cursor ARIA/band and full keyboard navigation/pick');
   await page.evaluate(() => fixture.search.open());
   await page.locator('.cs-input').fill('');
   await page.locator('.cs-input').fill('pending'); await page.keyboard.press('Enter');
@@ -158,24 +162,25 @@ try {
   await page.locator('.cs').getByRole('button', { name: 'Retry', exact: true }).click();
   await page.waitForSelector('.cs .ui-list-row');
   await page.getByRole('tab', { name: 'Artists', exact: true }).click();
-  await page.waitForSelector('.cs .ui-list-kind'); await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.cs .ui-list-title')?.textContent === 'Artist One'); await page.keyboard.press('Enter');
   await page.waitForSelector('.cs .ui-list-note--error');
   await page.evaluate(() => { fixture.artistFails = false; });
   await page.locator('.cs').getByRole('button', { name: 'Retry', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('.cs-head > span')?.textContent === 'Artist One releases');
+  assert.equal(await page.locator('.cs .ui-list-kind--icon').count(), 2, 'a list that mixes kinds marks each row');
   await page.locator('.cs-head').getByRole('button', { name: 'Back', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.cs .ui-list-kind')?.dataset.kind === 'artist');
+  await page.waitForFunction(() => document.querySelector('.cs .ui-list-title')?.textContent === 'Artist One');
   await page.keyboard.press('Enter'); await page.waitForSelector('.cs-head button', { state: 'visible' });
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => fixture.collections.length === 1);
   await page.evaluate(() => fixture.search.open());
   await page.getByRole('tab', { name: 'Songs', exact: true }).click();
   await page.getByRole('tab', { name: 'Artists', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.cs .ui-list-kind')?.dataset.kind === 'artist');
+  await page.waitForFunction(() => document.querySelector('.cs .ui-list-title')?.textContent === 'Artist One');
   await page.keyboard.press('Enter');
   await page.waitForSelector('.cs-head button', { state: 'visible' });
   await page.keyboard.press('Escape');
-  await page.waitForFunction(() => document.querySelector('.cs .ui-list-kind')?.dataset.kind === 'artist');
+  await page.waitForFunction(() => document.querySelector('.cs .ui-list-title')?.textContent === 'Artist One');
   assert.equal(await page.evaluate(() => fixture.search.isOpen()), true);
   assert.equal(await page.locator('.cad-tag').evaluate(el => el.classList.contains('tucked')), true);
   assert.equal(await page.locator('.list-veil.show').count(), 1);
@@ -246,31 +251,27 @@ try {
     fixture.music.queue = () => new Promise(resolve => {
       fixture.releaseQueue = () => { fixture.music.queue = queue; resolve(queue()); };
     });
-    const sheet = document.querySelector('.ln-qbox');
-    const paper = sheet.querySelector('.ui-paper-bg');
-    const sizes = new Set();
-    const observer = new MutationObserver(() => {
-      if (sheet.querySelector('.la-full:not([hidden])')) sizes.add(paper.style.backgroundSize);
-    });
-    observer.observe(paper, { attributes: true, attributeFilter: ['style'] });
-    fixture.queuePaperSizes = () => { observer.disconnect(); return [...sizes]; };
   });
   await queueButton.focus();
   await queueButton.click();
   await page.evaluate(() => fixture.releaseQueue());
   await queueWheel.waitFor();
   await expectCentered(1);
+  const dealt = () => page.waitForFunction(() => !document.querySelector('.ln-qveil .la-full.is-moving'));
+  await dealt();
   assert.equal(await queueWheel.getAttribute('aria-orientation'), 'horizontal');
   const queueSheet = page.locator('.ln-qbox');
   await page.waitForFunction(() => document.querySelector('.ln-qbox').getBoundingClientRect().height > innerHeight * 0.9);
   assert.ok((await queueSheet.boundingBox()).width > page.viewportSize().width * 0.9);
   assert.ok((await centered.boundingBox()).width > page.viewportSize().width * 0.38);
-  assert.equal(await queueWheel.evaluate(el => getComputedStyle(el).getPropertyValue('--cover-size').trim()), 'min(50cqw, 98cqh)');
+  assert.equal(await queueWheel.evaluate(el => getComputedStyle(el).getPropertyValue('--cover-size').trim()), 'min(46cqw, 93cqh)');
   const queueCoverBounds = await centered.boundingBox();
   const queueCaptionBounds = await queueSheet.locator('.la-details').boundingBox();
   assert.ok(queueCaptionBounds.y >= queueCoverBounds.y + queueCoverBounds.height, 'the queue caption sits below the centered cover');
-  assert.equal(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), 'none');
-  assert.equal(await queueSheet.locator('.ui-paper-bg').evaluate(el => getComputedStyle(el, '::after').content), 'none');
+  assert.equal(await queueSheet.evaluate(el => el.classList.contains('is-floating')), true);
+  assert.equal(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).display), 'none', 'the carousel floats with no card behind it');
+  assert.equal(await page.locator('.ln-qveil .ln-qtitle > .crate-sign').evaluate(el => el.style.backgroundImage.startsWith('url(')), true, 'its name hangs on a painted sign');
+  assert.equal(await page.locator('.ln-qveil .la-place').innerText(), '2 of 3');
   assert.equal(await queueWheel.locator('.la-stage').evaluate(el => parseFloat(getComputedStyle(el).perspective) > 0), true);
   assert.match(await queueCover(2).evaluate(el => el.style.transform), /translateZ.*rotateY/);
   assert.equal(await centered.locator('.la-sleeve-face').count(), 2);
@@ -282,13 +283,13 @@ try {
   assert.equal(await page.locator('.ln-qveil .la-artist').innerText(), 'Artist 1');
   assert.equal(await queueWheel.locator('.la-title, .la-artist').count(), 0);
   assert.equal(await page.evaluate(() => fixture.drawerOpens.at(-1)), false);
-  await wait(600);
-  assert.equal((await page.evaluate(() => fixture.queuePaperSizes())).length, 1, 'the unrolling queue uses one full-size paper texture');
   await page.evaluate(() => fixture.drawerReady());
   assert.equal(await page.locator('.la-vinyl-flight').count(), 0);
-  const neutralTransform = await queueSheet.evaluate(el => getComputedStyle(el).transform);
+  const queueStage = queueSheet.locator('.la-stage');
+  const neutralTransform = await queueStage.evaluate(el => getComputedStyle(el).transform);
   await page.evaluate(() => fixture.liner.tilt(0.8, -0.6));
-  assert.notEqual(await queueSheet.evaluate(el => getComputedStyle(el).transform), neutralTransform);
+  assert.notEqual(await queueStage.evaluate(el => getComputedStyle(el).transform), neutralTransform);
+  assert.equal(await queueSheet.evaluate(el => getComputedStyle(el).transform), 'none', 'only the sleeves lean, never the lettering');
   await page.evaluate(() => fixture.liner.tilt(0, 0));
   await page.keyboard.press('ArrowRight');
   await expectCentered(2);
@@ -372,7 +373,7 @@ try {
   await page.keyboard.press('ArrowLeft');
   await expectCentered(1);
   assert.equal(await queueCover(2).evaluate(el => el.style.transform.includes('rotateY')), false);
-  assert.equal(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), 'none');
+  assert.equal(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).display), 'none');
   await page.keyboard.press('Enter');
   assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), ['queueIndex', 1]);
   assert.deepEqual(await page.evaluate(() => fixture.queuePickOrigin), { instant: true });
@@ -493,7 +494,8 @@ try {
   assert.equal(await page.locator('.ln-qbox.ui-paper--lift > .ui-paper-layer').count(), 1);
   assert.equal(await page.locator('.ln-qclose').evaluate(el => el.closest('.ui-paper')?.classList.contains('ln-qbox')), true);
   assert.equal(await page.locator('.ln-qveil .is-pinned').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(248, 241, 226)');
-  assert.equal(await page.locator('.ln-qveil .ui-list-kind').count(), 3, 'queue songs without kind metadata retain Search row anatomy');
+  assert.equal(await page.locator('.ln-qveil .ui-list-kind').count(), 0, 'a queue of songs needs no kind marks');
+  assert.deepEqual(await page.locator('.ln-qbox > .ui-list-foot kbd').allTextContents(), ['↑ ↓', 'Enter', 'Esc']);
   assert.match(await page.locator('.ln-qveil .ui-list-row').first().innerText(), /Song 001/);
   assert.equal(await page.locator('.ln-qveil .ui-list-row').first().evaluate(el => el.classList.contains('is-now') && el.classList.contains('is-pinned')), true);
   await page.evaluate(() => { fixture.nodes = [...document.querySelectorAll('.ln-qveil .ui-list-row')]; fixture.queue.forEach(it => { it.selected = it.videoId === 's2'; }); fixture.emit({ videoId: 's2', queueSig: 2 }); });
@@ -564,7 +566,7 @@ try {
     search.open();
   });
   const carousel = page.locator('.la-wheel[aria-orientation="vertical"]');
-  const suggestionCaption = page.locator('.cs > .la-carousel:not(.cs-result-strip) .la-details');
+  const suggestionCaption = page.locator('.cs-stage .la-details');
   const activeCover = carousel.locator('[aria-selected="true"]');
   const input = page.locator('.cs-input');
   const coverName = n => `Record ${n} · Artist ${n}`;
@@ -581,21 +583,26 @@ try {
   assert.equal(await input.getAttribute('aria-controls'), await carousel.getAttribute('id'));
   await wait(550);
   const searchSheet = page.locator('.cs');
-  assert.ok((await searchSheet.boundingBox()).height > page.viewportSize().height * 0.9);
+  assert.equal(await searchSheet.evaluate(el => el.classList.contains('cs-covering')), true);
+  assert.ok((await searchSheet.boundingBox()).height < page.viewportSize().height * 0.25, 'with covers out the card is only its tabs and search line');
+  const coverArea = await page.locator('.cs-stage').boundingBox();
+  assert.ok(coverArea.height > page.viewportSize().height * 0.65 && coverArea.y + coverArea.height > page.viewportSize().height - 40);
   assert.ok((await activeCover.boundingBox()).height > page.viewportSize().height * 0.35);
-  assert.equal(await searchSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), 'none');
-  assert.equal(await carousel.evaluate(el => getComputedStyle(el).getPropertyValue('--cover-size').trim()), 'min(96cqw, 92cqh)');
+  assert.equal(await page.locator('.cs-stage > .cs-sign').innerText(), 'Listen again');
+  assert.equal(await carousel.evaluate(el => getComputedStyle(el).getPropertyValue('--cover-size').trim()), 'min(58cqw, calc(74cqh - 62px))');
   assert.match(await carousel.locator('[data-index="1"]').evaluate(el => el.style.transform), /translateZ.*rotateX/);
-  const neutral = await searchSheet.evaluate(el => getComputedStyle(el).transform);
+  const searchStage = page.locator('.cs-stage .la-stage');
+  const neutral = await searchStage.evaluate(el => getComputedStyle(el).transform);
   await page.evaluate(() => fixture.search.tilt(0.8, -0.6));
-  assert.notEqual(await searchSheet.evaluate(el => getComputedStyle(el).transform), neutral);
+  assert.notEqual(await searchStage.evaluate(el => getComputedStyle(el).transform), neutral);
+  assert.equal(await searchSheet.evaluate(el => getComputedStyle(el).transform), 'none', 'the card never leans');
   await page.evaluate(() => fixture.search.tilt(0, 0));
   const desktopSize = page.viewportSize();
   await page.setViewportSize({ width: 540, height: 620 });
   const miniCoverBounds = await activeCover.boundingBox();
   const miniCaptionBounds = await suggestionCaption.boundingBox();
-  const miniHintBounds = await page.locator('.cs > .la-full > .ui-list-foot').boundingBox();
-  assert.ok(miniCoverBounds.width > 540 * 0.65, 'the vertical cover fills most of the mini player width');
+  const miniHintBounds = await page.locator('.cs-stage .la-full > .ui-list-foot').boundingBox();
+  assert.ok(miniCoverBounds.width > 540 * 0.45, 'the vertical cover is big in the mini player');
   assert.ok(miniCaptionBounds.y >= miniCoverBounds.y + miniCoverBounds.height, 'the Listen again caption sits below the centered cover');
   assert.ok(miniHintBounds.y >= miniCaptionBounds.y + miniCaptionBounds.height && miniHintBounds.y + miniHintBounds.height <= 620,
     'the Listen again hint fits below the caption within the mini player');
@@ -603,13 +610,9 @@ try {
   assert.equal(await page.locator('.la-vinyl-flight').count(), 0);
   const closingCover = await activeCover.evaluate(card => {
     fixture.search.close();
-    const { x, y, width, height } = card.getBoundingClientRect();
-    const hit = document.elementFromPoint(x + width / 2, y + height / 2);
-    if (hit?.closest('.la-cover') !== card) return null;
-    hit.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
     return card.classList.contains('is-picked');
   });
-  assert.notEqual(closingCover, null, 'the centered sleeve can still be hit during the close transition');
   await wait(300);
   await page.keyboard.press('Control+Alt+J');
   assert.equal(await page.evaluate(() => fixture.search.isOpen()), true, 'the Search shortcut works after clicking during close');
@@ -620,8 +623,12 @@ try {
   pass('Listen again ignores clicks during close and Search can reopen from the keyboard');
   await page.keyboard.press('ArrowDown');
   await expectCover(1);
-  const wheelBounds = await carousel.boundingBox();
-  const nextCoverPoint = { x: wheelBounds.x + wheelBounds.width / 2, y: wheelBounds.y + wheelBounds.height - 4 };
+  await wait(400);
+  // the strip of the next sleeve showing under the centred one, left of the caption
+  const nextCoverPoint = await page.evaluate(() => {
+    const centre = document.querySelector('.cs-stage [aria-selected="true"] .la-sleeve-front').getBoundingClientRect();
+    return { x: centre.left + 24, y: centre.bottom + 14 };
+  });
   await page.waitForFunction(({ x, y, name }) => document.elementFromPoint(x, y)?.closest('.la-cover')?.getAttribute('aria-label') === name,
     { ...nextCoverPoint, name: coverName(2) });
   await page.mouse.click(nextCoverPoint.x, nextCoverPoint.y);
@@ -640,8 +647,8 @@ try {
   await page.keyboard.press('Home');
   await expectCover(0);
   await page.keyboard.press('Enter');
-  await page.waitForSelector('.cs.cover-picking .is-picked');
-  assert.equal(await searchSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).visibility), 'hidden');
+  await page.waitForSelector('.cs-stage.is-picking .is-picked');
+  assert.equal(await searchSheet.evaluate(el => el.classList.contains('cover-picking')), true, 'the search card steps aside for the pick');
   await page.waitForFunction(() => fixture.origins[0]?.rect.width > 0);
   assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0']);
 
@@ -676,7 +683,6 @@ try {
   const results = page.getByRole('listbox', { name: 'Search results', exact: true });
   assert.equal(await strip.getAttribute('aria-orientation'), 'horizontal');
   assert.ok((await searchSheet.boundingBox()).width < page.viewportSize().width * 0.8);
-  assert.equal(await searchSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), 'none');
   assert.deepEqual(await strip.getByRole('option').evaluateAll(els => els.map(el => el.getAttribute('aria-label'))),
     [1, 2, 3, 4, 5].map(i => `Match result ${i} · Search artist`));
   assert.equal(await results.getByRole('option').count(), 7);
@@ -691,7 +697,8 @@ try {
     await shortcuts.set('search', 'Alt+Up');
   });
   assert.equal(await input.getAttribute('aria-keyshortcuts'), 'Shift+ArrowUp');
-  assert.match(await page.locator('.cs-result-strip .ui-list-foot').innerText(), /^Shift\+↑/);
+  assert.equal(await page.locator('.cs > .ui-list-foot kbd').last().textContent(),
+    await page.evaluate(() => (/Mac/.test(navigator.platform) ? '⇧↑' : 'Shift+↑')), 'the key line names the free chord');
   await page.keyboard.press('Shift+ArrowUp');
   assert.equal(await input.getAttribute('aria-controls'), await strip.getAttribute('id'));
   await page.keyboard.press('Alt+ArrowUp');
@@ -811,7 +818,8 @@ try {
     return Promise.all([...document.querySelectorAll('.cs-result-strip .la-cover')].map(async card => {
       const srcs = [...card.querySelectorAll('img')].map(img => img.src);
       const art = `https://i.ytimg.com/vi/${card.getAttribute('aria-label').split(' result ')[0]}-${card.dataset.index}/hq.jpg`;
-      return { srcs, ok: srcs.length === 0 || (srcs.length === 1 && srcs[0] === await paintedCoverURL(art, 160)) };
+      const painted = srcs.length ? await paintedCoverURL(art, 160) : null;   // on the sleeve and on its record
+      return { srcs, ok: srcs.every(src => src === painted) };
     }));
   });
   const artShown = n => page.waitForFunction(n => [...document.querySelectorAll('.cs-result-strip .la-cover')].slice(0, n)
@@ -826,7 +834,7 @@ try {
   assert.ok(artHits.includes('Slow-0'), 'the first query\'s covers were still loading when the query changed');
   let art = await stripArt();
   assert.ok(art.every(card => card.ok), 'each cover shows its own result\'s artwork after the query changes');
-  assert.ok(art.slice(0, 3).every(card => card.srcs.length === 1));
+  assert.ok(art.slice(0, 3).every(card => card.srcs.length > 0));
   await page.keyboard.press('Alt+ArrowUp');
   await page.keyboard.press('End');
   await artShown(5);
@@ -839,60 +847,36 @@ try {
 
   assert.equal(await strip.evaluate(el => el.closest('.cs-result-strip').scrollHeight - el.closest('.cs-result-strip').clientHeight), 0,
     'a full list leaves the cover strip unclipped at rest');
-  const rollOverflow = () => page.evaluate(() => new Promise(resolve => {
-    const sheet = document.querySelector('.cs'), coverStrip = document.querySelector('.cs-result-strip');
-    const curl = sheet.querySelector('.ui-unroll-roll');
-    let worst = -Infinity, smallest = Infinity;
-    const curlShapes = new Set();
-    const start = performance.now();
-    (function frame() {
-      const edge = sheet.getBoundingClientRect().bottom - parseFloat(getComputedStyle(sheet).paddingBottom);
-      const rect = coverStrip.getBoundingClientRect();
-      worst = Math.max(worst, rect.bottom - edge); smallest = Math.min(smallest, rect.height);
-      if (!curl.hidden) {
-        const ctx = curl.getContext('2d');
-        const scan = ctx.getImageData(curl.width / 2, 0, 1, curl.height).data;
-        const ink = Array.from(scan).filter((v, i) => i % 4 === 3 && v > 127).length;
-        if (ink > 0) curlShapes.add(ink);
-      }
-      if (performance.now() - start < 700) requestAnimationFrame(frame);
-      else resolve({ worst, smallest, curlShapes: curlShapes.size, resting: curl.hidden });
-    })();
-  }));
-  const closing = rollOverflow();
-  await page.evaluate(() => fixture.search.close());
-  const closed = await closing;
-  assert.ok(closed.worst < 0.5, `covers stay inside the paper while it rolls up (${closed.worst}px out)`);
-  assert.ok(closed.smallest < 1, 'the paper rolls all the way up to the cover strip\'s top edge');
-  assert.ok(closed.curlShapes > 1, 'the paper winds into a changing curl while closing');
-  const opening = rollOverflow();
-  await page.evaluate(() => fixture.search.open());
-  const opened = await opening;
-  assert.ok(opened.worst < 0.5, `covers stay inside the paper while it unrolls (${opened.worst}px out)`);
-  assert.ok(opened.curlShapes > 1 && opened.resting, 'the paper unwinds and leaves no visible roll at rest');
-  const reversal = await page.evaluate(async () => {
-    const sheet = document.querySelector('.cs');
-    const roll = sheet.querySelector('.ui-unroll-roll');
-    const start = sheet.offsetHeight;
+  // the card flips shut and open; changing your mind halfway still lands on a card at rest
+  const flip = await page.evaluate(async () => {
+    const card = document.querySelector('.cs');
+    const pause = ms => new Promise(r => setTimeout(r, ms));
     fixture.search.close();
-    const deadline = performance.now() + 380;
-    while (roll.hidden && sheet.offsetHeight === start && performance.now() < deadline) await new Promise(requestAnimationFrame);
-    const winding = !roll.hidden;
-    const before = sheet.offsetHeight;
+    const closing = card.classList.contains('closing') && !fixture.search.isOpen();
+    await pause(60);
     fixture.search.open();
-    return { winding, jump: Math.abs(sheet.offsetHeight - before) };
+    await pause(40);
+    fixture.search.close();
+    await pause(30);
+    fixture.search.open();
+    const typing = document.activeElement === document.querySelector('.cs-input');
+    const flipping = card.getAnimations().length > 0;
+    await pause(700);
+    const css = getComputedStyle(card);
+    return { closing, typing, flipping, rest: [card.classList.contains('show'), card.classList.contains('closing'), css.transform, css.opacity] };
   });
-  assert.ok(reversal.winding && reversal.jump < 3, `reopening begins at the current paper edge (${reversal.jump}px jump)`);
-  await page.evaluate(() => { fixture.artFor = null; });
+  assert.deepEqual(flip, { closing: true, typing: true, flipping: true, rest: [true, false, 'none', '1'] });
+  await page.evaluate(() => fixture.search.close());
+  await page.waitForFunction(() => { const c = document.querySelector('.cs'); return !c.classList.contains('closing') && getComputedStyle(c).visibility === 'hidden'; });
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.evaluate(() => { fixture.search.close(); fixture.search.open(); });
-  assert.equal(await page.locator('.cs > .ui-unroll-roll').evaluate(el => el.hidden), true, 'reduced motion skips the curl');
+  await page.evaluate(() => fixture.search.open());
+  assert.equal(await page.locator('.cs').evaluate(el => el.getAnimations().length), 0, 'reduced motion skips the flip');
   await input.fill('');
   await carousel.waitFor();
   assert.equal(await strip.isVisible(), false);
-  pass('Listen again: drawer discs land in covers, keyboard/Enter, side and centre clicks, wheel, drag, reduced motion and paper fallback');
+  pass('Listen again: floating under a card of tabs, keyboard/Enter, side and centre clicks, wheel, drag, reduced motion and list fallback');
   pass('typed search: five covers above the full ruled list, independent keyboard navigation, native typing, centered click/Enter, reduced motion and live setting');
-  pass('typed search covers: each result\'s own artwork across query changes, covers clipped by the paper while it rolls up and unrolls');
+  pass('typed search covers: each result\'s own artwork across query changes; the card flips shut and open, survives changes of mind, and keeps still under reduced motion');
 
   await page.setViewportSize({ width: 540, height: 620 });
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -907,7 +891,7 @@ try {
     window.__mini.music.onState(s => { window.pickState = s; });
   });
   for (const queue of [true, false]) {
-    const cover = page.locator(`${queue ? '.ln-qveil.show' : '.cs.show'} .la-full .la-cover[aria-selected="true"]`);
+    const cover = page.locator(`${queue ? '.ln-qveil.show' : '.cs-stage.show'} .la-full .la-cover[aria-selected="true"]`);
     for (const phase of ['extraction', 'flight']) {
       for (const input of ['Escape', 'Enter', 'click']) {
         const label = `${queue ? 'Up next' : 'Listen again'} / ${phase} / ${input}`;
@@ -917,7 +901,7 @@ try {
         const title = await cover.evaluate((card, phase) => {
           const title = card.closest('.la-full').querySelector('.la-title').textContent;
           document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-          const [slide] = card.querySelector('.la-disc').getAnimations();
+          const slide = card.querySelector('.la-disc').getAnimations().find(a => a.constructor.name === 'Animation');
           if (phase === 'flight') slide.finish();
           else slide.pause();
           return title;
@@ -932,7 +916,7 @@ try {
         } else await page.keyboard.press(input);
         assert.deepEqual(await page.evaluate(queue => {
           const { flights, suitcase, phase } = window.__mini;
-          const picked = document.querySelector(`${queue ? '.ln-qveil' : '.cs'} .is-picked`);
+          const picked = document.querySelector(`${queue ? '.ln-qveil' : '.cs-stage'} .is-picked`);
           return [flights.active, suitcase.debug.seatHas, suitcase.held, suitcase.debug.cue?.landed, phase,
             getComputedStyle(picked).visibility];
         }, queue), [false, true, false, true, 'open', 'hidden'], label);

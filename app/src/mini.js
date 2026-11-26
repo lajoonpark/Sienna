@@ -27,6 +27,8 @@ import { createTimeOfDay } from './timeofday.js';
 import { registerLamp, glowMesh } from './env.js';
 import { LISTENING_TABLE, LOUNGE_LAMP, buildLoungeCore, buildCourtyardVista } from './loungecorner.js';
 import { createLiner, showWebGLError } from './liner.js';
+import { onOverlay } from './ui/sheet.js';
+import { setLamp } from './ui/veil.js';
 import { injectTokens } from './ui/tokens.js';
 import { listenForCoverPickSkip } from './ui/cover-pick-input.js';
 import { settings } from './settings.js';
@@ -171,12 +173,7 @@ const flights = createFlights({ scene: hud, suitcase, camera, view: camera, worl
 const tray = createRecordTray({ suitcase, kit: suitcase.recordKit, onDisc: (d) => flights.receive(d) });
 
 // ---- Up next queue (liner.js): records fly to the platter from the carousel or drawer ----
-const _drawerPt = new THREE.Vector3();
-const drawerScreenPos = () => {
-  tray.centerPoint(_drawerPt).project(camera);
-  const r = renderer.domElement.getBoundingClientRect();
-  return { x: r.left + ((_drawerPt.x + 1) / 2) * r.width, y: r.top + ((1 - _drawerPt.y) / 2) * r.height };
-};
+const drawerScreenPos = () => tray.screenSpan(camera, renderer.domElement.getBoundingClientRect());
 const liner = timePart('liner', () => createLiner({
   music,
   onQueueOpen: ({ showStack }) => tray.openHold(lastState?.art ? [getCover(lastState.art, 256).tex] : [], { showStack }),
@@ -244,8 +241,8 @@ const search = timePart('search', () => createSearch({
   onPlay: (item, { fromCoverPicker, from }) => {
     const cover = getCover(item.art, 512).tex;
     if (fromCoverPicker) {
-      tray.finish();
-      flights.finish();
+      if (tray.dispensing) finishPick();
+      else { tray.closeHold(); flights.finish(); }
       startSong(music, suitcase, item);
       flights.receiveFromScreen(from, renderer.domElement.getBoundingClientRect(), cover);
       return;
@@ -257,7 +254,17 @@ const search = timePart('search', () => createSearch({
     const busy = refreshListenAgain();
     return listenAgain ?? busy;
   },
+  // the Listen again sleeves come out of the suitcase's drawer, and go back into it
+  drawer: {
+    open: () => {
+      if (tray.dispensing) finishPick();   // a record still in the drawer goes straight on first
+      tray.openHold([], { showStack: false });
+    },
+    close: () => tray.closeHold(),
+    origin: drawerScreenPos,
+  },
 }));
+onOverlay((open) => { if (open) setLamp(drawerScreenPos()); });
 listenForCoverPickSkip(flights.finishScreenPick);
 caption.show(true, true);
 
@@ -313,7 +320,7 @@ function finishPick() {
 function dismiss() {
   if (phase !== 'open') return;
   search.closeCoverPicker();
-  liner.close();
+  liner.close({ instant: true });
   finishPick();
   phase = 'closing';
   suitcase.close();
@@ -417,7 +424,7 @@ addEventListener('pointermove', trackPointer);
 addEventListener('pointerout', (e) => { if (!e.relatedTarget) leaveWindow(); });
 addEventListener('pointerdown', (e) => {
   if (liner.isOpen()) return;                    // the queue veil handles its own clicks (backdrop shuts it)
-  if (e.target.closest?.('.cad-tag, .cs')) return;
+  if (e.target.closest?.('.cad-tag, .cs, .cs-stage, .list-veil')) return;
   toNdc(e);
   if (!suitcase.pointerDown(ndc, camera) && (Math.abs(ndc.x) > 0.93 || Math.abs(ndc.y) > 0.93)) dismiss();
 });
@@ -501,5 +508,5 @@ const screenOf = (name, dx = 0, dz = 0) => {
   return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
 };
 if (!window.sienna || window.sienna.isDev) {
-  window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, tray, flights, liner, perf, get phase() { return phase; }, get appear() { return appear; }, get pointerIn() { return pointerIn; } };
+  window.__mini = { suitcase, music, summon, dismiss, screenOf, step: stepFrame, tray, flights, liner, perf, drawerScreenPos, get phase() { return phase; }, get appear() { return appear; }, get pointerIn() { return pointerIn; } };
 }

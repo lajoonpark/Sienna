@@ -4,6 +4,7 @@
 import { dabCluster, TONES } from '../brushpaint.js';
 import { COLORS, injectTokens } from './tokens.js';
 import { fontReady, onLettering } from '../style.js';
+import { icon } from './icons.js';
 
 function tonesFor(color) {
   if (color === COLORS.indigo) return TONES.ink;
@@ -102,6 +103,12 @@ const BRUSH_CSS = `
 .ui-brush-label { position: relative; z-index: 1; display: block; white-space: nowrap;
   padding: .24em 1.25em .2em .9em; text-shadow: 0 0 1px rgba(248, 241, 226, 0.7); }
 .ui-brush-line { display: block; }
+.ui-brush-ico { position: relative; z-index: 1; display: inline-flex; flex: none; margin-left: .75em; }
+.ui-brush-ico + .ui-brush-label { padding-left: .35em; }
+.ui-brush--flip .ui-brush-ico { margin-left: 1.05em; }
+.ui-brush--flip .ui-brush-ico + .ui-brush-label { padding-left: .35em; padding-right: .85em; }
+.ui-brush--spin .ui-brush-ico { animation: ui-brush-spin 900ms linear infinite; }
+@keyframes ui-brush-spin { to { transform: rotate(360deg); } }
 .ui-brush--flip .ui-brush-label { padding: .24em .9em .2em 1.25em; }
 .ui-brush--lg .ui-brush-label { padding: .22em 1.3em .18em .95em; }
 .ui-brush--lg.ui-brush--flip .ui-brush-label { padding: .22em .95em .18em 1.3em; }
@@ -127,6 +134,7 @@ export function brushButton(label, {
   pressed = undefined,
   disabled = false,
   ariaLabel = null,
+  icon: iconName = null,
 } = {}) {
   injectBrushCss();
   const el = document.createElement('button');
@@ -150,7 +158,14 @@ export function brushButton(label, {
   };
   let lines = labelLines(label);
   renderLabel(lines);
-  el.append(cold, hot, span);
+  el.append(cold, hot);
+  if (iconName) {
+    const mark = document.createElement('span');
+    mark.className = 'ui-brush-ico';
+    mark.appendChild(icon(iconName, { size: size === 'sm' ? 16 : size === 'lg' ? 24 : 20 }));
+    el.appendChild(mark);
+  }
+  el.appendChild(span);
 
   const coldColor = tone === 'hot' ? COLORS.terracotta : tone === 'danger' ? COLORS.danger : COLORS.indigo;
   const hotColor = tone === 'danger' ? COLORS.danger : COLORS.terracotta;
@@ -260,6 +275,8 @@ export function brushButton(label, {
   el.setDisabled = (on) => {
     el.disabled = !!on;
   };
+
+  el.setSpinning = (on) => el.classList.toggle('ui-brush--spin', !!on);
 
   el.repaint = (force = false) => paint(force);
 

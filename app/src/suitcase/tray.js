@@ -188,6 +188,7 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null, overlay
   }
 
   const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3();
+  const _spanA = new THREE.Vector3(), _spanB = new THREE.Vector3();
   const _e = new THREE.Euler(), _qw = new THREE.Quaternion(), _qs = new THREE.Quaternion();
 
   function launchStackDisc(d) {
@@ -353,14 +354,29 @@ export function createRecordTray({ suitcase, kit, onDisc, camera = null, overlay
     }
   }
 
-  // World (or overlay-scene) center of the open drawer cavity, for launching Queue slips out of it.
-  function centerPoint(out = new THREE.Vector3()) {
+  // World (or overlay-scene) centre of the open drawer cavity, and a point a record's radius along it:
+  // where the carousel's sleeves come out, and how big a record in there looks.
+  function drawerSpan(centre = new THREE.Vector3(), edge = new THREE.Vector3()) {
     drawer.updateWorldMatrix(true, false);
-    return out.set(0, 0.34, 0.3).applyMatrix4(drawer.matrixWorld);
+    centre.set(0, 0.34, 0.3).applyMatrix4(drawer.matrixWorld);
+    edge.set(L.recordRadius, 0.34, 0.3).applyMatrix4(drawer.matrixWorld);
+    return { centre, edge };
+  }
+
+  // the same on screen, in CSS px, through `view` for a canvas filling `box`
+  function screenSpan(view, box) {
+    const { centre, edge } = drawerSpan(_spanA, _spanB);
+    centre.project(view);
+    edge.project(view);
+    const x = box.left + ((centre.x + 1) / 2) * box.width;
+    const y = box.top + ((1 - centre.y) / 2) * box.height;
+    const size = Math.hypot((edge.x - centre.x) * box.width, (edge.y - centre.y) * box.height);
+    return { x, y, size };
   }
 
   return {
-    run, openHold, closeHold, setStackCovers, update, centerPoint,
+    run, openHold, closeHold, setStackCovers, update, screenSpan,
+    get dispensing() { return mode === 'dispense' && !handed; },
     // jump to the end; a record that never left the tray is handed back (its cover) so it can go straight on
     finish() {
       const left = mode === 'dispense' && !handed ? cover : null;

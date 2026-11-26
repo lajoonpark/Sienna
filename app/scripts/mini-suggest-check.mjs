@@ -1,7 +1,7 @@
-// The mini window's Listen again slips are ready before search opens. Loads the real mini.html with a
+// The mini window's Listen again records are ready before search opens. Loads the real mini.html with a
 // stubbed Electron bridge and a slow home feed, the window still "hidden", and checks: fetched without
-// being asked, covers painted ahead, slips on the page in the same task as the hotkey, an old copy shown
-// at once while a fresh one loads, a failed fetch tried again, a sign-in fetching again.
+// being asked, covers painted ahead, the sleeves on the wheel in the same task as the hotkey, an old copy
+// shown at once while a fresh one loads, a failed fetch tried again, a sign-in fetching again.
 // Usage: node scripts/mini-suggest-check.mjs      (SIENNA_PORT=5241)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -45,11 +45,12 @@ async function load({ failFirst = false, held = false } = {}) {
       onAccount: (cb) => { window.__signedIn = cb; },
     };
     window.siennaMini = { onOpen: (cb) => { window.__open = cb; }, onClose: () => {}, closing: () => {}, closed: () => {} };
+    window.__sleeves = () => [...document.querySelectorAll('.cs-stage .la-cover')].map((c) => c.getAttribute('aria-label').split(' · ')[0]);
     // Press the hotkey and read the page in the same task plus microtasks: nothing has been painted yet.
     window.__pressSearch = async () => {
       dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyJ', altKey: true, ctrlKey: true, bubbles: true }));
       for (let i = 0; i < 5; i++) await null;
-      return { head: document.querySelector('.cs-head > span').textContent, slips: [...document.querySelectorAll('.cs .ui-list-title')].map((e) => e.textContent) };
+      return { head: document.querySelector('.cs-stage > .cs-sign')?.textContent ?? '', slips: window.__sleeves() };
     };
   }, { failFirst, held });
   await page.goto(`http://127.0.0.1:${port}/mini.html`);
@@ -67,7 +68,7 @@ ok('fetched and covers painted while the window is hidden');
 const first = await page.evaluate('window.__pressSearch()');
 assert.deepStrictEqual(first, { head: 'Listen again', slips: ['Song 1.1', 'Song 1.2', 'Song 1.3'] });
 assert.strictEqual(await page.evaluate('window.__home'), 1, 'search did not fetch again');
-ok('slips are on the page in the same task as the hotkey');
+ok('the sleeves are on the wheel in the same task as the hotkey');
 await page.evaluate('window.__pressSearch()');   // the hotkey toggles it shut
 
 // summon does not refetch a fresh copy; an old one refetches but never makes search wait
@@ -78,7 +79,7 @@ const old = await page.evaluate('window.__pressSearch()');
 assert.deepStrictEqual(old.slips, ['Song 1.1', 'Song 1.2', 'Song 1.3'], 'the old copy shows at once');
 assert.strictEqual(await page.evaluate('window.__home'), 2, 'and a fresh one is on its way');
 await wait(600);
-assert.deepStrictEqual(await page.evaluate(() => [...document.querySelectorAll('.cs .ui-list-title')].map((e) => e.textContent)), ['Song 1.1', 'Song 1.2', 'Song 1.3'], 'open slips do not jump under the cursor');
+assert.deepStrictEqual(await page.evaluate(() => window.__sleeves()), ['Song 1.1', 'Song 1.2', 'Song 1.3'], 'open sleeves do not jump under the cursor');
 await page.evaluate('window.__pressSearch()');
 const fresh = await page.evaluate('window.__pressSearch()');
 assert.deepStrictEqual(fresh.slips, ['Song 2.1', 'Song 2.2', 'Song 2.3'], 'next open has the fresh copy');
@@ -97,8 +98,8 @@ await page.close();
 page = await load({ held: true });
 assert.deepStrictEqual((await page.evaluate('window.__pressSearch()')).slips, []);
 await page.evaluate('window.__release()');
-await page.waitForSelector('.cs .ui-list-title', { state: 'attached', timeout: 15000 });
-assert.deepStrictEqual(await page.evaluate(() => [...document.querySelectorAll('.cs .ui-list-title')].map((e) => e.textContent)), ['Song 1.1', 'Song 1.2', 'Song 1.3']);
+await page.waitForSelector('.cs-stage .la-cover', { state: 'attached', timeout: 15000 });
+assert.deepStrictEqual(await page.evaluate(() => window.__sleeves()), ['Song 1.1', 'Song 1.2', 'Song 1.3']);
 assert.strictEqual(await page.evaluate('window.__home'), 1);
 ok('search during the first fetch fills in when it lands');
 await page.close();

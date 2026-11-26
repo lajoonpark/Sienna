@@ -1,10 +1,10 @@
-// Shared modal sheet for Settings and Lyrics: painted veil (dimming + slight desaturation),
-// oil-dabbed torn paper (paperSurface), 3D unfold/fold/flap keyframes, cursor lean,
-// Esc + backdrop close, focus trap + opener restore, and shared overlayOpen/onOverlay signal.
+// Shared modal card for Settings and Lyrics: the lights go down (veil.js), a crate card (paper.js) tips
+// up like a sleeve flipped forward and tips back to leave, Esc + backdrop close, focus trap + opener
+// restore, and the shared overlayOpen/onOverlay signal.
 import { MOTION, injectTokens } from './tokens.js';
-import { paperSurface, torn } from './paper.js';
+import { paperSurface } from './paper.js';
 import { stamp } from './inputs.js';
-import { onCursorTilt, tiltCSS } from '../cursortilt.js';
+import { injectVeilCss } from './veil.js';
 import { smoothWheel } from './smooth-scroll.js';
 
 // ---- Shared overlay signal (sheets, search, lists, queue) ----
@@ -40,59 +40,38 @@ export function setOverlayOpen(owner, isOpen) {
 let sheetSeq = 0;
 
 const SHEET_CSS = `
-.ui-sheet-veil { position: fixed; inset: 0; z-index: var(--sienna-z-sheet);
+.ui-sheet-veil { z-index: var(--sienna-z-sheet);
   display: flex; align-items: center; justify-content: center;
-  background: var(--sienna-veil);
-  -webkit-backdrop-filter: var(--sienna-veil-filter);
-  backdrop-filter: var(--sienna-veil-filter);
-  perspective: 1600px; opacity: 0; visibility: hidden; pointer-events: none;
+  opacity: 0; visibility: hidden; pointer-events: none;
   transition: opacity var(--sienna-dur-mid) var(--sienna-ease-out), visibility 0s var(--sienna-dur-mid); }
 .ui-sheet-veil.show { opacity: 1; visibility: visible; pointer-events: auto;
   transition: opacity var(--sienna-dur-mid) var(--sienna-ease-out); }
 .ui-sheet-veil.closing { opacity: 0; visibility: visible; pointer-events: none;
   transition: opacity var(--sienna-dur-mid) var(--sienna-ease-in); }
-.ui-sheet-lean { display: flex; justify-content: center; will-change: transform; }
+.ui-sheet-lean { display: flex; justify-content: center; }
 .ui-sheet-card { position: relative; box-sizing: border-box;
   width: var(--ui-sheet-w, min(760px, 92vw));
   max-height: var(--ui-sheet-max-h, min(620px, 88vh));
   display: flex; flex-direction: column;
-  padding: var(--sienna-space-6) var(--sienna-space-8) var(--sienna-space-5);
-  color: var(--sienna-ink); font-family: var(--sienna-serif);
-  transform-style: preserve-3d; transform-origin: 50% 54%; transform: rotate(var(--sienna-tilt-sm)); }
+  padding: var(--sienna-space-5) var(--sienna-space-6) var(--sienna-space-4);
+  color: var(--sienna-ink); font-family: var(--sienna-serif); transform-origin: 50% 100%; }
 .ui-sheet-card:focus { outline: none; }
-.ui-sheet-veil.show .ui-sheet-card { animation: ui-sheet-unfold var(--sienna-dur-slow) var(--sienna-ease-out) both; }
-.ui-sheet-veil.closing .ui-sheet-card { animation: ui-sheet-fold var(--sienna-dur-mid) var(--sienna-ease-in) both; }
-@keyframes ui-sheet-unfold {
-  0%   { opacity: 0; transform: translateY(34px) translateZ(-90px) rotateX(64deg) rotateY(-9deg) rotateZ(-3deg) scaleY(.48) scaleX(.93); }
-  38%  { opacity: 1; transform: translateY(-6px) translateZ(18px) rotateX(-14deg) rotateY(3.2deg) rotateZ(.85deg) scaleY(1.028) scaleX(1.008); }
-  68%  { opacity: 1; transform: translateY(2px) translateZ(3px) rotateX(4.4deg) rotateY(-1.2deg) rotateZ(-.85deg) scaleY(.995) scaleX(1); }
-  86%  { opacity: 1; transform: translateY(0) translateZ(0) rotateX(-1.3deg) rotateY(.35deg) rotateZ(-.28deg) scale(1); }
-  100% { opacity: 1; transform: rotate(var(--sienna-tilt-sm)); }
+.ui-sheet-veil.show .ui-sheet-card { animation: ui-sheet-flip-up 440ms cubic-bezier(0.4, 0.4, 0.5, 1) both; }
+.ui-sheet-veil.closing .ui-sheet-card { animation: ui-sheet-flip-back 200ms var(--sienna-ease-in) both; }
+@keyframes ui-sheet-flip-up {
+  0%   { opacity: 0; transform: perspective(1100px) translateY(28px) rotateX(34deg); }
+  34%  { opacity: 1; }
+  66%  { opacity: 1; transform: perspective(1100px) translateY(-2px) rotateX(-4.5deg); }
+  100% { opacity: 1; transform: none; }   /* flat at rest, so its text stays crisp */
 }
-@keyframes ui-sheet-fold {
-  0%   { opacity: 1; transform: rotate(var(--sienna-tilt-sm)); }
-  100% { opacity: 0; transform: translateY(26px) translateZ(-72px) rotateX(-50deg) rotateY(6deg) rotateZ(2.2deg) scaleY(.52) scaleX(.93); }
-}
-.ui-sheet-flap { position: absolute; left: 0; right: 0; top: 0; height: 50%;
-  background: linear-gradient(180deg, var(--sienna-paper) 0%, var(--sienna-paper-lo) 100%);
-  transform-origin: 50% 100%; backface-visibility: visible; pointer-events: none; opacity: 0; z-index: 4; }
-.ui-sheet-veil.show .ui-sheet-flap { animation: ui-sheet-flap-open var(--sienna-dur-slow) var(--sienna-ease-out) both; }
-.ui-sheet-veil.closing .ui-sheet-flap { animation: ui-sheet-flap-close var(--sienna-dur-mid) var(--sienna-ease-in) both; }
-@keyframes ui-sheet-flap-open {
-  0%   { opacity: .95; transform: rotateX(-165deg); box-shadow: 0 12px 24px rgba(55, 38, 24, .26); }
-  55%  { opacity: .58; transform: rotateX(-14deg); box-shadow: 0 4px 10px rgba(55, 38, 24, .1); }
-  85%  { opacity: .16; transform: rotateX(4deg); box-shadow: none; }
-  100% { opacity: 0; transform: rotateX(0deg); box-shadow: none; }
-}
-@keyframes ui-sheet-flap-close {
-  0%   { opacity: 0; transform: rotateX(0deg); }
-  35%  { opacity: .55; transform: rotateX(-55deg); }
-  100% { opacity: .9; transform: rotateX(-145deg); }
+@keyframes ui-sheet-flip-back {
+  0%   { opacity: 1; transform: perspective(1100px) translateY(0) rotateX(0deg); }
+  100% { opacity: 0; transform: perspective(1100px) translateY(20px) rotateX(22deg); }
 }
 .ui-sheet-head { position: relative; flex: none; display: flex; align-items: flex-start; justify-content: space-between;
   gap: var(--sienna-space-4); margin-bottom: var(--sienna-space-3); }
 .ui-sheet-head-text { min-width: 0; flex: 1; }
-.ui-sheet-title { margin: 0; font-family: var(--sienna-font); font-size: var(--sienna-text-2xl); line-height: 1.02;
+.ui-sheet-title { margin: 0; font-family: var(--sienna-font); font-size: var(--sienna-text-xl); line-height: 1.1;
   font-weight: 700; color: var(--sienna-indigo); }
 .ui-sheet-desc { margin: var(--sienna-space-1) 0 0; font-family: var(--sienna-serif); font-size: var(--sienna-text-sm);
   line-height: 1.4; color: var(--sienna-ink-2); }
@@ -113,6 +92,7 @@ const SHEET_CSS = `
 
 function injectSheetCss() {
   injectTokens();
+  injectVeilCss();
   if (typeof document === 'undefined' || !document.head || document.getElementById('sienna-ui-sheet')) return;
   const st = document.createElement('style');
   st.id = 'sienna-ui-sheet';
@@ -140,7 +120,6 @@ function getFocusables(container) {
 export function createSheet({
   title = '',
   description = '',
-  seed = 7,
   width = null,
   maxHeight = null,
   showClose = true,
@@ -153,7 +132,7 @@ export function createSheet({
   const owner = Symbol(`sheet-${id}`);
 
   const veil = document.createElement('div');
-  veil.className = 'ui-sheet-veil';
+  veil.className = 'ui-sheet-veil sienna-veil';
 
   const lean = document.createElement('div');
   lean.className = 'ui-sheet-lean';
@@ -165,11 +144,6 @@ export function createSheet({
   card.tabIndex = -1;
   if (width) card.style.setProperty('--ui-sheet-w', width);
   if (maxHeight) card.style.setProperty('--ui-sheet-max-h', maxHeight);
-
-  const flap = document.createElement('div');
-  flap.className = 'ui-sheet-flap';
-  flap.setAttribute('aria-hidden', 'true');
-  flap.style.clipPath = torn(seed, 4, 8);
 
   const header = document.createElement('div');
   header.className = 'ui-sheet-head';
@@ -209,17 +183,16 @@ export function createSheet({
   const footer = document.createElement('div');
   footer.className = 'ui-sheet-foot';
 
-  card.append(flap, header, body, footer);
+  card.append(header, body, footer);
   lean.appendChild(card);
   veil.appendChild(lean);
 
   const host = parent ?? document.body;
   host.appendChild(veil);
 
-  const paper = paperSurface(card, { seed, elevation: 'lift', amp: 5, cap: 10 });
+  const paper = paperSurface(card, { elevation: 'lift' });
 
   let openNow = false;
-  let unlean = null;
   let closeTimer = 0;
   let opener = null;
   let destroyed = false;
@@ -288,9 +261,7 @@ export function createSheet({
     void veil.offsetHeight;
     body.scrollTop = 0;
 
-    paper.repaint(false);
     window.addEventListener('keydown', handleWindowKeyDown, true);
-    unlean ??= onCursorTilt((x, y) => { lean.style.transform = tiltCSS(x, y, 5); });
 
     // Move keyboard focus inside immediately (prefer first focusable in body, then any in card, else card).
     const bodyFocusables = getFocusables(body);
@@ -317,9 +288,6 @@ export function createSheet({
       closeTimer = 0;
       veil.classList.remove('closing');
     }, MOTION.dur.mid);
-
-    unlean?.();
-    unlean = null;
 
     const top = openSheets.at(-1);
     const restore = top && !top.contains(opener)

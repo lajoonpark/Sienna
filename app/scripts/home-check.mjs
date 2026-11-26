@@ -1,5 +1,5 @@
-// Home/player chrome checks: paper captions, state, paint-free ticks, overlays/Sign in,
-// shelf fitting/lettering/keys, fixed FPS paper and zero kit callbacks while idle.
+// Home/player chrome checks: card captions, state, paint-free ticks, overlays/Sign in,
+// shelf fitting/lettering/keys, fixed FPS card and zero kit callbacks while idle.
 // Usage: node scripts/home-check.mjs <out_dir> (SIENNA_PORT, SIENNA_ANGLE)
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
@@ -98,15 +98,15 @@ try {
     let calls = 0, resolveRestock;
     const panel = createSettingsPanel({ onRestock: () => { calls++; return new Promise(resolve => { resolveRestock = resolve; }); } });
     panel.show(true);
-    const restock = document.querySelector('.st-btn .ui-ink');
+    const restock = document.querySelector('.st-btn .ui-brush');
     check(restock.getAttribute('aria-description') && !restock.hasAttribute('title'), 'Restock description');
     const pending = panel.restock();
-    check(restock.disabled && restock.classList.contains('ui-ink--spin'), 'Restock busy state');
+    check(restock.disabled && restock.classList.contains('ui-brush--spin'), 'Restock busy state');
     await panel.restock();
     check(calls === 1, 'duplicate Restock request');
     resolveRestock({ ok: true });
     await pending;
-    check(!restock.disabled && !restock.classList.contains('ui-ink--spin') && restock.textContent === 'Done!', 'Restock success');
+    check(!restock.disabled && !restock.classList.contains('ui-brush--spin') && restock.textContent === 'Done!', 'Restock success');
     await new Promise(resolve => setTimeout(resolve, 1900));
     check(restock.textContent === 'Restock', 'Done reset');
     const failed = panel.restock();
@@ -115,11 +115,11 @@ try {
     check(restock.textContent === 'Restock' && !restock.disabled && !restock.classList.contains('is-on'), 'Restock failure');
     const throwing = createSettingsPanel({ onRestock: () => { throw Error('offline'); } });
     await throwing.restock();
-    const last = [...document.querySelectorAll('.st-btn .ui-ink')].at(-2);
-    check(last.textContent === 'Restock' && !last.disabled && !last.classList.contains('ui-ink--spin'), 'Restock rejection');
+    const last = [...document.querySelectorAll('.st-btn .ui-brush')].at(-2);
+    check(last.textContent === 'Restock' && !last.disabled && !last.classList.contains('ui-brush--spin'), 'Restock rejection');
   });
   console.log('PASS brush/menu: two/three lines, string/empty labels, current/pressed API, 5-per-side, empty shelves, Home callbacks');
-  console.log('PASS utilities: icon ink buttons, accessible description, busy spinner/guard, Done reset, failure and rejection');
+  console.log('PASS utilities: painted icon signs, accessible description, busy spinner/guard, Done reset, failure and rejection');
 
   await page.goto(`http://127.0.0.1:${port}/?shot=1&wc=0&at=home`);
   await page.waitForFunction(() => !!window.__seek);
@@ -178,11 +178,10 @@ const check = await page.evaluate(async () => {
   await new Promise(r => setTimeout(r, 200));
   const stats = () => JSON.stringify([paperStats(), brushStats(), inputsStats()]);
   const before = stats();
-  const linesBefore = window.__homePaints.lines;
-  if (!linesBefore) throw Error('line-paint probe did not observe initialization');
+  if (window.__homePaints.lines) throw Error('the progress line is plain CSS: the tag paints no canvas');
   const box = JSON.stringify(c.el.getBoundingClientRect().toJSON());
   for (let i = 0; i < 200; i++) c.setState({ ...state, position: 65 + i / 100 }, { real: true });
-  if (linesBefore !== window.__homePaints.lines || before !== stats() || box !== JSON.stringify(c.el.getBoundingClientRect().toJSON())) throw Error('tick paints or moves caption');
+  if (window.__homePaints.lines || before !== stats() || box !== JSON.stringify(c.el.getBoundingClientRect().toJSON())) throw Error('tick paints or moves caption');
   const stamps = c.el.querySelectorAll('.ui-stamp');
   stamps[0].click();
   c.setState(state, { real: true });
@@ -228,7 +227,7 @@ await checkOverlay(true, 'search open');
 if (!await page.locator('.cad-tag').evaluate(el => el.classList.contains('tucked'))) throw Error('search did not tuck');
 await page.evaluate(() => window.__siennaDebug.search.close());
 await checkOverlay(false, 'search close');
-await page.keyboard.press('Control+,');
+await page.keyboard.press('ControlOrMeta+Comma');
 await checkOverlay(true, 'Settings open');
 if (!await page.locator('.cad-tag').evaluate(el => el.classList.contains('tucked'))) throw Error('Settings did not tuck');
 await page.keyboard.press('Escape');
@@ -237,6 +236,7 @@ await page.locator('.cad-tag .ui-stamp').nth(3).click();
 await checkOverlay(true, 'Queue open');
 if (!await page.locator('.cad-tag').evaluate(el => el.classList.contains('tucked'))) throw Error('Queue did not tuck');
 await page.keyboard.press('Escape');
+await page.waitForFunction(() => !document.querySelector('.cad-tag').classList.contains('tucked'), null, { timeout: 3000 });
 await checkOverlay(false, 'Queue close');
 await page.locator('.cad-tag .ui-stamp').nth(4).click();
 if (!await page.locator('.cad-tag').evaluate(el => el.classList.contains('tucked'))) throw Error('Lyrics did not tuck');
@@ -304,7 +304,7 @@ console.log('PASS live overlays: Search, Settings, Queue, Lyrics, collection and
   assert.notEqual(await mini.evaluate(() => document.activeElement.tagName), 'BUTTON');
   await mini.screenshot({ path: out + '/mini-tag.png' });
   await mini.close();
-  console.log('PASS mini: real paper caption and pointer keyboard release');
+  console.log('PASS mini: card caption and pointer keyboard release');
 
   await page.goto('http://127.0.0.1:' + port + '/?at=home&wc=0&tour=0');
   await page.waitForFunction(() => window.__siennaDebug?.pacer && window.__siennaDebug.state.introDone, null, { timeout: 180000 });
@@ -340,9 +340,9 @@ console.log('PASS live overlays: Search, Settings, Queue, Lyrics, collection and
     });
     observer.observe(ticket, { subtree: true, attributes: true, childList: true, characterData: true });
     window.__fpsObserver = observer;
-    return { paints: paperStats().paints - paints, fits, box: ticket.getBoundingClientRect().toJSON(), bg: ticket.querySelector('.ui-paper-bg').style.backgroundImage };
+    return { paints: paperStats().paints - paints, fits, box: ticket.getBoundingClientRect().toJSON(), bg: getComputedStyle(ticket.querySelector('.ui-paper-bg')).backgroundImage };
   });
-  assert.equal(fpsStart.paints, 1);
+  assert.ok(fpsStart.paints <= 1, 'every card shares one grain, painted once');
   assert.ok(fpsStart.fits, 'FPS longest realistic text does not fit');
   assert.ok(fpsStart.box.width <= 180, 'FPS ticket is too wide');
   assert.match(fpsStart.bg, /^url/);
@@ -355,7 +355,7 @@ console.log('PASS live overlays: Search, Settings, Queue, Lyrics, collection and
   assert.ok(fpsEnd.text >= 2, 'FPS text did not update for two seconds: ' + JSON.stringify(fpsEnd));
   assert.equal(fpsEnd.paper, 0);
   assert.deepEqual(fpsEnd.box, fpsStart.box);
-  console.log('PASS FPS: paper paints once; at least three text updates over 2+ s without changing its box or paper');
+  console.log('PASS FPS: card shares the one grain; at least three text updates over 2+ s without changing its box or card');
   await page.screenshot({ path: out + '/fps-ticket.png' });
 
   await page.waitForTimeout(1000);
@@ -394,7 +394,7 @@ console.log('PASS live overlays: Search, Settings, Queue, Lyrics, collection and
       await page.mouse.move(width / 2, height / 2);
       await page.evaluate(() => window.__seek(30));
       await page.waitForTimeout(300);
-      const bounds = await page.locator('.st-btn .ui-ink-label').evaluateAll(labels => labels.map(label => {
+      const bounds = await page.locator('.st-btn .ui-brush-label').evaluateAll(labels => labels.map(label => {
         const range = document.createRange();
         range.selectNodeContents(label);
         const r = range.getBoundingClientRect();

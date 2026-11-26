@@ -1,7 +1,7 @@
 import { setOverlayOpen, sheetOpen } from './ui/sheet.js';
 import { smoothWheel } from './ui/smooth-scroll.js';
-// The first-run tour: torn paper notes in the shop, with brush-stroke words floating under them, the same
-// paper and words as the Settings card. It starts once the intro reaches home on a new install, and each
+// The first-run tour: card notes in the shop, with brush-stroke words floating under them, the same
+// card and words as Settings. It starts once the intro reaches home on a new install, and each
 // step ends when you have done the thing it is about (signed in, played a record, pressed a shortcut).
 //
 //   welcome  sign in, or look around first; small print on ads, money, data and the source code
@@ -236,7 +236,7 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
   note.addEventListener('wheel', e => {
     if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && note.scrollHeight > note.clientHeight) e.stopPropagation();
   }, { passive: true });
-  const notePaper = paperSurface(note, { seed: 31, amp: 6, cap: 12, elevation: 'lift' });
+  paperSurface(note, { elevation: 'lift' });
   const disc = root.querySelector('.tr-disc'), lab = root.querySelector('.tr-lab');
   stage.prepend(disc, root.querySelector('.tr-tape'));
   // the notes drifting up beside the welcome and goodbye notes, each on its own path and beat
@@ -326,7 +326,6 @@ export function createTour({ music, goHome = () => {}, isSearchOpen = () => fals
     const name = STEPS[at];
     STEP[name]();
     if (at > 0) float('Back', () => go(at - 1));
-    notePaper.repaint(false);
     // the record behind the note slides out again, with this step's number on its label
     lab.firstChild.textContent = at + 1;
     lab.style.setProperty('--lab', COLOURS[at % COLOURS.length]);

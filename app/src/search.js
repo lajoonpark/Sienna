@@ -1,12 +1,13 @@
 import { setOverlayOpen } from './ui/sheet.js';
-import { shortcuts } from './shortcuts.js';
+import { shortcuts, isMac } from './shortcuts.js';
 import { createList } from './ui/list.js';
 import { createCoverCarousel, createCoverTilt } from './ui/cover-carousel.js';
 import { listenForCoverPickSkip } from './ui/cover-pick-input.js';
-import { segmented, inkButton } from './ui/inputs.js';
+import { segmented, inkButton, stamp } from './ui/inputs.js';
 import { createListBar, createListVeil } from './list-bar.js';
 import { paperSurface } from './ui/paper.js';
-import { unrollSheet } from './ui/unroll.js';
+import { cardMotion, signboard } from './ui/crate.js';
+import { setLamp } from './ui/veil.js';
 import { MOTION } from './ui/tokens.js';
 import { settings } from './settings.js';
 
@@ -19,48 +20,60 @@ const STRIP_CHORDS = ['Alt', 'Shift', 'Alt+Shift', 'Control+Shift'].map(label =>
   altKey: label.includes('Alt'), shiftKey: label.includes('Shift'),
   ctrlKey: label.includes('Control'), metaKey: false,
 }));
-const STRIP_CSS = `
-.cs:has(> .la-full:not([hidden])) {
-  inset: var(--sienna-space-2); width: auto; height: 100dvh;
-  max-height: calc(100dvh - 2 * var(--sienna-space-2)); transform: var(--cover-tilt); padding-block: var(--sienna-space-2);
-  display: grid; grid-template: auto auto minmax(0, 1fr) / minmax(0, 1fr); }
-.cs:has(> .la-full:not([hidden])) > .cs-head, .cs > .la-full { grid-area: 3 / 1; }
-.cs:has(> .la-full:not([hidden])) > .cs-head {
-  align-self: start; justify-self: start; z-index: 2; pointer-events: none; }
-.cs:has(> .la-full:not([hidden])) > .cs-head > span {
-  background: var(--sienna-paper); padding-inline: var(--sienna-space-1); border-radius: var(--sienna-space-1); }
-.cs.cover-picking > :not(.la-full) { visibility: hidden; }
-.cs.cover-picking.closing > .la-full { opacity: 1; transition: none; }
-/* While the sheet rolls up to the strip, the list collapses first, then the paper clips the covers. */
-.cs > .cs-result-strip { flex: 0 0.00001 auto; min-height: 0; margin-bottom: var(--sienna-space-2); }
-.cs-result-strip .la-wheel { flex: 0 0 clamp(64px, 16dvh, 116px); }
-.cs-result-strip .la-cover { --cover-size: min(108px, 26cqw, 92cqh); }
-.cs-result-strip .la-details { padding-top: 0; }
-.cs-result-strip.is-active .la-wheel { outline: 1px solid var(--sienna-indigo); outline-offset: -1px; }
-.cs-result-strip .ui-list-foot { white-space: normal; }
+const SEARCH_CSS = `
+.cs-head { display: flex; align-items: center; gap: var(--sienna-space-3); flex: none;
+  padding: 0 var(--sienna-space-2) var(--sienna-space-2); font-size: var(--sienna-text-lg); color: var(--sienna-indigo); }
+.cs-head[hidden] { display: none; }
+/* the top five covers, spun through on the card above the list. The list gives way first; while the card
+   is still growing to fit, the strip is cut at the card's edge instead of hanging below it (the clip
+   margin leaves room for the selected sleeve's focus ring). */
+.cs.list-overlay > .cs-result-strip { flex: 0 1 auto; min-height: 0; overflow: clip; overflow-clip-margin: 6px;
+  margin-bottom: var(--sienna-space-1); padding-bottom: var(--sienna-space-2); border-bottom: 1px solid var(--sienna-hairline); }
+.cs.list-overlay > .ui-list:not(.cs-result-strip) { flex-shrink: 1000; }
+.cs-result-strip .la-wheel { flex: 0 0 clamp(80px, 17dvh, 126px); }
+.cs-result-strip.is-active .la-cover[aria-selected="true"] .la-sleeve-front {
+  box-shadow: 0 0 0 2px var(--sienna-paper), 0 0 0 5px var(--sienna-terracotta), 0 4px 10px rgba(36, 25, 18, 0.3); }
+/* covers floating under the card (the mini player's Listen again): the card is only tabs and the search line */
+.cs.cs-covering > :is(.cs-head, .ui-list-foot) { display: none; }
+.cs.cover-picking { opacity: 0; transition: opacity var(--sienna-dur-fast) var(--sienna-ease-out); }
+.cs-stage { position: fixed; left: 0; right: 0; bottom: var(--stage-bottom, var(--sienna-space-4)); top: 40%;
+  z-index: calc(var(--sienna-z-list) - 1); display: none; pointer-events: none;
+  padding: 0 var(--stage-side, var(--sienna-space-4)); }
+.cs-stage.show { display: flex; flex-direction: column; }
+.cs-stage > .la-full { flex: 1; min-height: 0; pointer-events: auto; }
+.cs-stage > .cs-sign { position: absolute; left: var(--stage-sign-left, var(--sienna-space-6)); top: var(--sienna-space-2); z-index: 2;
+  max-width: 34vw; font-size: 22px; text-align: left; }
+.cs-stage.is-fading { opacity: 0; transition: opacity var(--sienna-dur-fast) var(--sienna-ease-out); }
+.cs-stage:is(.is-fading, .is-leaving) > .la-full { pointer-events: none; }
+.cs-stage:is(.is-leaving, .is-picking) > .cs-sign { opacity: 0; transition: opacity var(--sienna-dur-fast); }
+.cs-stage.show > .cs-sign { animation: cs-sign-in 320ms var(--sienna-ease-out) both; }
+@keyframes cs-sign-in { from { opacity: 0; transform: translateY(-10px); } }
 `;
 let openCount = 0;
 export const searchOpen = () => openCount > 0;
 
-export function createSearch({ music, onPlay, suggest = null, coverSuggestions = false, onOpenCollection = null }) {
+// drawer (the mini player): the suitcase drawer the Listen again sleeves come out of and go back into,
+// { open(), close(), origin() -> { x, y, size } }.
+export function createSearch({ music, onPlay, suggest = null, coverSuggestions = false, onOpenCollection = null, drawer = null }) {
   const root = document.createElement('div'); root.className = 'cs list-overlay';
   const veil = createListVeil(() => close());
-  const bar = createListBar({ prefix: 'cs', label: 'Search', placeholder: 'search songs', onClosed: () => root.classList.remove('closing') });
+  const bar = createListBar({ prefix: 'cs', label: 'Search', placeholder: 'search songs' });
   const input = bar.input;
+  bar.el.appendChild(stamp('close', { label: 'Close', tooltip: 'Close (Esc)', tooltipPos: 'bottom', onClick: () => close() }));
   const head = document.createElement('div'); head.className = 'cs-head'; head.hidden = true;
-  head.style.cssText = 'display:flex;align-items:center;gap:var(--sienna-space-2);padding:var(--sienna-space-2) var(--sienna-space-4);font-size:var(--sienna-text-lg);color:var(--sienna-ink)';
   const heading = document.createElement('span');
   const back = inkButton('Back', { icon: 'back', onClick: () => goBack() });
   head.append(back, heading);
   const tabs = segmented(FILTERS.map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) })), {
-    value: 'songs', role: 'tabs', label: 'Search for', onChange: setFilter,
+    value: 'songs', role: 'tabs', variant: 'tabs', label: 'Search for', onChange: setFilter,
   });
-  const list = createList({ label: 'Search results', showKind: true, lines: true,
-    footerHints: ['↑↓ choose · Enter play · Tab type · Esc close'], onPick: (_, i) => pick(i),
+  const list = createList({ label: 'Search results', showKind: 'mixed', lines: true, onPick: (_, i) => pick(i),
     onActiveChange: () => { if (stripActive) setStripActive(false); else syncActive(); },
   });
-  const carousel = coverSuggestions && suggest ? createCoverCarousel({ fullSize: true, onPick: i => pick(i, true), onActiveChange: syncActive }) : null;
-  const coverTilt = carousel && createCoverTilt(root);
+  const carousel = coverSuggestions && suggest
+    ? createCoverCarousel({ fullSize: true, onPick: i => pick(i, true), onActiveChange: syncActive, onBackground: () => close() })
+    : null;
+  const coverTilt = carousel && createCoverTilt(carousel.stageEl);
   const calm = matchMedia('(prefers-reduced-motion: reduce)');
   const resultStrip = createCoverCarousel({
     orientation: 'horizontal', onPick: i => pick(i),
@@ -68,32 +81,54 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   });
   resultStrip.el.classList.add('cs-result-strip');
   resultStrip.listboxEl.tabIndex = -1;
-  if (!document.getElementById('sienna-search-strip')) {
+  if (!document.getElementById('sienna-search-css')) {
     const style = document.createElement('style');
-    style.id = 'sienna-search-strip'; style.textContent = STRIP_CSS;
+    style.id = 'sienna-search-css'; style.textContent = SEARCH_CSS;
     document.head.appendChild(style);
   }
   list.el.classList.add('cs-list');
   input.setAttribute('role', 'combobox'); input.setAttribute('aria-controls', list.listboxEl.id);
   input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false');
-  root.append(bar.el, tabs.el, head, resultStrip.el, list.el);
-  if (carousel) root.appendChild(carousel.el);
+  root.append(tabs.el, bar.el, head, resultStrip.el, list.el, list.footEl);
   document.body.appendChild(root);
-  paperSurface(root, { seed: 71, elevation: 'lift', amp: 5, cap: 10, crop: true });
-  const sheet = unrollSheet(root, tabs.el);
-  root.addEventListener('pointerdown', e => { if (e.target !== input) e.preventDefault(); });
-  root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
+  paperSurface(root, { elevation: 'lift' });
+  const card = cardMotion(root);
+  // the covers float on the dimmed shop under the card, under a sign that says what they are
+  let stage = null, sign = null;
+  if (carousel) {
+    stage = document.createElement('div'); stage.className = 'cs-stage';
+    sign = document.createElement('div'); sign.className = 'cs-sign';
+    signboard(sign, { seed: 43 });
+    stage.append(sign, carousel.el);
+    document.body.appendChild(stage);
+    new ResizeObserver(() => placeStage()).observe(root);
+  }
+  const keepFocus = e => { if (e.target !== input) e.preventDefault(); };
+  for (const el of [root, stage]) {
+    el?.addEventListener('pointerdown', keepFocus);
+    el?.addEventListener('mousedown', keepFocus);
+  }
   let isOpen = false, seq = 0, timer = 0, shown = [], shownFor = null, filter = 'songs', artistView = null, pendingEnter = false;
   let suggestion = null, stripActive = false, opener = null;
   let pendingCover = null;
   let stripChord = STRIP_CHORDS[0];
+  let coversOn = false, coverRun = 0;
   const cache = new Map();
-  const showingCovers = () => carousel && !carousel.el.hidden;
+  const showingCovers = () => coversOn;
+  const chordKeys = chord => (isMac
+    ? `${chord.ctrlKey ? '⌃' : ''}${chord.altKey ? '⌥' : ''}${chord.shiftKey ? '⇧' : ''}↑`
+    : `${chord.label}+↑`);
+  // the one line of keys under the card, for whatever has the keyboard
+  function syncHints() {
+    if (stripActive) list.setFooterHints([['← →', 'choose'], ['Enter', 'play'], ['↓', 'back to the list']]);
+    else list.setFooterHints([['↑ ↓', 'choose'], ['Enter', 'play'], ['Tab', 'filter'], ['Esc', 'close'],
+      ...(resultStrip.el.hidden ? [] : [[chordKeys(stripChord), 'browse covers']])]);
+  }
   function syncStripShortcut() {
     if (resultStrip.el.hidden) return;
     stripChord = STRIP_CHORDS.find(chord => !SHORTCUT_NAMES.some(name => shortcuts.matches(name, chord)));
     input.setAttribute('aria-keyshortcuts', `${stripChord.label}+ArrowUp`);
-    resultStrip.setHint(`${stripChord.label}+↑ browse covers · ←→ choose · Enter play · ↓ list`);
+    syncHints();
   }
   shortcuts.on(syncStripShortcut);
   function syncActive() {
@@ -106,6 +141,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   function setStripActive(next) {
     stripActive = next;
     resultStrip.el.classList.toggle('is-active', next);
+    syncHints();
     syncActive();
   }
   function hideResultStrip() {
@@ -113,6 +149,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     resultStrip.el.hidden = true;
     input.removeAttribute('aria-keyshortcuts');
     if (stripActive) setStripActive(false);
+    else syncHints();
   }
   function syncResultStrip() {
     if (!settings.get('coverCarousel') || !shown.length || artistView || shownFor !== `${filter}|${input.value.trim()}`) {
@@ -127,10 +164,57 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     if (e.isPrimary && e.button === 0) setStripActive(true);
   });
   list.listboxEl.addEventListener('pointerdown', () => { if (stripActive) setStripActive(false); });
+  function placeStage() {
+    if (stage && coversOn) stage.style.top = `${root.offsetTop + root.offsetHeight + 4}px`;
+  }
+  function showCovers(items, title) {
+    const fresh = !coversOn;
+    coverRun++;
+    coversOn = true;
+    root.classList.add('cs-covering');
+    stage.classList.remove('is-fading', 'is-leaving', 'is-picking');
+    stage.classList.add('show');
+    carousel.el.hidden = false;
+    sign.textContent = title || 'Listen again';
+    if (fresh && !calm.matches) {
+      drawer?.open();
+      setLamp(drawer?.origin());
+    }
+    placeStage();
+    carousel.setItems(items, title || 'Listen again');
+    if (fresh) carousel.enter({ origin: drawer?.origin, notBefore: performance.now() + 170 });
+  }
+  // how: 'leave' flies them back into the drawer, 'fade' (typing over them) and 'picked' fade,
+  // 'instant' takes them away at once
+  function dismissCovers(how) {
+    if (!coversOn) return;
+    coversOn = false;
+    if (how === 'fade') root.classList.remove('cs-covering');
+    const run = ++coverRun;
+    const finish = () => {
+      if (run !== coverRun) return;
+      carousel.el.hidden = true;
+      stage.classList.remove('show', 'is-fading', 'is-leaving', 'is-picking');
+      root.classList.remove('cs-covering');
+      if (how !== 'picked') drawer?.close();
+      if (!isOpen) setOverlayOpen(root, false);
+    };
+    if (how === 'instant' || calm.matches) {
+      carousel.settle();
+      finish();
+    } else if (how === 'fade') {
+      stage.classList.add('is-fading');
+      setTimeout(finish, MOTION.dur.fast);
+    } else if (how === 'picked') setTimeout(finish, MOTION.dur.mid + 40);
+    else {
+      stage.classList.add('is-leaving');
+      carousel.leave({ origin: drawer?.origin }).then(finish);
+    }
+  }
   function hideCovers() {
     if (!showingCovers()) return;
     carousel.stop();
-    carousel.el.hidden = true;
+    dismissCovers('fade');
     list.el.hidden = false;
     syncActive();
   }
@@ -142,26 +226,24 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   function goBack() { if (!artistView) return; artistView = null; run(); }
   function note(kind, text, retry = null) {
     hideResultStrip();
-    shown = []; shownFor = null; head.hidden = true; head.style.display = 'none';
-    list.setItems([], { animate: false });
+    shown = []; shownFor = null; head.hidden = true;
+    list.setItems([]);
     if (kind === 'loading') list.setLoading(text);
     else if (kind === 'error') list.setError(text, retry);
     else list.setEmpty(text);
     syncActive();
   }
   function render(items, title = null, { back: withBack = false, covers = false } = {}) {
-    shown = items.slice(0, 20); head.hidden = !title; head.style.display = title ? 'flex' : 'none';
+    shown = items.slice(0, 20); head.hidden = !title;
     heading.textContent = title || ''; back.style.display = withBack ? '' : 'none';
-    if (title) head.animate([{ opacity: 0 }, { opacity: 1 }], { delay: bar.lead(), duration: MOTION.dur.mid, fill: 'backwards' });
     if (covers && shown.length) {
       list.stopScroll();
       list.el.hidden = true;
-      carousel.el.hidden = false;
-      carousel.setItems(shown, title || 'Listen again');
+      showCovers(shown, title);
+      syncActive();
       return;
     }
     hideCovers();
-    list.el.style.setProperty('--list-lead', `${bar.lead()}ms`);
     list.setStale(false);
     list.setItems(shown, { emptyMessage: 'nothing found' }); syncActive();
   }
@@ -180,6 +262,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     const openCollection = ['album', 'playlist'].includes(item.kind) && onOpenCollection;
     if (fromCoverPicker && onPlay && !openCollection && !calm.matches) {
       root.classList.add('cover-picking');
+      stage.classList.add('is-picking');
       veil.show(false);
       const mine = seq;
       const { done, hide } = carousel.extractDisc(i);
@@ -187,12 +270,12 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
       done.then(rect => {
         if (mine !== seq || !isOpen || !rect) return;
         pendingCover = null;
-        close();
+        close({ covers: 'picked' });
         onPlay(item, { fromCoverPicker, from: { rect, ...coverTilt.pose(), hideSleeve: hide } });
       });
       return;
     }
-    close();
+    close(fromCoverPicker ? { covers: 'picked' } : undefined);
     if (openCollection) onOpenCollection(item);
     else onPlay?.(item, { fromCoverPicker, ...(fromCoverPicker ? { from: { instant: true } } : {}) });
   }
@@ -213,8 +296,8 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     suggestion = null;
     hideResultStrip();
     hideCovers();
-    shown = []; shownFor = null; head.hidden = true; head.style.display = 'none'; pendingEnter = false;
-    list.setItems([], { animate: false }); list.el.hidden = !suggest;
+    shown = []; shownFor = null; head.hidden = true; pendingEnter = false;
+    list.setItems([]); list.el.hidden = !suggest;
     syncActive();
     const mine = ++seq;
     if (!suggest) return;
@@ -285,24 +368,29 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   function open() {
     if (isOpen) return; isOpen = true; openCount++;
     opener = document.activeElement;
-    setOverlayOpen(root, true); veil.show(true); root.classList.remove('closing', 'cover-picking'); root.classList.add('show');
-    input.setAttribute('aria-expanded', 'true'); bar.play(true); input.focus({ preventScroll: true }); input.select();
+    setOverlayOpen(root, true); veil.show(true); root.classList.remove('cover-picking'); root.classList.add('show');
+    if (!coversOn) root.classList.remove('cs-covering');   // covers still flying home from last time
+    input.setAttribute('aria-expanded', 'true'); input.focus({ preventScroll: true }); input.select();
     if (!input.value.trim()) showSuggestions();
     else syncResultStrip();
-    sheet.open();
+    card.open();
   }
-  function close() {
+  function close({ covers = 'leave' } = {}) {
     if (!isOpen) return; isOpen = false; openCount--; seq++; clearTimeout(timer); pendingEnter = false;
     const coverPicking = root.classList.contains('cover-picking');
     const restore = document.activeElement === input || coverPicking ? opener : null;
     opener = null;
-    setOverlayOpen(root, false); veil.show(false); input.setAttribute('aria-expanded', 'false');
-    root.classList.replace('show', 'closing'); bar.play(false); input.blur();
+    if (!coversOn) setOverlayOpen(root, false);   // flying home, the covers keep the tag away until they land
+    veil.show(false); input.setAttribute('aria-expanded', 'false');
+    root.classList.remove('show'); input.blur();
     list.stopScroll();
     carousel?.stop();
     resultStrip.stop();
     if (stripActive) setStripActive(false);
-    sheet.close({ delay: coverPicking ? MOTION.dur.mid : 0 });
+    if (coverPicking) card.reset();   // already faded out for the pick
+    else card.close();
+    if (pendingCover) covers = 'picked';
+    dismissCovers(covers);
     if (restore?.isConnected) restore.focus({ preventScroll: true });
     if (pendingCover) {
       const { item, hide } = pendingCover;
@@ -321,14 +409,22 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     else if (isToggle(e)) { e.preventDefault(); e.stopPropagation(); if (!e.repeat) (isOpen ? close : open)(); }
     else if (isOpen && e.target !== input) { e.stopPropagation(); if (e.key === 'Escape') artistView ? goBack() : close(); }
   }, true);
-  window.addEventListener('pointerdown', e => { if (isOpen && !root.contains(e.target)) close(); }, true);
+  window.addEventListener('pointerdown', e => {
+    if (isOpen && !root.contains(e.target) && !stage?.contains(e.target)) close();
+  }, true);
   const params = new URLSearchParams(location.search);
   if (params.has('search')) {
     input.value = params.get('search'); open();
     run().then(() => { if (params.has('searchhl')) list.setActive(Number(params.get('searchhl')), { scroll: false }); });
   }
+  syncHints();
   return { open, close, toggle: () => (isOpen ? close() : open()), isOpen: () => isOpen, ready: bar.ready,
-    closeCoverPicker: () => { if (showingCovers()) close(); },
+    // the mini player is shutting: nothing is drawn once it is hidden, so the covers go at once,
+    // any still flying home included
+    closeCoverPicker: () => {
+      if (showingCovers()) close({ covers: 'instant' });
+      else carousel?.settle();
+    },
     tilt(tx, ty) { if (isOpen && showingCovers() && !pendingCover) coverTilt.update(tx, ty); },
   };
 }

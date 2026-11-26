@@ -1,6 +1,7 @@
-// Checks the paper leans with the cursor (src/cursortilt.js): the tour's note and the Settings card turn
-// one way with the cursor at the left, the other at the right, and keep turning while a record is up at a
-// rack (the camera's own tilt holds still then). Screenshots of both leans go to out_dir.
+// Checks the tour's note leans with the cursor (src/cursortilt.js): it turns one way with the cursor at
+// the left, the other at the right, and keeps turning while a record is up at a rack (the camera's own
+// tilt holds still then). The menu cards hold still, so their lettering never skews. Screenshots go to
+// out_dir.
 // Usage: node scripts/tilt-check.mjs [out_dir]      (SIENNA_PORT=5242)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -11,7 +12,7 @@ const out = outDir(process.argv[2], 'sienna-tilt');
 const port = Number(process.env.SIENNA_PORT) || 5242;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: ['--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || (process.platform === 'darwin' ? 'metal' : 'vulkan')}`, '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
 page.on('pageerror', (e) => { errors.push(e.message); console.log('[pageerror]', e.message); });
@@ -46,9 +47,15 @@ try {
   }));
   await leans('.tr-stage:not(.tr-ghost)', 'tour-note');
   await page.goto(`http://127.0.0.1:${port}/?at=home&tour=0&settings`, { timeout: 180000 });
-  await page.waitForFunction(() => document.querySelector('.st-veil.show'), null, { timeout: 120000 });
+  await page.waitForFunction(() => document.querySelector('.st-settings.show'), null, { timeout: 120000 });
   await wait(800);
-  await leans('.st-lean', 'settings-card');
+  await page.mouse.move(60, 360, { steps: 8 });
+  await wait(600);
+  const flat = ['none', 'matrix(1, 0, 0, 1, 0, 0)'];
+  assert.ok(flat.includes(await page.evaluate(() => getComputedStyle(document.querySelector('.st-settings .ui-sheet-card')).transform)),
+    'the Settings card holds still and flat');
+  await page.screenshot({ path: `${out}/settings-card.png` });
+  console.log('ok   the Settings card holds still');
   assert.deepEqual(errors, []);
   console.log('all good');
 } finally {

@@ -1,48 +1,51 @@
-import { COLORS, SPACE, TYPE, injectTokens } from './ui/tokens.js';
-import { FONT, onLettering } from './style.js';
-import { layoutDabCluster } from './brushpaint.js';
-import { createBarPaint, MARGIN } from './searchpaint.js';
+// What Search and the collection lists share: the card they sit on, its search line (a magnifying
+// glass and a hand-lettered input on a ruled line) and the dimmed shop behind.
+import { injectTokens } from './ui/tokens.js';
 import { icon } from './ui/icons.js';
+import { injectCrateCss } from './ui/crate.js';
+import { injectVeilCss } from './ui/veil.js';
+import { fontReady } from './style.js';
 
-const HEIGHT = SPACE[10] * 2 + SPACE[2];
 const CSS = `
-.list-bar { position: relative; height: calc(var(--sienna-space-10) * 2 + var(--sienna-space-2)); flex: none;
-  transform: rotate(var(--sienna-tilt-sm)); transform-origin: 20% 40%; }
-.list-bar canvas { position: absolute; left: -${MARGIN}px; top: -${MARGIN}px;
-  width: calc(100% + ${MARGIN * 2}px); height: ${HEIGHT + MARGIN * 2}px; pointer-events: none; }
-.list-bar-paper { position: absolute; left: var(--sienna-space-8); right: calc(var(--sienna-space-10) + var(--sienna-space-2));
-  top: var(--sienna-space-4); bottom: var(--sienna-space-4); display: flex; align-items: center;
-  padding: 0 var(--sienna-space-6) 0 var(--sienna-space-5); gap: var(--sienna-space-2); }
-.list-bar-paper svg { flex: none; width: var(--sienna-space-8); height: var(--sienna-space-8); color: var(--sienna-indigo); }
-.list-bar input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
-  font: var(--sienna-text-xl)/1 var(--sienna-font); color: var(--sienna-ink); padding: var(--sienna-space-1) 0;
-  caret-color: var(--sienna-terracotta); }
+.list-bar { display: flex; align-items: center; gap: var(--sienna-space-3); flex: none;
+  margin: 0 var(--sienna-space-1) var(--sienna-space-2); padding-bottom: var(--sienna-space-1);
+  border-bottom: 2px solid var(--sienna-indigo); transition: border-color var(--sienna-dur-fast); }
+.list-bar:focus-within { border-bottom-color: var(--sienna-terracotta); }
+.list-bar > svg { flex: none; width: 26px; height: 26px; color: var(--sienna-indigo); }
+.list-bar input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; padding: 2px 0;
+  font: var(--sienna-text-xl)/1.2 var(--sienna-font); color: var(--sienna-ink); caret-color: var(--sienna-terracotta); }
 .list-bar input::placeholder { color: var(--sienna-ink-3); opacity: 1; }
-.list-overlay { position: fixed; top: var(--sienna-space-6); left: 50%; transform: translateX(-50%);
-  box-sizing: border-box; padding: var(--sienna-space-6) var(--sienna-space-8) var(--sienna-space-5);
-  font-family: var(--sienna-font);
-  width: min(calc(var(--sienna-space-10) * 16), 92vw); max-height: calc(100dvh - var(--sienna-space-6) - var(--sienna-space-10) - var(--sienna-space-2));
-  z-index: var(--sienna-z-list); display: flex; flex-direction: column; visibility: hidden; pointer-events: none; }
+.list-bar > .ui-stamp { flex: none; }
+
+/* A list card hangs near the top of the window, leaving room above for its tabs and below for its keys. */
+.list-overlay { --card-top: var(--list-top, 66px); --card-bottom: var(--list-bottom, 72px);
+  position: fixed; top: var(--card-top); left: 0; right: 0; margin-inline: auto; box-sizing: border-box;
+  padding: var(--sienna-space-4) var(--sienna-space-5) var(--sienna-space-2);
+  width: min(680px, calc(100vw - var(--sienna-space-8)));
+  max-height: calc(100dvh - var(--card-top) - var(--card-bottom)); z-index: var(--sienna-z-list);
+  display: flex; flex-direction: column; font-family: var(--sienna-font); visibility: hidden; pointer-events: none; }
 .list-overlay.show { visibility: visible; pointer-events: auto; }
 .list-overlay.closing { visibility: visible; }
-.list-overlay > .ui-list { min-height: 0; flex: 1; }
+.list-overlay > .ui-list { min-height: 0; flex: 1; overflow: clip; }
 .list-overlay .ui-list-scroll { min-height: 0; }
-.list-overlay > .ui-seg { flex: none; margin: 0 var(--sienna-space-2) var(--sienna-space-2); }
-.list-overlay.closing > .ui-list, .list-overlay.closing > .cs-head { opacity: 0;
-  transition: opacity var(--sienna-dur-fast) var(--sienna-ease-in); }
-.list-overlay.closing > .ui-paper-layer, .list-overlay.closing > .ui-seg, .list-overlay.closing > .cl-top { opacity: 0;
-  transition: opacity var(--sienna-dur-fast) var(--sienna-ease-out) var(--sienna-dur-mid); }
-.list-veil { position: fixed; inset: 0; z-index: var(--sienna-z-banner); background: var(--sienna-veil);
-  backdrop-filter: var(--sienna-veil-filter); visibility: hidden; opacity: 0; pointer-events: none;
-  transition: opacity var(--sienna-dur-mid), visibility var(--sienna-dur-mid); }
-.list-veil.show { visibility: visible; opacity: 1; }
+.list-overlay > .ui-seg--switch { flex: none; align-self: flex-start; margin: 0 var(--sienna-space-1) var(--sienna-space-2); }
+/* the keys sit under the card, on the dimmed shop */
+.list-overlay > .ui-list-foot { position: absolute; left: 0; right: 0; top: calc(100% + var(--sienna-space-3) + 2px);
+  justify-content: center; padding: 0; border: 0; }
+.list-veil { z-index: var(--sienna-z-banner); visibility: hidden; opacity: 0; pointer-events: none;
+  transition: opacity 460ms cubic-bezier(0.5, 0, 0.75, 0.5), visibility 0s 460ms; }
+.list-veil.show { visibility: visible; opacity: 1; pointer-events: auto;
+  transition: opacity var(--sienna-dur-mid), visibility 0s; }
 @media (max-width: 720px) {
-  .list-overlay { padding: var(--sienna-space-5) var(--sienna-space-5) var(--sienna-space-4); }
+  .list-overlay { padding: var(--sienna-space-3) var(--sienna-space-4) var(--sienna-space-1);
+    width: min(680px, calc(100vw - var(--sienna-space-10))); }
 }
 `;
 
 function inject() {
   injectTokens();
+  injectCrateCss();
+  injectVeilCss();
   if (document.getElementById('sienna-list-bar')) return;
   const style = document.createElement('style');
   style.id = 'sienna-list-bar'; style.textContent = CSS; document.head.appendChild(style);
@@ -50,38 +53,18 @@ function inject() {
 
 export function createListVeil(close) {
   inject();
-  const el = document.createElement('div'); el.className = 'list-veil';
+  const el = document.createElement('div'); el.className = 'list-veil sienna-veil';
   el.addEventListener('pointerdown', close); document.body.appendChild(el);
   return { el, show: (on) => el.classList.toggle('show', on) };
 }
 
-export function createListBar({ prefix, label, placeholder, onClosed, seed = 21 }) {
+export function createListBar({ prefix, label, placeholder }) {
   inject();
   const el = document.createElement('div'); el.className = `list-bar ${prefix}-bar`;
-  const canvas = document.createElement('canvas'); canvas.className = `${prefix}-fx`;
-  const paper = document.createElement('div'); paper.className = 'list-bar-paper';
-  const glass = icon('search', { size: SPACE[8] });
+  const glass = icon('search', { size: 26 });
   const input = document.createElement('input'); input.className = `${prefix}-input`;
   input.type = 'text'; input.spellcheck = false; input.autocomplete = 'off';
   input.setAttribute('autocapitalize', 'off'); input.setAttribute('aria-label', label); input.placeholder = placeholder;
-  paper.append(glass, input); el.append(canvas, paper);
-  const paint = createBarPaint({ canvas, bar: el, glass, input, onClosed });
-  let lastW = 0, opened = false;
-  function repaint() {
-    if (!opened) return;
-    const w = Math.ceil(el.offsetWidth);
-    if (!w || w === lastW) return;
-    lastW = w;
-    const paperRect = { x: paper.offsetLeft, y: paper.offsetTop, w: paper.offsetWidth, h: paper.offsetHeight };
-    paint.setLayers({ w, h: HEIGHT, paperRect,
-      inkDabs: layoutDabCluster(w, HEIGHT, { tones: [COLORS.indigo], seed, rows: 2, tilt: 0.05, overlap: 0.56, minCols: 4, impasto: 0.55, even: true }),
-      paperDabs: layoutDabCluster(paperRect.w, paperRect.h, { tones: [COLORS.paper], seed: seed - SPACE[4], rows: 2, tilt: 0.05, overlap: 0.56, minCols: 3, impasto: 0.28, soft: true }),
-    });
-  }
-  const ready = (document.fonts?.load(`${TYPE.xl}px ${FONT}`) ?? Promise.resolve()).then(repaint);
-  new ResizeObserver(repaint).observe(el);
-  onLettering(el, repaint);
-  return { el, input, ready: () => ready, lead: paint.lead,
-    play(on) { opened = on; if (on) repaint(); paint.play(on); },
-  };
+  el.append(glass, input);
+  return { el, input, ready: () => fontReady };
 }

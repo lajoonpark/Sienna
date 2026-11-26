@@ -6,7 +6,7 @@ The opening shot: a narrow Tuscan alley of brick and stucco houses, an arch over
 
 **Look:** painted in oil, through a screen pass (`src/watercolour.js`, `src/oilpaint.js`): opaque dabs on the brush strokes' places (`src/brushstrokes.js` places them, pinned to the world's surfaces), each with its object's own paint, lit live, with impasto ridges, over an under-coat of smaller dabs so no canvas is left bare; full bleed, no border. Oil paint is the only look: the watercolour (Faint / Light / Medium / Heavy) and Brush strokes looks and the Settings > Look > Painting choice were removed when oil-paint was merged into dev (Lajoon, 2026-11-13). The mini window's suitcase card matches (`CARD_OIL` in `src/watercolour.js`): full-bleed oil-dabbed suitcase and canvas backdrop with linen weave and no wash. `?wc=0` shows the plain unpainted render (for the check scripts); `?style=flat` shows the old flat toon look.
 
-**Lettering & UI tokens:** display text (titles, buttons, record tags, shelf words and the shop sign) uses one hand-lettered font, chosen in Settings > Look > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). Small text (hints, meta, times, lyrics, Settings copy, tour body and fine print) uses the bundled book serif Alegreya (`--sienna-serif`, with lining tabular figures for times). `?font=kaushan` pins a lettering for screenshots. A lettering change applies live in both windows, with no reload: `FONT`/`fontReady` are live exports, CSS uses `var(--sienna-font)`, and everything painted into a canvas or texture (tags, rack signs, the shop sign, button plates, menu words, search bar, album-spread stickers) registers a repaint with `onLettering(owner, draw)` in `src/style.js`, which runs once the new face has loaded. New lettered paint must register too. The shared 2D UI kit lives in `src/ui/`: `tokens.js` (palette, 6-step type scale, 4 px spacing scale, 3 tilts, 2 elevations, 3 durations/easings with centralized reduced motion, focus ring and z-index scale, injected onto `:root` via `injectTokens()` and exported as JS constants for canvas painters), `paper.js` (`torn()`, `tornDepths()`, and `paperSurface()` with 8 px LRU caching and ResizeObserver batching), `brush.js` (`brushStroke()` and `brushButton()` with shared LRU plate cache), `inputs.js` (`inkButton()`, painted `segmented()` tabs/radios with roving tabindex, and `stamp()` icon tools with painted tooltips), `icons.js` (18 hand-drawn SVGs in one stroke style, plus `kindIcon(kind)` which maps a list row's kind to a glyph: `video`→song, `single`/`ep`→album, `episode`→podcast), `sheet.js` (`createSheet()` modal with painted veil, cursor lean, unfold/fold/flap, Esc, focus trap, and `overlayOpen()`/`onOverlay()`), `list.js` (`createList()` with cached oil-dab slips by default and a `lines` mode that drops the slips for ruled rows on a shared sheet, terracotta cursor band, indigo now-playing mark, keyboard cursor, 40-row batching, and paper notes), and `banner.js` (`createBanner()` for offline, error, and restock notices). `smooth-scroll.js` gives every scrollable surface its heavy smooth wheel glide: `smoothWheel(scroller)` turns wheel deltas into an exponential ease (`followScroll`/`scrollStep`, rate 14/s, line/page units resolved) instead of a jump, drops scroll-snap while it glides and hands control straight back to a pointer press, a key or focus, and to any programmatic scroll (`stopScroll`, called before `scrollIntoView` reveals and on close); reduced motion keeps native scrolling. Unit-tested in `test/smooth-scroll.test.cjs`. Preview the full kit in `ui-lab.html` (`?font=`, `?sheet=1`, `?compare`). Checks: `node scripts/contrast-check.mjs` (verifies every token text/background pair under 24 px reaches >= 4.5:1), `node scripts/ui-lab-check.mjs [out_dir]` (verifies every kit part, ARIA/focus/keyboard behaviour, caching, and 2 s idle stillness), `node scripts/ui-matrix.mjs <out_dir> [surface-filter]` (captures every app and lab surface across all 4 letterings and 2 window sizes as labelled contact sheets), `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out` (mini window, no reload) and `node scripts/tour-check.mjs out`.
+**Lettering & UI tokens:** display text (titles, buttons, record tags, shelf words and the shop sign) uses one hand-lettered font, chosen in Settings > Look > Lettering: Amatic SC (default, all hand-drawn capitals, so all-caps song names match), Kaushan Script, Sriracha or Caveat (`FONTS`/`FONT` in `src/style.js`, bundled via `@fontsource` in `src/fonts.js`, one weight each). Small text (hints, meta, times, lyrics, Settings copy, tour body and fine print) uses the bundled book serif Alegreya (`--sienna-serif`, with lining tabular figures for times). `?font=kaushan` pins a lettering for screenshots. A lettering change applies live in both windows, with no reload: `FONT`/`fontReady` are live exports, CSS uses `var(--sienna-font)`, and everything painted into a canvas or texture (tags, rack signs, the shop sign, button plates, menu words, search bar, album-spread stickers) registers a repaint with `onLettering(owner, draw)` in `src/style.js`, which runs once the new face has loaded. New lettered paint must register too. The shared 2D UI kit lives in `src/ui/`: `tokens.js` (palette, including the kraft and board-edge browns of the crate cards and the night of the carousel; 6-step type scale, 4 px spacing scale, 3 tilts, 2 elevations, 3 durations/easings with centralized reduced motion, focus ring and z-index scale, injected onto `:root` via `injectTokens()` and exported as JS constants for canvas painters), `paper.js` (`paperSurface()`: every card is flat board with a rag-fibre grain tile, its cut edge along the bottom and a soft shadow), `crate.js` (die-cut divider tabs on a card's top edge, `renderHints()` for the one line of keys with keycaps, `signboard()` for headings on a painted indigo plate, and `cardMotion()`, which tips a card up like a record flipped forward in a crate, tips it back to leave and eases its height as its contents change), `veil.js` (the dimmed shop behind a menu, left thin in a pool of lamplight on the suitcase, `setLamp()`; the mini window keeps it inside its painted card with `--veil-*`), `brush.js` (`brushStroke()` and `brushButton()`, with an optional icon and spinner, and a shared LRU plate cache), `inputs.js` (`inkButton()`, `segmented()` tabs/radios with roving tabindex, drawn as a record-player switch whose painted key slides to the choice or as divider tabs, and `stamp()` icon tools with card tooltips), `icons.js` (18 hand-drawn SVGs in one stroke style, plus `kindIcon(kind)` which maps a list row's kind to a glyph: `video`→song, `single`/`ep`→album, `episode`→podcast), `sheet.js` (`createSheet()` modal card on the veil that flips like the other cards, Esc, focus trap, and `overlayOpen()`/`onOverlay()`), `list.js` (`createList()` with ruled rows set like a printed track list (`lines`) or cached oil-dab slips, a terracotta cursor mark, indigo now-playing mark, kind icons (`showKind: 'mixed'` only when kinds differ), keyboard cursor, 40-row batching, and notes), `cover-carousel.js` (the record wheel, below) and `banner.js` (`createBanner()` for offline, error, and restock notices). `smooth-scroll.js` gives every scrollable surface its heavy smooth wheel glide: `smoothWheel(scroller)` turns wheel deltas into an exponential ease (`followScroll`/`scrollStep`, rate 14/s, line/page units resolved) instead of a jump, drops scroll-snap while it glides and hands control straight back to a pointer press, a key or focus, and to any programmatic scroll (`stopScroll`, called before `scrollIntoView` reveals and on close); reduced motion keeps native scrolling. Unit-tested in `test/smooth-scroll.test.cjs`. Preview the full kit in `ui-lab.html` (`?font=`, `?sheet=1`, `?compare`). Checks: `node scripts/contrast-check.mjs` (verifies every token text/background pair under 24 px reaches >= 4.5:1), `node scripts/ui-lab-check.mjs [out_dir]` (verifies every kit part, ARIA/focus/keyboard behaviour, caching, and 2 s idle stillness), `node scripts/ui-matrix.mjs <out_dir> [surface-filter]` (captures every app and lab surface across all 4 letterings and 2 window sizes as labelled contact sheets), `npm run build && xvfb-run -a node scripts/mini-font-check.mjs out` (mini window, no reload) and `node scripts/tour-check.mjs out`.
 
 **Name:** the app was called Cadence until 2026-11-08. On first launch, `electron/main.cjs` moves the old `cadence-app` data folder (YouTube Music sign-in, settings) to `sienna-app`, and `src/settings.js` carries over the old `cadence.settings` key. Env vars are `SIENNA_*` (were `CADENCE_*`).
 
@@ -46,99 +46,110 @@ are now used by these surfaces merged into `dev`:
 | [4 — lists](https://github.com/lajoonpark/Sienna/pull/4) | Search, collection songs and Up next | `src/ui/list.js`, `src/list-bar.js`, `src/search.js`, `src/collection-list.js`, `src/liner.js`; `node scripts/lists-check.mjs <out_dir>` |
 | [5 — sheets](https://github.com/lajoonpark/Sienna/pull/5) | Settings, Lyrics, tour notes, status banners and WebGL fallback | `src/ui/sheet.js`, `src/ui/scroll-cue.js`, `src/settings-panel.js`, `src/liner.js`, `src/tour.js`, `src/main.js`; `node scripts/sheets-check.mjs <out_dir>` |
 
-### Shared paper lists
+### Crate cards (menus)
 
-Search, collection songs and Up next use `ui/list.js` in `lines` mode: each overlay is one paper
-sheet (the `paperSurface(..., { elevation: 'lift', amp: 5, cap: 10 })` recipe, painted on the
-`.list-overlay` root for search/collections and `.ln-qbox` for the queue) with rows ruled by a
-`1px` hairline — no per-row slip paint, shadow or gap. Hover and the keyboard cursor get a
-`--sienna-paper-lo` wash with a terracotta band/title instead of a lift; the indigo now-playing
-mark stays, and the pinned now-playing row keeps an opaque paper background. A kind mark ends each
-row: a hand-drawn `icons.js` glyph (`kindIcon(item.kind)`) on a round paper dab, `role="img"` with an
-`aria-label` naming the kind so the accessible row keeps its type; unknown kinds still get the
-uppercase word chip. The dab is umber on paper-lo, turns terracotta on hover/cursor and becomes a
-solid indigo disc on the now-playing row. Hints sit at the
-sheet bottom under a hairline, and loading/empty/error notes get no paper of their own. The
-default slip mode (aligned torn slips, shared size-cached paint) is unchanged for ui-lab.
-Search and collections share the stamped oil-dab input in `src/list-bar.js`, painted chips and a nonmodal
-veil; outside clicks still reach the shop. Typing retains focus, Tab/Shift+Tab cycles the chips, and Esc
-closes (in an artist search, Esc goes back first). Search keeps its debounce, cache, stale-answer guard
-and pending Enter. Collection lists filter locally and append 40 songs at a time; Play picks the first
-filtered song and Shuffle uses the filtered pool. `collection.open(collection, songsOrPromise)` remains
-supported; a loader function returning a promise enables genuine Retry. Every sheet unrolls from its
-header (`unrollSheet(el, header)` in `src/ui/unroll.js`): while its height animates, the paper below the
-contact line winds onto a drawn coil that samples the same cropped paper texture (`createPaperRoll` in
-`src/ui/paper-roll.js`, the torn bottom edge flattening while it rolls); reduced motion skips it. Up next
-pins the playing song,
-updates its mark without rebuilding rows, and retains the suitcase drawer flight. While it is open,
-arrows and Enter belong to the queue, never the shop; normal shop/mini Space and Tab ownership is unchanged.
+Lajoon asked for the menus to be redone (2026-11-27): the torn-paper sheets, the "roll down" (which
+looked nothing like paper), the painted search bar and covers that only grew in felt unfinished and
+inconsistent. Every menu is now one of two things from the record shop:
 
-Settings > Look > **Cover carousel** (`coverCarousel` in `src/settings.js`, on by default) swaps two
-of these surfaces for `createCoverCarousel` (`src/ui/cover-carousel.js`): Up next becomes a
-horizontal wheel of painted covers centred on the playing song (a **Now playing** button re-centres
-it; arrows, scroll, drag and Enter all work, and Tab stays inside the wheel), and the search sheet
-gains a `cs-result-strip` of the top five results above its rows — a modifier chord (Alt, Shift,
-Alt+Shift or Ctrl+Shift, the first that does not collide with the configured shortcuts, named under
-the strip) + ↑ hands it the keyboard, ←→ choose, Enter plays, ↓ returns to the list. In the mini
-window an empty search also opens its **Listen again** shelf as a vertical wheel
-(`coverSuggestions`, `suggest` in `src/mini.js`; the shop search takes no suggestions). Both wheels
-open full-window (`fullSize`, `.la-full`) as real 3D carousels: the sheet's inset drops to the padding
-round the screen, each cover is a paper sleeve with depth (front and back faces, top and bottom edges
-and a spine) with its vinyl disc poking out of it (`.la-disc`), and the cards swing on a cylinder
-(`spatialRadius`) round the centred one, hidden once they are ~2.7 slots out. The paper behind them
-stays flat; instead the whole sheet leans a few degrees with the cursor (`createCoverTilt`,
-`--cover-tilt` on the sheet, off under reduced motion). Each cover scales to nearly the container
-(`--cover-size: min(96cqw, 92cqh)`, halved width on the
-horizontal queue wheel), and the title and artist sit lettered beneath the centred cover.
-Picking a cover that is not centred first spins the wheel to it and only then
-plays it. A centred pick slides the disc out of its sleeve (`extractDisc`), tucks the sheet away, and
-flies the record from where it sat on screen onto the platter through the 3D scene
-(`receiveFromScreen` in `src/suitcase/flight.js`; Esc, Enter or a click skips the flight and seats it
-at once — `listenForCoverPickSkip` in `src/ui/cover-pick-input.js`, `finishScreenPick`); **Paper
-list** keeps the ruled rows and the old stack flight. The setting
-flips live in open sheets and restores the wheel's focus when Settings closes.
+- **A crate card** (Search, collection songs, the Up next list, Settings, Lyrics, and the tour notes,
+  banners and now-playing tag): rigid sleeve card (`ui/paper.js`) that tips up like a record flipped
+  forward in a crate and tips back to leave (`cardMotion` in `ui/crate.js`, or the matching CSS in
+  `ui/sheet.js`). Rigid, so it moves believably in CSS; nothing bends or rolls. Where a card has
+  sections they are die-cut divider tabs on its top edge (search filters, Settings pages); a field
+  filter inside a collection is a switch. One header, one close stamp, and one line of keys
+  (keycaps) under the card, on the dimmed shop. Track titles and Settings copy are Alegreya; the
+  chosen lettering is for signs, tabs, headings and big captions.
+- **Loose records** (the Up next carousel and the mini player's Listen again): no card at all, the
+  sleeves float on the dimmed shop under a painted sign, with the lamp on the suitcase.
 
-`node scripts/lists-check.mjs <out_dir>` checks all three real components against an isolated fake store:
-focus/ARIA/keys, notes and retries, 612-song batching/filtering/actions, live queue state, bounded painting,
-no native control titles and two seconds with no kit/shared-bar callbacks. It also drives the cover
-carousels: the queue wheel (drawer opening, keyboard, wheel, drag, now-playing jump, reduced motion,
-queueIndex and live paper fallback), the mini-style Listen again wheel (drawer discs landing in covers,
-side and centre clicks), the search result strip (order, caption,
-chord+↑ focus, shortcut-collision fallback, Enter/↓ hand-off, covers clipped by the paper while it
-rolls), and the pick flight (Esc, Enter and click skip the disc's extraction or flight and seat it at
-once). Existing `search-check`,
-`search-anim-check` and `mini-suggest-check` retain their interaction, animation and prefetch coverage.
+Behind every menu `ui/veil.js` takes the lights down; `main.js`/`mini.js` keep its pool of light
+on the suitcase's drawer (`onOverlay` → `setLamp(drawerScreenPos())`). The mini window sets
+`--list-top`, `--list-bottom` and `--veil-*` in `mini.html` so menus stay inside its painted card.
 
-### Sheets and notes
+Search, collection songs and the Up next list use `ui/list.js` in `lines` mode: ruled rows (62 px)
+on the card, a `--sienna-paper-lo` wash and terracotta bar on the cursor row, indigo for the playing
+song, and a kind mark (`icons.js` via `kindIcon(item.kind)`, `role="img"` named after the kind) only
+when a list mixes kinds (`showKind: 'mixed'`). Search keeps its debounce, cache, stale-answer guard
+and pending Enter. Collection lists filter locally and append 40 songs at a time; Play picks the
+first filtered song and Shuffle uses the filtered pool. `collection.open(collection, songsOrPromise)`
+remains supported; a loader function returning a promise enables genuine Retry. While Up next is
+open, arrows and Enter belong to the queue, never the shop; normal shop/mini Space and Tab ownership
+is unchanged.
 
-Settings and Lyrics use `createSheet()`: labelled modal dialogs with the shared paper, lean,
-unfold/fold, Close stamp, Escape, focus trap and return to the opener. Only the topmost sheet handles
-Tab and Escape; opening Settings over Lyrics or a tour note leaves the underlying surface open.
-Tab-focused controls scroll into view clear of the bottom fade. Settings retains its utilities,
-account flow, shortcut recorder and persistent choices; its ink rail exposes `aria-current="page"`
-and its options are radio segmented chips. About groups version, manual updates and diagnostics.
-Lyrics uses a song · artist lettering title and reading-size Alegreya with loading, empty and
-retryable error states, live track changes and Queue exclusion. Both sheets retain caption ownership.
+### The record carousel
 
-`src/ui/scroll-cue.js::createScrollCue(scroller, { parent })` adds a size-cached paper hint and bottom
-fade while more content remains, clearing both at the last row. It observes changes rather than
-polling. The lab's sheet uses the same helper. Tour notes share the paper with their existing tape
-and effects, serif body text, a brush Sign in and ink choices/navigation, including Back. Notes clamp
-to the viewport; overflowing notes remain scrollable. Offline/error/restock notices use
-`createBanner()`; the WebGL fallback uses the same paper and typography.
+Settings > Look > **Cover carousel** (`coverCarousel` in `src/settings.js`, on by default) uses
+`createCoverCarousel` (`src/ui/cover-carousel.js`): Up next is a horizontal wheel centred on the
+playing song (a **Now playing** button re-centres it; arrows, scroll, drag and Enter all work, and
+Tab stays inside), the search card gains a `cs-result-strip` of the top five results above its rows
+(a modifier chord, the first of Alt, Shift, Alt+Shift or Ctrl+Shift not taken by the configured
+shortcuts, + ↑ hands it the keyboard; ←→ choose, Enter plays, ↓ returns to the list), and in the
+mini window an empty search shows **Listen again** as a vertical wheel under a card of just the tabs
+and search line (`coverSuggestions`, `suggest`, `drawer` in `src/mini.js`; the shop search takes no
+suggestions). Each sleeve is real 3D (front and back faces, cut edges, a spine) with its vinyl poking
+out, and the wheel leans a few degrees with the cursor (`createCoverTilt` on the stage only, so
+lettering never skews; off under reduced motion). The caption gives the title, artist and place
+("3 of 14") under the centred sleeve.
+
+**The deal.** Opening the full wheels slides the suitcase's drawer out (`tray.openHold`, no 3D
+disc stack) and `enter({ origin })` deals the sleeves out of it: each starts lying in the drawer at
+a record's size (`tray.screenSpan` gives the drawer's place and a record's width on screen), arcs
+up, grows as it nears its slot and swells a touch as it lands; farthest first, the centred (playing)
+sleeve last, then its vinyl slides out and the caption inks in. Closing sends them back
+(`leave({ origin })`, the centred one first) before the drawer shuts and the now-playing tag
+returns. Any key, wheel or press skips to the end (`settle()`), and reduced motion skips both.
+Picking a cover that is not centred first spins the wheel to it and only then plays it. A centred
+pick slides the disc out of its sleeve (`extractDisc`), the other sleeves fade, and the record flies
+from where it sat on screen onto the platter through the 3D scene (`receiveFromScreen` in
+`src/suitcase/flight.js`; Esc, Enter or a click skips the flight and seats it at once —
+`listenForCoverPickSkip` in `src/ui/cover-pick-input.js`, `finishScreenPick`). **List** keeps the
+ruled rows and the drawer's 3D stack. The setting flips live in open menus and restores the wheel's
+focus when Settings closes.
+
+`node scripts/lists-check.mjs <out_dir>` checks all three real components against an isolated fake
+store: tabs, key lines, focus/ARIA/keys, notes and retries, 612-song batching/filtering/actions, live
+queue state, bounded painting, no native control titles and two seconds with no kit/shared-bar
+callbacks. It also drives the carousels (floating queue and Listen again wheels, drawer opening,
+keyboard, wheel, drag, now-playing jump, reduced motion, queueIndex and the live list fallback), the
+search result strip, the card flip (including changes of mind halfway) and the pick flight's skips.
+`node scripts/search-anim-check.mjs <out_dir>` checks the motion on a real GPU: the card flips at
+60 fps with typing live from the first frame, and in the mini player the sleeves start in the drawer
+at record size, the centred one lands last, a key skips the deal and closing sends them back before
+the drawer shuts. `search-check` and `mini-suggest-check` retain their interaction and prefetch
+coverage.
+
+### Settings, Lyrics and notes
+
+Settings and Lyrics use `createSheet()`: labelled modal cards on the veil that flip like the other
+cards, with a close stamp, Escape, focus trap and return to the opener. Only the topmost sheet
+handles Tab and Escape; opening Settings over Lyrics or a tour note leaves the underlying surface
+open. Tab-focused controls scroll into view clear of the bottom fade. Settings' pages are divider
+tabs on its top edge (`aria-current="page"`; the arrow keys move between them, and it opens with the
+open page's tab focused), each setting is a row with its switch or buttons on the right, and the
+shortcuts are keycaps you click to record. About groups version, manual updates and diagnostics.
+Lyrics shows the song's title with its artist (and album) under it and reading-size Alegreya, with
+loading, empty and retryable error states, live track changes and Queue exclusion. Both keep caption
+ownership.
+
+`src/ui/scroll-cue.js::createScrollCue(scroller, { parent })` fades the bottom of a scroller while
+more content remains, clearing at the last row; it observes changes rather than polling. Tour notes
+are cards with their tape and effects, serif body text, a brush Sign in and ink choices/navigation,
+including Back. Notes clamp to the viewport; overflowing notes remain scrollable.
+Offline/error/restock notices use `createBanner()`; the WebGL fallback uses the same card and
+typography.
 
 `node scripts/sheets-check.mjs <out_dir>` exercises real components with an isolated fake store:
-dialog ARIA, close/focus/keyboard ownership, rail/pages, persistent radios and one lettering repaint,
+dialog ARIA, close/focus/keyboard ownership, tabs/pages, persistent radios and one lettering repaint,
 account confirmation/cancel/error recovery, two-size scrolling and last-row reachability, all Lyrics
 states/live updates/exclusion, every tour note's viewport bounds and single welcome Sign in,
 banner roles/actions, fallback tokens, caption tucking, cached reopening and two seconds with no kit
-callbacks. It never authenticates. Existing `account-check`, `tour-check`, `shortcuts-check` and
-`tear-check` retain their integration coverage; browser checks accept `SIENNA_ANGLE=swiftshader`
-on Linux.
+callbacks. It never authenticates. Existing `account-check`, `tour-check` and `shortcuts-check`
+retain their integration coverage; browser checks accept `SIENNA_ANGLE=swiftshader` on Linux.
 
 On macOS, run the browser checks directly, for example `node scripts/sheets-check.mjs <out_dir>`.
 For the Electron shortcut check, use `npm run build && node scripts/shortcuts-check.mjs <out_dir>`
-without Linux's `xvfb-run`. Account, sheets, tour and shortcut checks use Cmd+, for Settings on
+without Linux's `xvfb-run`. Account, sheets, tour, home and shortcut checks use Cmd+, for Settings on
 macOS (Ctrl+, elsewhere); shortcut labels are Control + Option on macOS and Ctrl + Alt elsewhere.
 These checks default to Metal on macOS and SwiftShader elsewhere; `SIENNA_ANGLE` overrides that.
 `node scripts/search-anim-check.mjs <out_dir>` instead defaults to Metal on macOS and Vulkan
@@ -244,7 +255,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   plays, the knob is volume (drag it or scroll; scrolling down is quieter), the buttons are back / play / skip / like, and
   dragging the record scrubs. A genuine hit on the tucked strip holds it awake while the pointer stays still, even as
   the case rises out from under it; moving away or onto an overlay releases it.
-  A shared torn-paper tag beside it shows the song with a painted seekable progress slider
+  A shared card tag beside it shows the song with a seekable progress slider
   (`createCaption` in `src/controls.js`, also used in the mini window), with Mute, Shuffle, Repeat, Queue and Lyrics stamps.
   Its Sign in brush plate hides with the tag while search, collections, Settings, Lyrics, Queue or the tour is open,
   so the tour welcome never duplicates Sign in. Pointer-clicked controls release keyboard focus back to the shop.
@@ -276,14 +287,12 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
 - **Volume**: on macOS the knob, scroll and ↑ ↓ set the Mac's own output volume (`electron/sysvolume.cjs`,
   osascript) and the player stays at 100%, so you can turn it up past where the Mac was. Elsewhere it
   is the player's volume.
-- **Search**: **⌃⌥J** (Ctrl+Alt+J on Windows/Linux) opens a search bar (`src/search.js`). The bar is
-  stamped onto `.cs-fx` as chunky individual oil dabs one at a time, throwing flecks, and flicked off the right-hand end when it closes
-  (`src/searchpaint.js`; the same in the shop and the mini window, no animation under the system's reduce-motion setting). Songs are
-  laid in as ruled rows on the search sheet, arrows + Enter or a click plays one; with Cover
-  carousel on, the top five results also sit above the rows as a cover strip (chord + ↑ browses it)
-  and, in the mini window, an empty search opens its Listen again shelf as a vertical 3D cover wheel
-  filling the window. A
-  song from search has no sleeve, so
+- **Search**: **⌃⌥J** (Ctrl+Alt+J on Windows/Linux) tips up the search card (`src/search.js`): its
+  filters are the card's divider tabs, and the keyboard is live from the first frame. Songs are
+  ruled rows on the card, arrows + Enter or a click plays one; with Cover carousel on, the top five
+  results also sit above the rows as a strip of sleeves (chord + ↑ browses it) and, in the mini
+  window, an empty search deals its Listen again shelf out of the suitcase drawer into a vertical
+  3D wheel under the card. A song from search has no sleeve, so
   the bottom of the case slides out like a drawer, the record lifts out of it, tips towards you and
   flies onto the platter, and the drawer slides home (`src/suitcase/tray.js`, in the shop and the mini
   window; the shop's case rises a little meanwhile so the drawer stays in the picture). `?tray=0.6`
@@ -378,11 +387,11 @@ of time apart (`DT`, default 1/300 s; `DT=0 NUDGE=0.0002` leans the camera a hai
 from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the paint off for screenshots and
   geometry checks.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Cover carousel*
-  (default Carousel) fills the window with Up next as a horizontal wheel of huge covers and opens the
-  mini window's empty search on an equally big vertical Listen again wheel — real 3D sleeves with
-  their vinyls poking out, the sheet leaning with the cursor — and shows the top five search results
-  as a smaller strip to spin
-  through; Paper list keeps the ruled rows everywhere. *Start of a song* plays
+  (default Carousel) opens Up next as a horizontal wheel of huge covers floating on the dimmed shop,
+  dealt out of the suitcase drawer, opens the mini window's empty search on a vertical Listen again
+  wheel the same way — real 3D sleeves with their vinyls poking out, leaning with the cursor — and
+  shows the top five search results as a smaller strip to spin through; List keeps ruled rows
+  everywhere. *Start of a song* plays
   when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Sharpness* sets how
   many pixels the shop is drawn with (`src/quality.js`): Full (every Retina pixel), Balanced (default: 3/4 of the screen's
   pixel ratio, never below 1, so 56% of Full's pixels on a Retina screen and the same as Full on a plain one) or Light
@@ -395,7 +404,7 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   it off unless `?cool=1`. The fps ticket shows frames per second and the worst frame time. *Lettering* picks the font
   (each choice is written in itself); it applies at once in both windows, without a reload (tags, signs and buttons repaint in place).
   *Frame rate* shows an fps readout. *Tour* > SHOW IT AGAIN starts the first-run tour from the door.
-- **First-run tour** (`src/tour.js`): on a new install, once the intro reaches home, torn paper notes in the shop
+- **First-run tour** (`src/tour.js`): on a new install, once the intro reaches home, card notes in the shop
   walk you through it, with brush-stroke words floating (bobbing) under each note instead of a settings card:
   *welcome* (SIGN IN or LOOK AROUND FIRST, with the small print as four price stickers slapped on one by one: FREE,
   makes no money; PRIVATE, no servers and keeps nothing about you; ADS?, without Premium YouTube Music plays its own
@@ -410,12 +419,9 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   goodbye burst into paint, confetti, music notes and records (`src/tourfx.js`: one canvas behind the notes that only
   draws while something is flying). Once the tour has faded away its animations pause too (`.tr.gone`),
   so a hidden note stops waking the page every frame. Reduced motion and `?shot` keep it all still.
-  The notes lean toward the cursor (about 9°), and so does the Settings card (5°, on a wrapper so its open bounce
-  stays): `src/cursortilt.js` eases the cursor on its own rAF loop, which runs only while the paper is catching up,
-  so the paper keeps turning while the camera's tilt holds still for a record at a rack. Check: `node scripts/tilt-check.mjs [out]`.
-  The torn edge of the notes and the Settings card (`torn()` in `src/ui/paper.js`, re-exported by `src/settings-panel.js`) tears unevenly: uneven spacing,
-  a slow wander, calm and ragged stretches, the odd bite and chipped corners. No tear goes deeper than its `cap`
-  (12px on notes, 10px on Settings), which stays below the paper's padding so it never reaches text. Check: `node scripts/tear-check.mjs [out]`.
+  The notes lean toward the cursor (about 9°): `src/cursortilt.js` eases the cursor on its own rAF loop, which runs
+  only while a note is catching up, so it keeps turning while the camera's tilt holds still for a record at a rack.
+  The menu cards do not lean, so their lettering never skews. Check: `node scripts/tilt-check.mjs [out]`.
   While a centred note is up the shop's own keys are quiet. The step reached is saved in localStorage `sienna.tour`.
   Installs from before the tour (saved settings, or already signed in) do not get it on their own, nor does a plain
   browser or an automated run (`navigator.webdriver`), so the check scripts see the shop as before. `?tour=0` keeps it

@@ -1,27 +1,25 @@
 // Secondary and tool controls for Sienna's 2D UI kit:
 //   - inkButton():  secondary action lettered in ink with a cached painted brush underline
-//   - segmented():  painted oil-dab chips (tabs or radio group) with roving tabindex + arrow keys
-//   - stamp():      icon tool with terracotta oil-stamp on-state and painted tooltip (never title=)
+//   - segmented():  one choice of several (tabs or radio group) with roving tabindex + arrow keys, drawn
+//                   as a record-player switch with a painted key that slides to the choice, or as a
+//                   card's divider tabs (variant 'tabs', see ui/crate.js)
+//   - stamp():      icon tool with terracotta oil-stamp on-state and a card tooltip (never title=)
 import { dabCluster, TONES } from '../brushpaint.js';
 import { COLORS, injectTokens } from './tokens.js';
-import { torn } from './paper.js';
+import { cardGrain } from './paper.js';
+import { injectCrateCss } from './crate.js';
 import { icon } from './icons.js';
 import { fontReady, onLettering } from '../style.js';
 
-// ---- Cached painted strokes & chips ----
-const CHIP_STEP = 4;
-const MAX_CHIPS = 128;
+// ---- Cached painted strokes ----
 const underlineCache = new Map();
-const chipCache = new Map();
 let stampDotUrl = null;
 let stampHoverUrl = null;
 const stats = { paints: 0, hits: 0 };
 
 export function inputsStats() {
-  return { paints: stats.paints, hits: stats.hits, chips: chipCache.size, underlines: underlineCache.size };
+  return { paints: stats.paints, hits: stats.hits, underlines: underlineCache.size };
 }
-
-const quantizeChip = (v) => Math.max(CHIP_STEP, Math.ceil(v / CHIP_STEP) * CHIP_STEP);
 
 function getUnderlineUrl(color, seed = 11) {
   const bucket = Math.abs(seed) % 5 + 1;
@@ -45,40 +43,6 @@ function getUnderlineUrl(color, seed = 11) {
     scale: 1.5,
   });
   underlineCache.set(key, url);
-  stats.paints++;
-  return url;
-}
-
-function getChipUrl(w, h, tone, seed) {
-  const rw = quantizeChip(w);
-  const rh = quantizeChip(h);
-  const key = `${rw}x${rh}-${tone}-${seed}`;
-  const cached = chipCache.get(key);
-  if (cached) {
-    chipCache.delete(key);
-    chipCache.set(key, cached);
-    stats.hits++;
-    return cached;
-  }
-  const isHot = tone === 'hot';
-  const url = dabCluster(rw, rh, {
-    tones: isHot ? TONES.hot : TONES.track,
-    seed,
-    rows: 1,
-    tilt: 0.04,
-    overlap: 0.56,
-    minCols: 2,
-    impasto: isHot ? 0.52 : 0.28,
-    even: isHot,
-    soft: !isHot,
-    solid: true,
-    scale: 1.5,
-  });
-  if (chipCache.size >= MAX_CHIPS) {
-    const oldest = chipCache.keys().next().value;
-    chipCache.delete(oldest);
-  }
-  chipCache.set(key, url);
   stats.paints++;
   return url;
 }
@@ -144,39 +108,35 @@ const INPUTS_CSS = `
 .ui-ink:disabled,
 .ui-ink.is-disabled { cursor: not-allowed; opacity: var(--sienna-disabled); transform: none; }
 
-/* ---- segmented ---- */
-.ui-seg { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sienna-space-3); }
+/* ---- segmented: a switch, or divider tabs (crate.js) ---- */
+.ui-seg { display: inline-flex; flex-wrap: wrap; align-items: center; }
 .ui-seg-chip { position: relative; display: inline-flex; align-items: center; justify-content: center;
-  border: 0; padding: 0; margin: 0; background: none; cursor: pointer; user-select: none;
-  font-family: var(--sienna-font); font-size: var(--sienna-text-md); color: var(--sienna-ink);
-  line-height: 1.05; letter-spacing: .01em; transform: rotate(var(--sienna-tilt-sm));
-  transition: color var(--sienna-dur-fast) var(--sienna-ease-out), transform var(--sienna-dur-fast) var(--sienna-ease-pop), opacity var(--sienna-dur-fast); }
-.ui-seg-chip:nth-child(even) { transform: rotate(calc(var(--sienna-tilt-sm) * -0.5)); }
-.ui-seg-plate { position: absolute; inset: -1px -5px; background-size: 100% 100%; background-repeat: no-repeat;
-  pointer-events: none; filter: drop-shadow(var(--sienna-shadow-rest));
-  transition: opacity var(--sienna-dur-fast) var(--sienna-ease-out), filter var(--sienna-dur-fast); }
-.ui-seg-plate--on { opacity: 0; }
-.ui-seg-label { position: relative; z-index: 1; display: block; white-space: nowrap;
-  padding: var(--sienna-space-2) var(--sienna-space-5) calc(var(--sienna-space-1) + 2px); }
-.ui-seg-chip:not(:disabled):hover,
-.ui-seg-chip:not(:disabled).is-hover { color: var(--sienna-terracotta); transform: translateY(-1.5px) rotate(0deg); }
-.ui-seg-chip:not(:disabled):hover .ui-seg-plate,
-.ui-seg-chip:not(:disabled).is-hover .ui-seg-plate { filter: drop-shadow(var(--sienna-shadow-lift)); }
-.ui-seg-chip.is-on,
-.ui-seg-chip[aria-selected="true"],
-.ui-seg-chip[aria-checked="true"] { color: var(--sienna-paper); transform: translateY(-1px) rotate(0deg); }
-.ui-seg-chip.is-on:not(:disabled):hover,
-.ui-seg-chip[aria-selected="true"]:not(:disabled):hover,
-.ui-seg-chip[aria-checked="true"]:not(:disabled):hover { color: var(--sienna-paper); }
-.ui-seg-chip.is-on .ui-seg-plate--on,
-.ui-seg-chip[aria-selected="true"] .ui-seg-plate--on,
-.ui-seg-chip[aria-checked="true"] .ui-seg-plate--on { opacity: 1; }
+  margin: 0; border: 0; cursor: pointer; user-select: none;
+  font-family: var(--sienna-font); font-size: var(--sienna-text-md); line-height: 1.15; letter-spacing: .01em; }
 .ui-seg-chip:focus { outline: none; }
-.ui-seg-chip:focus-visible::after,
-.ui-seg-chip.is-focus::after { content: ''; position: absolute; inset: -3px -5px; pointer-events: none;
-  border-radius: 8px 12px 10px 12px / 12px 8px 12px 10px; box-shadow: var(--sienna-focus-ring); }
 .ui-seg-chip:disabled,
-.ui-seg-chip.is-disabled { cursor: not-allowed; opacity: var(--sienna-disabled); transform: none; }
+.ui-seg-chip.is-disabled { cursor: not-allowed; opacity: var(--sienna-disabled); }
+.ui-seg-label { position: relative; z-index: 1; display: block; white-space: nowrap; }
+.ui-seg--switch { position: relative; gap: 2px; padding: 3px; border-radius: 10px;
+  background: var(--sienna-paper-lo); box-shadow: inset 0 1px 3px rgba(84, 58, 32, 0.3); }
+.ui-seg-thumb { position: absolute; left: 0; top: 0; width: 0; height: 0; border-radius: 7px; pointer-events: none;
+  background: var(--sienna-indigo); box-shadow: 0 2px 0 rgba(16, 18, 40, 0.55), 0 3px 7px rgba(24, 18, 36, 0.3);
+  transition: transform var(--sienna-dur-mid) var(--sienna-ease-out), width var(--sienna-dur-mid) var(--sienna-ease-out),
+    height var(--sienna-dur-mid) var(--sienna-ease-out); }
+.ui-seg-thumb[hidden] { display: none; }
+.ui-seg--switch .ui-seg-chip { padding: 0; background: none; border-radius: 7px; color: var(--sienna-ink);
+  transition: color var(--sienna-dur-fast) var(--sienna-ease-out); }
+.ui-seg--switch .ui-seg-label { padding: 4px var(--sienna-space-3) 5px; }
+.ui-seg--switch .ui-seg-chip:not(:disabled):hover,
+.ui-seg--switch .ui-seg-chip:not(:disabled).is-hover { color: var(--sienna-terracotta); }
+.ui-seg--switch .ui-seg-chip.is-on,
+.ui-seg--switch .ui-seg-chip[aria-selected="true"],
+.ui-seg--switch .ui-seg-chip[aria-checked="true"],
+.ui-seg--switch .ui-seg-chip.is-on:not(:disabled):hover,
+.ui-seg--switch .ui-seg-chip[aria-selected="true"]:not(:disabled):hover,
+.ui-seg--switch .ui-seg-chip[aria-checked="true"]:not(:disabled):hover { color: var(--sienna-paper); }
+.ui-seg--switch .ui-seg-chip:focus-visible,
+.ui-seg--switch .ui-seg-chip.is-focus { box-shadow: var(--sienna-focus-ring); }
 
 /* ---- stamp ---- */
 .ui-stamp { position: relative; display: inline-flex; align-items: center; justify-content: center;
@@ -214,12 +174,12 @@ const INPUTS_CSS = `
   filter: drop-shadow(var(--sienna-shadow-rest));
   transition: opacity var(--sienna-dur-fast) var(--sienna-ease-out), transform var(--sienna-dur-fast) var(--sienna-ease-out), visibility 0s var(--sienna-dur-fast); }
 .ui-stamp--tip-bottom .ui-tip-wrap { bottom: auto; top: calc(100% + var(--sienna-space-2)); transform: translateX(-50%) translateY(-4px); }
-.ui-tip { display: block; padding: var(--sienna-space-1) var(--sienna-space-3); background: var(--sienna-paper);
+.ui-tip { display: block; padding: var(--sienna-space-1) var(--sienna-space-3); border-radius: 5px;
+  background: var(--sienna-paper) var(--sienna-grain); box-shadow: 0 2px 0 var(--sienna-edge);
   color: var(--sienna-ink); font-family: var(--sienna-serif); font-size: var(--sienna-text-xs); font-weight: 600;
   line-height: 1.25; white-space: nowrap; }
 .ui-stamp:not(:disabled):hover .ui-tip-wrap,
 .ui-stamp:not(:disabled):focus-visible .ui-tip-wrap,
-.ui-stamp:not(:disabled):focus .ui-tip-wrap,
 .ui-stamp:not(:disabled).is-hover .ui-tip-wrap,
 .ui-stamp:not(:disabled).is-focus .ui-tip-wrap {
   opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0);
@@ -228,6 +188,8 @@ const INPUTS_CSS = `
 
 function injectInputsCss() {
   injectTokens();
+  injectCrateCss();
+  if (typeof document !== 'undefined') cardGrain();
   if (typeof document === 'undefined' || !document.head || document.getElementById('sienna-ui-inputs')) return;
   const st = document.createElement('style');
   st.id = 'sienna-ui-inputs';
@@ -289,20 +251,22 @@ export function inkButton(label, {
   return el;
 }
 
-// Painted oil-dab segmented chips for search tabs (role: 'tabs') and Settings options (role: 'radio').
+// One choice of several: search tabs (role 'tabs') and Settings options (role 'radio'). Drawn as a switch
+// whose painted key slides to the choice, or (variant 'tabs') as divider tabs on a card.
 export function segmented(options, {
   value = undefined,
   onChange = null,
   role = 'tabs',
+  variant = 'switch',
   label = null,
   disabled = false,
-  seed = 23,
 } = {}) {
   injectInputsCss();
   const isRadio = role === 'radio';
   const groupRole = isRadio ? 'radiogroup' : 'tablist';
   const itemRole = isRadio ? 'radio' : 'tab';
   const stateAttr = isRadio ? 'aria-checked' : 'aria-selected';
+  const dividers = variant === 'tabs';
 
   const items = options.map((opt) => (typeof opt === 'string'
     ? { value: opt, label: opt }
@@ -311,31 +275,38 @@ export function segmented(options, {
       : { ...opt }));
 
   const el = document.createElement('div');
-  el.className = 'ui-seg';
+  el.className = dividers ? 'ui-seg ui-seg--tabs crate-tabs' : 'ui-seg ui-seg--switch';
   el.setAttribute('role', groupRole);
   if (label) el.setAttribute('aria-label', label);
 
   let current = value !== undefined ? value : items[0]?.value;
   let groupDisabled = !!disabled;
   let destroyed = false;
+  let placed = false;
   const entries = [];
+  const thumb = dividers ? null : document.createElement('span');
+  if (thumb) {
+    thumb.className = 'ui-seg-thumb';
+    thumb.setAttribute('aria-hidden', 'true');
+    thumb.hidden = true;
+    el.appendChild(thumb);
+  }
 
-  const paintChip = (entry, force = false) => {
-    if (destroyed) return;
-    const w = Math.ceil(entry.btn.offsetWidth);
-    const h = Math.ceil(entry.btn.offsetHeight);
-    if (!w || !h) return;
-    const rw = quantizeChip(w);
-    const rh = quantizeChip(h);
-    if (!force && rw === entry.w && rh === entry.h) return;
-    entry.w = rw;
-    entry.h = rh;
-    entry.restPlate.style.backgroundImage = `url(${getChipUrl(rw, rh, 'rest', entry.seed)})`;
-    entry.onPlate.style.backgroundImage = `url(${getChipUrl(rw, rh, 'hot', entry.seed)})`;
-  };
-
-  const paintAll = (force = false) => {
-    for (const entry of entries) paintChip(entry, force);
+  // slide the switch's key under the choice (without sliding in from nowhere the first time)
+  const place = () => {
+    if (!thumb || destroyed) return;
+    const on = entries.find((e) => e.opt.value === current)?.btn;
+    if (!on?.offsetWidth) { thumb.hidden = true; placed = false; return; }
+    thumb.hidden = false;
+    if (!placed) thumb.style.transition = 'none';
+    thumb.style.transform = `translate(${on.offsetLeft}px, ${on.offsetTop}px)`;
+    thumb.style.width = `${on.offsetWidth}px`;
+    thumb.style.height = `${on.offsetHeight}px`;
+    if (!placed) {
+      void thumb.offsetWidth;
+      thumb.style.transition = '';
+      placed = true;
+    }
   };
 
   const sync = () => {
@@ -349,6 +320,7 @@ export function segmented(options, {
       entry.btn.setAttribute(stateAttr, String(isOn));
       entry.btn.tabIndex = i === focusTargetIdx ? 0 : -1;
     });
+    place();
   };
 
   const selectIndex = (idx, { focus = false, notify = true } = {}) => {
@@ -366,20 +338,14 @@ export function segmented(options, {
   items.forEach((opt, i) => {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'ui-seg-chip';
+    btn.className = dividers ? 'ui-seg-chip crate-tab' : 'ui-seg-chip';
     btn.setAttribute('role', itemRole);
     if (opt.font) btn.style.fontFamily = typeof opt.font === 'string' ? opt.font : opt.font.family;
 
-    const restPlate = document.createElement('span');
-    restPlate.className = 'ui-seg-plate ui-seg-plate--rest';
-    restPlate.setAttribute('aria-hidden', 'true');
-    const onPlate = document.createElement('span');
-    onPlate.className = 'ui-seg-plate ui-seg-plate--on';
-    onPlate.setAttribute('aria-hidden', 'true');
     const lbl = document.createElement('span');
     lbl.className = 'ui-seg-label';
     lbl.textContent = opt.label;
-    btn.append(restPlate, onPlate, lbl);
+    btn.append(lbl);
 
     btn.addEventListener('click', () => selectIndex(i, { focus: false, notify: true }));
     btn.addEventListener('keydown', (e) => {
@@ -404,29 +370,18 @@ export function segmented(options, {
     });
 
     el.appendChild(btn);
-    entries.push({ opt, btn, restPlate, onPlate, seed: seed + i * 7, w: 0, h: 0 });
+    entries.push({ opt, btn });
   });
 
   sync();
-
-  let fontsLoaded = false;
-  fontReady.then(() => {
-    fontsLoaded = true;
-    paintAll(false);
-  });
-  onLettering(el, () => {
-    if (destroyed) return;
-    for (const entry of entries) { entry.w = 0; entry.h = 0; }
-    paintAll(true);
-  });
+  fontReady.then(place);
+  onLettering(el, place);
 
   let ro = null;
-  if (typeof ResizeObserver !== 'undefined') {
-    ro = new ResizeObserver(() => {
-      if (!fontsLoaded || destroyed) return;
-      paintAll(false);
-    });
+  if (thumb && typeof ResizeObserver !== 'undefined') {
+    ro = new ResizeObserver(place);
     ro.observe(el);
+    for (const { btn } of entries) ro.observe(btn);
   }
 
   return {
@@ -442,7 +397,7 @@ export function segmented(options, {
       groupDisabled = !!on;
       sync();
     },
-    repaint(force = false) { paintAll(force); },
+    repaint: place,
     destroy() {
       if (destroyed) return;
       destroyed = true;
@@ -462,7 +417,6 @@ export function stamp(iconName, {
   disabled = false,
   tooltip = null,
   tooltipPos = 'top',
-  seed = 31,
 } = {}) {
   injectInputsCss();
   let curIcon = iconName;
@@ -497,7 +451,6 @@ export function stamp(iconName, {
   tip.className = 'ui-tip';
   tip.id = tipId;
   tip.setAttribute('role', 'tooltip');
-  tip.style.clipPath = torn(seed, 2, 4);
   tipWrap.appendChild(tip);
 
   el.setAttribute('aria-describedby', tipId);

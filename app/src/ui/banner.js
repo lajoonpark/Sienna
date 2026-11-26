@@ -40,7 +40,7 @@ function injectBannerCss() {
   document.head.appendChild(st);
 }
 
-export function createBanner({ parent = null, floating = true, seed = 89 } = {}) {
+export function createBanner({ parent = null, floating = true } = {}) {
   injectBannerCss();
   const el = document.createElement('div');
   el.className = `ui-banner${floating ? ' ui-banner--floating' : ''}`;
@@ -64,7 +64,7 @@ export function createBanner({ parent = null, floating = true, seed = 89 } = {})
   el.append(mark, icoSlot, msgEl, actSlot);
   if (parent || floating) (parent ?? document.body).appendChild(el);
 
-  const paper = paperSurface(el, { seed, elevation: 'lift', amp: 4, cap: 8 });
+  const paper = paperSurface(el, { elevation: 'lift' });
 
   let visible = !floating;
   let hideTimer = 0;
@@ -143,7 +143,6 @@ export function createBanner({ parent = null, floating = true, seed = 89 } = {})
 
     visible = true;
     if (floating) el.classList.add('show');
-    paper.repaint(false);
 
     if (autoHideMs > 0) {
       hideTimer = setTimeout(() => {
@@ -166,7 +165,6 @@ export function createBanner({ parent = null, floating = true, seed = 89 } = {})
     show,
     hide,
     isVisible: () => visible,
-    repaint: (force = false) => paper.repaint(force),
     destroy,
   };
 }

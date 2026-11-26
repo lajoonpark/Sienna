@@ -13,7 +13,7 @@ import { FONTS, LETTERING, fontReady, onLettering } from './style.js';
 import {
   COLORS, TYPE, SPACE, TILT, ELEVATION, MOTION, Z, CONTRAST_PAIRS, injectTokens,
 } from './ui/tokens.js';
-import { paperSurface, paperStats, torn } from './ui/paper.js';
+import { paperSurface, paperStats } from './ui/paper.js';
 import { brushButton, brushStats } from './ui/brush.js';
 import { inkButton, segmented, stamp, inputsStats } from './ui/inputs.js';
 import { icon, ICON_NAMES } from './ui/icons.js';
@@ -165,12 +165,13 @@ const LAB_CSS = `
   background: var(--sienna-terracotta); transition: transform var(--m-dur, var(--sienna-dur-mid)) var(--m-ease, var(--sienna-ease-out)); }
 .lab-motion-puck.go { transform: translateX(180px); }
 
-/* Paper section (sits directly on the painted backdrop so torn shadows read cleanly) */
+/* Card section (sits directly on the painted backdrop so the cards' edges and shadows read cleanly) */
 .lab-stage { padding: var(--sienna-space-4) 0; }
 .lab-paper-grid { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sienna-space-5); }
 .lab-paper-sample { padding: var(--sienna-space-5) var(--sienna-space-6); box-sizing: border-box; }
 .lab-paper-sample h3 { margin: 0 0 var(--sienna-space-1); font-family: var(--sienna-font);
   font-size: var(--sienna-text-lg); color: var(--sienna-indigo); }
+.lab-tab-card { margin-top: 44px; padding: var(--sienna-space-3) var(--sienna-space-4); }
 .lab-paper-sample p { margin: 0; font-family: var(--sienna-serif); font-size: var(--sienna-text-sm);
   color: var(--sienna-ink-2); }
 
@@ -277,7 +278,7 @@ async function loadFakeSamples() {
   return { searchSample, list600, songs };
 }
 
-// Helper: section shell on torn oil-dabbed paper
+// Helper: section shell on a card
 function makeSection(id, title, caption, { onPaper = true, seed = 11 } = {}) {
   const sec = el('section', 'lab-sec');
   sec.id = id;
@@ -429,7 +430,7 @@ async function buildFullLab(samples) {
   const hLeft = el('div');
   hLeft.append(
     el('h1', 'lab-header-title', 'Sienna UI Kit Lab'),
-    el('p', 'lab-header-sub', 'One paper, one brush, two voices — every Phase 2 component over a painted backdrop.'),
+    el('p', 'lab-header-sub', 'One card, one brush, two voices — every shared component over a painted backdrop.'),
   );
   const hRight = el('div', 'lab-header-controls');
   const currentKey = Object.entries(FONTS).find(([, f]) => f === LETTERING)?.[0] ?? settings.get('font') ?? 'amatic';
@@ -608,9 +609,9 @@ async function buildFullLab(samples) {
     const stage = el('div', 'lab-list-stage');
     const grid = el('div', 'lab-paper-grid');
     const paperSpecs = [
-      { w: 220, h: 110, seed: 7, elevation: 'rest', title: 'Compact tag · rest', desc: 'seed 7 · cap 8px' },
-      { w: 260, h: 132, seed: 23, elevation: 'lift', title: 'Tour note · lift', desc: 'seed 23 · lifted shadow' },
-      { w: 340, h: 150, seed: 43, elevation: 'lift', title: 'Sheet excerpt · lift', desc: 'seed 43 · oil dabs + linen tooth' },
+      { w: 220, h: 110, elevation: 'rest', title: 'Compact tag · rest', desc: 'thin board edge' },
+      { w: 260, h: 132, elevation: 'lift', title: 'Tour note · lift', desc: 'lifted shadow' },
+      { w: 340, h: 150, elevation: 'lift', title: 'Menu card · lift', desc: 'rag-fibre grain, cut edge' },
     ];
     const paperHandles = [];
     for (const sp of paperSpecs) {
@@ -619,7 +620,7 @@ async function buildFullLab(samples) {
       box.style.minHeight = `${sp.h}px`;
       box.append(el('h3', '', sp.title), el('p', '', sp.desc));
       grid.appendChild(box);
-      paperHandles.push(paperSurface(box, { seed: sp.seed, elevation: sp.elevation, amp: 5, cap: 10 }));
+      paperHandles.push(paperSurface(box, { elevation: sp.elevation }));
     }
     stage.appendChild(grid);
     sec.appendChild(stage);
@@ -736,12 +737,16 @@ async function buildFullLab(samples) {
       {
         value: 'songs',
         role: 'tabs',
+        variant: 'tabs',
         label: 'Search filter',
-        seed: 23,
         onChange: (v) => { tabStatus.textContent = `Selected tab: ${v}`; },
       },
     );
-    col1.append(searchTabs.el, tabStatus);
+    const tabCard = el('div', 'lab-tab-card');
+    tabCard.append(searchTabs.el, tabStatus);
+    paperSurface(tabCard, { elevation: 'lift' });
+    tabCard.classList.add('crate-card');
+    col1.append(tabCard);
 
     const col2 = el('div');
     col2.appendChild(el('div', 'lab-subhead', 'Settings-style options (role="radiogroup")'));
@@ -1153,13 +1158,12 @@ async function buildFullLab(samples) {
     box.style.width = `${w}px`;
     box.style.height = `${h}px`;
     scratchHost.appendChild(box);
-    const handle = paperSurface(box, { seed, elevation: 'rest' });
+    const handle = paperSurface(box, { elevation: 'rest' });
     return {
       el: box,
       resize(nw, nh) {
         box.style.width = `${nw}px`;
         box.style.height = `${nh}px`;
-        handle.repaint(false);
       },
       destroy() {
         handle.destroy();

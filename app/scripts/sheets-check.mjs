@@ -135,17 +135,19 @@ try {
   await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--sienna-font').includes('Caveat'));
   await wait(750);
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('sienna.settings')).font), 'caveat');
-  assert.equal((await page.evaluate(() => fixture.stats().brush.repaints)) - beforeFont, 1, 'visible lettering witness repaints exactly once');
+  const plates = await page.locator('.ui-brush').evaluateAll(els => els.filter(el => el.offsetWidth).length);
+  assert.equal(plates, 2, 'the witness and the Settings sign are on screen');
+  assert.equal((await page.evaluate(() => fixture.stats().brush.repaints)) - beforeFont, plates, 'every visible painted plate repaints exactly once');
   await lettering.getByRole('radio', { name: 'Amatic', exact: true }).click();
   await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--sienna-font').includes('Amatic'));
   await wait(500);
   const coverCarousel = active().getByRole('radiogroup', { name: 'Cover carousel', exact: true });
   assert.equal(await coverCarousel.getByRole('radio', { checked: true }).innerText(), 'Carousel');
-  await coverCarousel.getByRole('radio', { name: 'Paper list', exact: true }).click();
+  await coverCarousel.getByRole('radio', { name: 'List', exact: true }).click();
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('sienna.settings')).coverCarousel), false);
   await coverCarousel.getByRole('radio', { name: 'Carousel', exact: true }).click();
   assert.equal(await page.evaluate(() => fixture.settings.get('coverCarousel')), true);
-  pass('Settings: Cover carousel defaults on and the paper-list choice is persisted');
+  pass('Settings: Cover carousel defaults on and the list choice is persisted');
   await rail('performance').click();
   await active().getByRole('radiogroup', { name: 'Sharpness' }).getByRole('radio', { name: 'Light', exact: true }).click();
   assert.equal(await page.evaluate(() => fixture.settings.get('sharp')), 'light');
@@ -198,9 +200,13 @@ try {
     for (const id of pages) {
       await rail(id).click(); await wait(200);
       assert.equal(await rail(id).getAttribute('aria-current'), 'page');
+      await page.mouse.move(2, 2);
       await page.waitForFunction(id => {
         const el = document.querySelector(`.st-side [data-page="${id}"]`);
-        return el.classList.contains('is-on') && getComputedStyle(el).color === 'rgb(166, 68, 47)' && getComputedStyle(el.querySelector('.ui-ink-line')).opacity === '1';
+        const card = el.closest('.ui-sheet-card').getBoundingClientRect(), tab = el.getBoundingClientRect();
+        // the open page's tab is the card's own stock, standing on its top edge
+        return el.classList.contains('is-on') && getComputedStyle(el).color === 'rgb(45, 49, 88)'
+          && getComputedStyle(el, '::before').backgroundColor === 'rgb(248, 241, 226)' && Math.abs(tab.bottom - card.top) < 6;
       }, id);
       assert.ok((await active().locator('.st-page-title').innerText()).length);
       assert.ok((await active().locator('.st-page-desc').innerText()).length);
@@ -224,11 +230,12 @@ try {
       if (id === 'look' || id === 'performance') await shot(`settings-${id}${id === 'performance' ? '-bottom' : ''}-${width}x${height}`);
     }
   }
-  pass('Settings rail/pages: selected ink/aria-current, titles/serif descriptions; all pages fit or cue/scroll to an unfaded last row at both sizes');
+  pass('Settings tabs/pages: open tab/aria-current on the top edge, titles/serif descriptions; all pages fit or fade/scroll to an unfaded last row at both sizes');
 
+  await page.setViewportSize({ width: 1024, height: 480 }); await wait(450);   // short enough that Performance scrolls
   await page.evaluate(() => fixture.panel.open('performance')); await wait(650);
   const lastPerformanceChoice = active().getByRole('radiogroup', { name: 'Frame rate', exact: true }).getByRole('radio', { name: 'On', exact: true });
-  assert.equal(await lastPerformanceChoice.evaluate(el => el.getBoundingClientRect().bottom > document.querySelector('.st-scroll').getBoundingClientRect().bottom), true, 'last control starts below the fold at 1024x640');
+  assert.equal(await lastPerformanceChoice.evaluate(el => el.getBoundingClientRect().bottom > document.querySelector('.st-scroll').getBoundingClientRect().bottom), true, 'last control starts below the fold at 1024x480');
   await rail('performance').focus();
   for (let i = 0; i < 40; i++) {
     await page.keyboard.press('Tab');
@@ -242,8 +249,8 @@ try {
     return { visible: control.top >= bounds.top && control.bottom <= bounds.bottom, scrolled: scroller.scrollTop > 0, faded: scroller.classList.contains('ui-scroll-more') };
   });
   assert.deepEqual(revealed, { visible: true, scrolled: true, faded: false });
-  await shot('settings-performance-keyboard-last-row-1024x640');
-  pass('Settings keyboard scroll: Tab reveals the below-fold Performance control at 1024x640 and clears the cue/fade');
+  await shot('settings-performance-keyboard-last-row-1024x480');
+  pass('Settings keyboard scroll: Tab reveals the below-fold Performance control at 1024x480 and clears the cue/fade');
 
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.evaluate(() => fixture.panel.open('performance')); await wait(800);
@@ -302,10 +309,11 @@ try {
   await page.locator('.ln-lyrics').waitFor();
   const reading = await page.locator('.ln-lyrics').evaluate(el => { const c = getComputedStyle(el); return [c.fontFamily, c.fontSize, c.lineHeight, c.textTransform]; });
   assert.match(reading[0], /Alegreya/); assert.deepEqual(reading.slice(1), ['20px', '32px', 'none']);
-  assert.equal(await page.locator('.ln-sheet .ui-sheet-title').innerText(), 'A quiet record · Test artist');
+  assert.equal(await page.locator('.ln-sheet .ui-sheet-title').innerText(), 'A quiet record');
+  assert.equal(await page.locator('.ln-sheet .ui-sheet-desc').innerText(), 'Test artist');
   await page.evaluate(() => { fixture.lyricsMode = 'full'; fixture.emit({ videoId: 'second', title: 'The second record' }); });
   await page.waitForFunction(() => document.querySelector('.ln-lyrics')?.textContent.startsWith('second'));
-  assert.equal(await page.locator('.ln-sheet .ui-sheet-title').innerText(), 'The second record · Test artist');
+  assert.equal(await page.locator('.ln-sheet .ui-sheet-title').innerText(), 'The second record');
   await shot('lyrics-1280x720');
   assert.equal(await page.locator('.ln-sheet .ui-scroll-cue').getAttribute('aria-hidden'), 'false');
   await page.locator('.ln-sheet .ui-sheet-body').evaluate(el => { el.scrollTop = el.scrollHeight; }); await wait(100);
@@ -374,7 +382,7 @@ try {
   assert.equal(await page.evaluate(() => fixture.tour.step), 'welcome');
   assert.equal(await page.evaluate(() => fixture.panel.isOpen()), false);
   await page.locator('.tr-skip').getByRole('button', { name: 'Skip tour', exact: true }).click(); await wait(650); await tuck(false);
-  pass('Tour: paper/tape, serif body and kit controls; every note clamped at both sizes, one welcome Sign in, Back, Skip and Settings restart');
+  pass('Tour: card/tape, serif body and kit controls; every note clamped at both sizes, one welcome Sign in, Back, Skip and Settings restart');
 
   await page.setViewportSize({ width: 1280, height: 720 });
   for (const [kind, role] of [['offline', 'status'], ['error', 'alert'], ['restock', 'status']]) {
@@ -400,7 +408,7 @@ try {
   assert.equal(await page.locator('button[title]').count(), 0);
   assert.equal(await page.evaluate(() => fixture.signIns), 0, 'no authentication invoked');
   assert.deepEqual(errors, []);
-  pass('banners/fallback: correct status/alert kinds, Retry actions, hide, token paper/typography; no native titles or account authentication');
+  pass('banners/fallback: correct status/alert kinds, Retry actions, hide, token card/typography; no native titles or account authentication');
   console.log(`all sheets checks passed -> ${out}`);
 } catch (error) {
   console.log('failure DOM', await page.evaluate(() => ({ clicks: window.__clicks?.slice(-8), active: document.activeElement?.textContent?.slice(0, 120), confirm: document.querySelector('.st-confirm')?.className, page: document.querySelector('.st-page.on')?.dataset.page })));

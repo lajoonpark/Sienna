@@ -31,7 +31,9 @@ import { createSpread } from './spread.js';
 import { createCollectionList } from './collection-list.js';
 import { isLikedCollection, shouldUseCollectionList } from './collection-filter.js';
 import { createLiner, showWebGLError } from './liner.js';
-import { SPACE, injectTokens } from './ui/tokens.js';
+import { onOverlay } from './ui/sheet.js';
+import { setLamp } from './ui/veil.js';
+import { injectTokens } from './ui/tokens.js';
 import { paperSurface } from './ui/paper.js';
 import './fonts.js';
 
@@ -215,7 +217,7 @@ function ensureRack(i) {
   return rack;
 }
 
-// the torn-paper overlays for Lyrics (liner notes), Up Next Queue, and offline/error status banner
+// Lyrics (liner notes), Up next and the offline/error status banner
 const liner = createLiner({
   music,
   onQueueOpen: ({ showStack }) => {
@@ -260,6 +262,8 @@ const suitcase = createPlayer({
   onQueue: () => liner.openQueue(),
   onLyrics: () => liner.openLyrics(player),
 });
+// the lights go down behind any menu, left thin on the suitcase
+onOverlay((open) => { if (open) setLamp(suitcase.drawerScreenPos()); });
 // a hovered record never floats up underneath the suitcase or its caption
 const menu = createMenu({
   onGo: (i) => nav.go(i),
@@ -1020,7 +1024,7 @@ const fpsText = document.createElement('span');
 fpsText.textContent = '— fps · worst — ms';
 fpsBox.appendChild(fpsText);
 document.body.appendChild(fpsBox);
-paperSurface(fpsBox, { seed: 89, amp: SPACE[1] / 2, cap: SPACE[1] });
+paperSurface(fpsBox);
 const fpsOn = () => params.get('fps') === '1' || !!settings.get('fps');
 fpsBox.style.display = fpsOn() ? 'block' : 'none';
 settings.on('fps', () => { fpsBox.style.display = fpsOn() ? 'block' : 'none'; });

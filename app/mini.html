@@ -8,7 +8,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sienna mini</title>
 <style>
-  :root { --cs-bottom: 40px; } /* the search slips stop inside the card */
+  /* menus stay inside the painted card: its ragged edge is about 14 px in */
+  :root { --list-top: 54px; --list-bottom: 62px; --veil-inset: 15px; --veil-radius: 26px; --veil-feather: 7px;
+    --stage-bottom: 22px; --stage-side: 20px; --stage-sign-left: 30px; --floating-top: 28px; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; user-select: none; }
   /* the window is the stage; in a plain browser the stage is a small box in the middle of a fake desktop */
   #stage { position: relative; width: 100vw; height: 100vh; }
