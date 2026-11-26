@@ -65,7 +65,11 @@ veil; outside clicks still reach the shop. Typing retains focus, Tab/Shift+Tab c
 closes (in an artist search, Esc goes back first). Search keeps its debounce, cache, stale-answer guard
 and pending Enter. Collection lists filter locally and append 40 songs at a time; Play picks the first
 filtered song and Shuffle uses the filtered pool. `collection.open(collection, songsOrPromise)` remains
-supported; a loader function returning a promise enables genuine Retry. Up next pins the playing song,
+supported; a loader function returning a promise enables genuine Retry. Every sheet unrolls from its
+header (`unrollSheet(el, header)` in `src/ui/unroll.js`): while its height animates, the paper below the
+contact line winds onto a drawn coil that samples the same cropped paper texture (`createPaperRoll` in
+`src/ui/paper-roll.js`, the torn bottom edge flattening while it rolls); reduced motion skips it. Up next
+pins the playing song,
 updates its mark without rebuilding rows, and retains the suitcase drawer flight. While it is open,
 arrows and Enter belong to the queue, never the shop; normal shop/mini Space and Tab ownership is unchanged.
 
@@ -78,23 +82,31 @@ Alt+Shift or Ctrl+Shift, the first that does not collide with the configured sho
 the strip) + ↑ hands it the keyboard, ←→ choose, Enter plays, ↓ returns to the list. In the mini
 window an empty search also opens its **Listen again** shelf as a vertical wheel
 (`coverSuggestions`, `suggest` in `src/mini.js`; the shop search takes no suggestions). Both wheels
-open full-window (`fullSize`, `.la-full`): the sheet's inset drops to the padding round the screen,
-each cover scales to nearly the container (`--cover-size: min(96cqw, 92cqh)`, halved width on the
-horizontal queue wheel), the title and artist sit lettered beneath the centred cover, and the paper
-behind the wheel is curved round to the cylinder the covers swing on — a `clip-path: shape()` on
-`.ui-paper-layer` with a light-and-shade gradient down the axis, reusing the one paper texture while
-the carousel unrolls. Picking a cover that is not centred first spins the wheel to it and only then
-plays it. A cover pick
-flies a vinyl disc out of its slot into the suitcase drawer (`flyIntoCovers` in
-`src/ui/cover-flight.js`); **Paper list** keeps the ruled rows and the old stack flight. The setting
+open full-window (`fullSize`, `.la-full`) as real 3D carousels: the sheet's inset drops to the padding
+round the screen, each cover is a paper sleeve with depth (front and back faces, top and bottom edges
+and a spine) with its vinyl disc poking out of it (`.la-disc`), and the cards swing on a cylinder
+(`spatialRadius`) round the centred one, hidden once they are ~2.7 slots out. The paper behind them
+stays flat; instead the whole sheet leans a few degrees with the cursor (`createCoverTilt`,
+`--cover-tilt` on the sheet, off under reduced motion). Each cover scales to nearly the container
+(`--cover-size: min(96cqw, 92cqh)`, halved width on the
+horizontal queue wheel), and the title and artist sit lettered beneath the centred cover.
+Picking a cover that is not centred first spins the wheel to it and only then
+plays it. A centred pick slides the disc out of its sleeve (`extractDisc`), tucks the sheet away, and
+flies the record from where it sat on screen onto the platter through the 3D scene
+(`receiveFromScreen` in `src/suitcase/flight.js`; Esc, Enter or a click skips the flight and seats it
+at once — `listenForCoverPickSkip` in `src/ui/cover-pick-input.js`, `finishScreenPick`); **Paper
+list** keeps the ruled rows and the old stack flight. The setting
 flips live in open sheets and restores the wheel's focus when Settings closes.
 
 `node scripts/lists-check.mjs <out_dir>` checks all three real components against an isolated fake store:
 focus/ARIA/keys, notes and retries, 612-song batching/filtering/actions, live queue state, bounded painting,
 no native control titles and two seconds with no kit/shared-bar callbacks. It also drives the cover
-carousels: the queue wheel (drawer landing, keyboard, wheel, drag, now-playing jump, reduced motion,
-live paper fallback), the mini-style Listen again wheel, and the search result strip (order, caption,
-chord+↑ focus, shortcut-collision fallback, Enter/↓ hand-off). Existing `search-check`,
+carousels: the queue wheel (drawer opening, keyboard, wheel, drag, now-playing jump, reduced motion,
+queueIndex and live paper fallback), the mini-style Listen again wheel (drawer discs landing in covers,
+side and centre clicks), the search result strip (order, caption,
+chord+↑ focus, shortcut-collision fallback, Enter/↓ hand-off, covers clipped by the paper while it
+rolls), and the pick flight (Esc, Enter and click skip the disc's extraction or flight and seat it at
+once). Existing `search-check`,
 `search-anim-check` and `mini-suggest-check` retain their interaction, animation and prefetch coverage.
 
 ### Sheets and notes
@@ -189,7 +201,13 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   same anchor alone (`hoverPanBounds` in `src/racks/hover.js`), so drifting the cursor off the record
   hands the hover to the one below instead of panning after it; the cursor tilt of the camera also
   holds while a
-  record is up, since turning the camera would slide the record across the rack.
+  record is up, since turning the camera would slide the record across the rack. Once the camera has
+  come to rest framing a lifted record it latches there (`framed`, `framedAtRest` in
+  `src/racks/hover.js`; `restPx`/`restZoom`/`restSwing` in `main.js`'s FOCUS), so nothing the record
+  does later — the cursor moving on it, the side words — sends the camera off again until the next
+  record. Side words a held record still overlaps (`menu.update`'s `hold`) go inert at once, so a
+  press on the record can never land on a button; once the record is framed (`aside`) the words it
+  still covers slide off to their edge and fade until it goes down.
   The plant-room spinner also turns by hand: scroll sideways (trackpad swipe), or press on the stand and
   drag it round; let go with a flick and it keeps spinning, slowing down (`wheel` / `grab` / `dragTo` /
   `release` in `src/racks/spinner.js`, wired in `main.js`). A press that drags is not a click, and
@@ -263,7 +281,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   (`src/searchpaint.js`; the same in the shop and the mini window, no animation under the system's reduce-motion setting). Songs are
   laid in as ruled rows on the search sheet, arrows + Enter or a click plays one; with Cover
   carousel on, the top five results also sit above the rows as a cover strip (chord + ↑ browses it)
-  and, in the mini window, an empty search opens its Listen again shelf as a vertical cover wheel
+  and, in the mini window, an empty search opens its Listen again shelf as a vertical 3D cover wheel
   filling the window. A
   song from search has no sleeve, so
   the bottom of the case slides out like a drawer, the record lifts out of it, tips towards you and
@@ -361,8 +379,9 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   geometry checks.
   *Cover art* sets how strongly covers are painted (Off to Heavy, default Heavy). *Cover carousel*
   (default Carousel) fills the window with Up next as a horizontal wheel of huge covers and opens the
-  mini window's empty search on an equally big vertical Listen again wheel, the paper curved round to
-  the cylinder behind them, and shows the top five search results as a smaller strip to spin
+  mini window's empty search on an equally big vertical Listen again wheel — real 3D sleeves with
+  their vinyls poking out, the sheet leaning with the cursor — and shows the top five search results
+  as a smaller strip to spin
   through; Paper list keeps the ruled rows everywhere. *Start of a song* plays
   when the arm lands (default) or at once. *Smoothness* caps the frame rate at 60 or 30 fps. *Sharpness* sets how
   many pixels the shop is drawn with (`src/quality.js`): Full (every Retina pixel), Balanced (default: 3/4 of the screen's
@@ -497,7 +516,8 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   `materials.js`, also the SIENNA sign) and the post pass leaves those pixels alone. The covers
   themselves are repainted once when they load (`src/coverpaint.js`: an opaque impasto under-coat, then
   three contrast-gated layers of thick oil dabs on the shop's diagonal with colours read from the cover,
-  upper-left raking light on impasto ridges, second-colour bristle streaks, and linen canvas weave, full bleed
+  upper-left raking light on impasto ridges lifted off a floor that grows as the paint darkens
+  (`darkLift`, so near-black covers still show their brushwork), second-colour bristle streaks, and linen canvas weave, full bleed
   with no paper margin), so real album art sits in the painting. The racks and the suitcase paint them in a worker
   (`src/coverworker.js`, `src/coverpaint.worker.js`), since dabs take a few tens of ms a cover. Settings > Look > Cover art sets the strength.
 - In a plain browser (`npm run web`, screenshots) `src/music.js` fakes a record store with painted

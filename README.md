@@ -109,10 +109,12 @@ Please don't run it with `--no-sandbox`: that turns off a protection for the You
   list as a strip of painted covers — the chord it names (⌥/⇧, whichever is free of your
   shortcuts) + ↑ hands it the keyboard, `←` `→` choose, `Enter` plays and `↓` goes back to the
   list. In the mini player an empty search instead opens your **Listen again** shelf as a vertical
-  wheel of huge covers filling the window to spin through.
+  3D wheel of huge covers filling the window to spin through.
 - **Shared paper lists.** Search, collection songs and Up next each sit on one paper sheet with
-  ruled rows. Up next can instead spin as a horizontal wheel of painted covers filling the window,
-  centred on the playing song with the paper behind it curved round to the cylinder and the title
+  ruled rows, unrolling off a little coil of the same paper when they open. Up next can instead
+  spin as a horizontal wheel of painted covers filling the window — real 3D sleeves with their
+  vinyls poking out, centred on the playing song, the sheet leaning with your cursor; pick one and
+  its record slides out of the sleeve and flies onto the platter, with the title
   and artist lettered beneath the centred cover — Settings > Look > **Cover carousel** (on by
   default) switches it and the search cover
   strip between **Carousel** and the ruled **Paper list**. terracotta marks the keyboard cursor and indigo marks the playing song, and a small
