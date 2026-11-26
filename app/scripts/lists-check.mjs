@@ -841,13 +841,22 @@ try {
     'a full list leaves the cover strip unclipped at rest');
   const rollOverflow = () => page.evaluate(() => new Promise(resolve => {
     const sheet = document.querySelector('.cs'), coverStrip = document.querySelector('.cs-result-strip');
+    const curl = sheet.querySelector('.ui-unroll-roll');
     let worst = -Infinity, smallest = Infinity;
+    const curlShapes = new Set();
     const start = performance.now();
     (function frame() {
       const edge = sheet.getBoundingClientRect().bottom - parseFloat(getComputedStyle(sheet).paddingBottom);
       const rect = coverStrip.getBoundingClientRect();
       worst = Math.max(worst, rect.bottom - edge); smallest = Math.min(smallest, rect.height);
-      if (performance.now() - start < 700) requestAnimationFrame(frame); else resolve({ worst, smallest });
+      if (!curl.hidden) {
+        const ctx = curl.getContext('2d');
+        const scan = ctx.getImageData(curl.width / 2, 0, 1, curl.height).data;
+        const ink = Array.from(scan).filter((v, i) => i % 4 === 3 && v > 127).length;
+        if (ink > 0) curlShapes.add(ink);
+      }
+      if (performance.now() - start < 700) requestAnimationFrame(frame);
+      else resolve({ worst, smallest, curlShapes: curlShapes.size, resting: curl.hidden });
     })();
   }));
   const closing = rollOverflow();
@@ -855,13 +864,29 @@ try {
   const closed = await closing;
   assert.ok(closed.worst < 0.5, `covers stay inside the paper while it rolls up (${closed.worst}px out)`);
   assert.ok(closed.smallest < 1, 'the paper rolls all the way up to the cover strip\'s top edge');
+  assert.ok(closed.curlShapes > 1, 'the paper winds into a changing curl while closing');
   const opening = rollOverflow();
   await page.evaluate(() => fixture.search.open());
   const opened = await opening;
   assert.ok(opened.worst < 0.5, `covers stay inside the paper while it unrolls (${opened.worst}px out)`);
+  assert.ok(opened.curlShapes > 1 && opened.resting, 'the paper unwinds and leaves no visible roll at rest');
+  const reversal = await page.evaluate(async () => {
+    const sheet = document.querySelector('.cs');
+    const roll = sheet.querySelector('.ui-unroll-roll');
+    const start = sheet.offsetHeight;
+    fixture.search.close();
+    const deadline = performance.now() + 380;
+    while (roll.hidden && sheet.offsetHeight === start && performance.now() < deadline) await new Promise(requestAnimationFrame);
+    const winding = !roll.hidden;
+    const before = sheet.offsetHeight;
+    fixture.search.open();
+    return { winding, jump: Math.abs(sheet.offsetHeight - before) };
+  });
+  assert.ok(reversal.winding && reversal.jump < 3, `reopening begins at the current paper edge (${reversal.jump}px jump)`);
   await page.evaluate(() => { fixture.artFor = null; });
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.evaluate(() => fixture.search.open());
+  await page.evaluate(() => { fixture.search.close(); fixture.search.open(); });
+  assert.equal(await page.locator('.cs > .ui-unroll-roll').evaluate(el => el.hidden), true, 'reduced motion skips the curl');
   await input.fill('');
   await carousel.waitFor();
   assert.equal(await strip.isVisible(), false);

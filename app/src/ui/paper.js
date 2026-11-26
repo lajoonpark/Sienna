@@ -45,7 +45,7 @@ export function torn(seed, amp = 5, cap = amp * 2) {
   const pts = [];
   for (const [t, d] of top) pts.push(`${along(t, tl, tr)} ${f(d)}px`);
   for (const [t, d] of right) pts.push(`calc(100% - ${f(d)}px) ${along(t, tr, br)}`);
-  for (const [t, d] of bottom) pts.push(`${along(1 - t, bl, br)} calc(100% - ${f(d)}px)`);
+  for (const [t, d] of bottom) pts.push(`${along(1 - t, bl, br)} calc(100% - ${f(d)}px * var(--ui-paper-bottom-tear, 1))`);
   for (const [t, d] of left) pts.push(`${f(d)}px ${along(1 - t, tl, bl)}`);
   return `polygon(${pts.join(',')})`;
 }

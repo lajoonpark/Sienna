@@ -47,7 +47,7 @@ export function createCollectionList({ onPlay, onShuffle = null, music = null } 
   input.setAttribute('aria-expanded', 'false');
   root.append(header, bar.el, tabs.el, list.el); document.body.appendChild(root);
   paperSurface(root, { seed: 83, elevation: 'lift', amp: 5, cap: 10, crop: true });
-  const sheet = unrollSheet(root);
+  const sheet = unrollSheet(root, tabs.el);
   root.addEventListener('pointerdown', e => { if (e.target !== input) e.preventDefault(); });
   root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
   let isOpen = false, seq = 0, collection = null, allSongs = [], filtered = [], field = 'all', source = null, playing = null;
