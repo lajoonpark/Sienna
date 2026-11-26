@@ -25,6 +25,11 @@ function canvas(w, h, options) {
   return [c, c.getContext('2d', options)];
 }
 
+// Light only scales the paint, so a near-black cover's ridges came out near-black too and the cover read as
+// unpainted: the ridges' light and shadow also lift off a floor that grows as the paint darkens.
+const DARK_LIFT = 75;
+export const darkLift = (r, g, b) => { const k = 1 - (0.3 * r + 0.5 * g + 0.2 * b) / 255; return DARK_LIFT * k * k; };
+
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // The picture at 256, 128, 64, 32 and 16 px, whatever size is being painted, so a cover's small version and
@@ -109,9 +114,10 @@ function paintUnderCoat(d, size, sourceData, shapes, S, seed) {
       const rake = 0.5 * gx - 0.7 * gy;
       const shade = cellTone[idx] * (1 + rake * 1.4 * impasto);
       const spec = rake > 0 ? rake * rake * 0.7 * impasto : 0;
-      d[di] = Math.max(0, Math.min(255, cr * 255 * shade + spec * 255));
-      d[di + 1] = Math.max(0, Math.min(255, cg * 255 * shade + spec * 247));
-      d[di + 2] = Math.max(0, Math.min(255, cb * 255 * shade + spec * 230));
+      const lift = (shade - 1) * darkLift(cr * 255, cg * 255, cb * 255);
+      d[di] = Math.max(0, Math.min(255, cr * 255 * shade + lift + spec * 255));
+      d[di + 1] = Math.max(0, Math.min(255, cg * 255 * shade + lift + spec * 247));
+      d[di + 2] = Math.max(0, Math.min(255, cb * 255 * shade + lift + spec * 230));
     }
   }
 }
@@ -208,9 +214,10 @@ function paintDabs(g, size, source, seed, S) {
             const shade = 1 + rake * 2.3 * imp;
             const lum = (0.3 * R + 0.5 * G + 0.2 * B) / 255;
             const spec = rake > 0 ? rake * rake * 1.45 * imp * (0.3 + lum) * 255 : 0;
-            const rOut = Math.max(0, Math.min(255, R * shade + spec));
-            const gOut = Math.max(0, Math.min(255, G * shade + spec * 0.97));
-            const bOut = Math.max(0, Math.min(255, B * shade + spec * 0.9));
+            const lift = (shade - 1) * darkLift(R, G, B);
+            const rOut = Math.max(0, Math.min(255, R * shade + lift + spec));
+            const gOut = Math.max(0, Math.min(255, G * shade + lift + spec * 0.97));
+            const bOut = Math.max(0, Math.min(255, B * shade + lift + spec * 0.9));
             const di = (py * size + px) * 4;
             d[di] += (rOut - d[di]) * a2;
             d[di + 1] += (gOut - d[di + 1]) * a2;
