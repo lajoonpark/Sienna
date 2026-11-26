@@ -8,7 +8,8 @@ import { injectTokens, MOTION } from './ui/tokens.js';
 import { paperSurface } from './ui/paper.js';
 import { unrollSheet } from './ui/unroll.js';
 import { createList } from './ui/list.js';
-import { createCoverCarousel } from './ui/cover-carousel.js';
+import { createCoverCarousel, createCoverTilt } from './ui/cover-carousel.js';
+import { listenForCoverPickSkip } from './ui/cover-pick-input.js';
 import { inkButton, stamp } from './ui/inputs.js';
 import { createBanner } from './ui/banner.js';
 import { createScrollCue } from './ui/scroll-cue.js';
@@ -24,9 +25,12 @@ const CSS = `
 .ln-qveil.show { pointer-events: auto; visibility: visible; opacity: 1; transition: opacity var(--sienna-dur-mid); }
 .ln-qveil.closing { visibility: visible; opacity: 1; }
 .ln-qveil.closing .ln-qbackdrop { opacity: 0; transition: opacity var(--sienna-dur-mid); }
-.ln-qveil.closing .la-carousel { opacity: 0; transition: opacity var(--sienna-dur-fast); }
+.ln-qveil.closing:not(.picking) .la-carousel { opacity: 0; transition: opacity var(--sienna-dur-fast); }
+.ln-qveil.picking .ln-qbackdrop { opacity: 0; transition: opacity var(--sienna-dur-fast); }
+.ln-qveil.picking .ln-qbox > :is(.ui-paper-layer, .ui-unroll-curl, .ln-qtop) { visibility: hidden; }
 .ln-qbackdrop { position: absolute; inset: 0; background: var(--sienna-veil); backdrop-filter: var(--sienna-veil-filter); }
-.ln-qbox { position: fixed; left: 50%; top: var(--sienna-space-10); transform: translateX(-50%);
+.ln-qbox { position: fixed; left: 50%; top: var(--sienna-space-10);
+  transform: translateX(-50%) var(--cover-tilt);
   box-sizing: border-box; padding: var(--sienna-space-6) var(--sienna-space-8) var(--sienna-space-5);
   width: min(calc(var(--sienna-space-10) * 14), 90vw); max-height: calc(100dvh - var(--sienna-space-10) * 2);
   display: flex; flex-direction: column; }
@@ -38,7 +42,7 @@ const CSS = `
 .ln-qbox > .ui-list { min-height: 0; flex: 1; }
 .ln-qbox:has(> .la-full:not([hidden])) {
   inset: var(--sienna-space-2); width: auto; height: 100dvh;
-  max-height: calc(100dvh - 2 * var(--sienna-space-2)); transform: none; }
+  max-height: calc(100dvh - 2 * var(--sienna-space-2)); transform: var(--cover-tilt); }
 .ln-qbox:has(> .la-full:not([hidden])) > .ln-qtop { margin-inline: min(4vw, 56px); }
 .ln-qbox .ui-list-scroll { min-height: 0; }
 .ln-qclose { display: flex; align-items: center; gap: var(--sienna-space-2); }
@@ -105,13 +109,14 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   document.body.appendChild(qveil);
   const qBackdrop = qveil.querySelector('.ln-qbackdrop');
   const qBox = qveil.querySelector('.ln-qbox');
+  const qTilt = createCoverTilt(qBox);
   const qCloseWrap = qveil.querySelector('.ln-qclose');
+  const calm = matchMedia('(prefers-reduced-motion: reduce)');
   const queueList = createList({ label: 'Up next', pinNowPlaying: true, showNowBadge: true,
     showIndex: true, showKind: true, lines: true, onPick: pickQueue,
   });
   const queueCarousel = createCoverCarousel({ orientation: 'horizontal', fullSize: true,
     onPick: idx => pickQueue(renderedItems[idx], idx),
-    drawer: { open: () => drawerReady, position: drawerOrigin, close() {} },
   });
   qBox.prepend(queueCarousel.el);
   qBox.appendChild(queueList.el);
@@ -124,7 +129,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   let qRefreshTimer = 0;
   let qRetryTimer = 0;
   let renderedItems = [];
-  let drawerReady = null, queueOpener = null, nowIndex = -1;
+  let queueOpener = null, nowIndex = -1, picking = false, pendingPick = null;
   let focusQueueAfterSettings = false;
   let seq = 0;
   const showingCovers = () => !queueCarousel.el.hidden;
@@ -161,13 +166,12 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     queueList.stopScroll();
     if (showingCovers()) queueCarousel.stop();
     else queueList.playDrawerFlight(drawerOrigin(), { entering: false });
-    drawerReady = null;
     focusQueueAfterSettings = false;
     if (qveil.contains(document.activeElement)) {
       document.activeElement.blur();
       if (queueOpener?.isConnected) queueOpener.focus({ preventScroll: true });
     }
-    qSheet.close({ delay: MOTION.dur.fast });
+    qSheet.close({ delay: picking ? MOTION.dur.mid : MOTION.dur.fast });
     qveil.classList.remove('show');
     qveil.classList.add('closing');
     qCloseTimer = setTimeout(() => {
@@ -184,6 +188,13 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     seq++;
     if (prev === 'lyrics') lyricsSheet.close();
     else if (prev === 'queue') closeQueueOverlay({ keepDrawer });
+    picking = false;
+    if (pendingPick) {
+      const { item, idx, hide } = pendingPick;
+      pendingPick = null;
+      hide();
+      onPickQueue(item, idx, { instant: true });
+    }
   }
 
   async function openLyrics(track) {
@@ -235,8 +246,25 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   }
 
   function pickQueue(item, idx) {
-    if (!item) return;
-    if (onPickQueue) { close({ keepDrawer: true }); onPickQueue(item, idx); }
+    if (!item || mode !== 'queue' || picking) return;
+    if (onPickQueue && showingCovers() && !calm.matches) {
+      picking = true;
+      qveil.classList.add('picking');
+      const my = seq;
+      const { done, hide } = queueCarousel.extractDisc(idx);
+      pendingPick = { item, idx, hide };
+      done.then(rect => {
+        if (my !== seq || mode !== 'queue' || !rect) return;
+        const from = { rect, ...qTilt.pose(), hideSleeve: hide };
+        pendingPick = null;
+        close({ keepDrawer: true });
+        onPickQueue(item, idx, from);
+      });
+    } else if (onPickQueue) {
+      const from = showingCovers() ? { instant: true } : undefined;
+      close({ keepDrawer: true });
+      onPickQueue(item, idx, from);
+    }
     else {
       if (item.videoId) music.play({ videoId: item.videoId, ...(item.playlistId ? { playlistId: item.playlistId } : {}), ...(item.params ? { params: item.params } : {}) });
       else music.command('queueIndex', item.index ?? idx);
@@ -268,7 +296,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
       queueList.stopScroll();
       queueList.el.hidden = true;
       queueCarousel.el.hidden = false;
-      queueCarousel.setItems(renderedItems, 'Up next', { index: Math.max(0, preferred < 0 ? selectedIdx : preferred), entrance: animate });
+      queueCarousel.setItems(renderedItems, 'Up next', { index: Math.max(0, preferred < 0 ? selectedIdx : preferred) });
       applySelectedToDom(selectedIdx);
       if ((animate && (focused === queueOpener || focused === document.body)) || queueList.el.contains(focused)) {
         queueCarousel.listboxEl.focus({ preventScroll: true });
@@ -301,7 +329,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   }
 
   settings.on('coverCarousel', () => {
-    if (mode !== 'queue' || !renderedItems.length) return;
+    if (mode !== 'queue' || picking || !renderedItems.length) return;
     const hadCovers = showingCovers();
     renderQueueView({ preferred: hadCovers ? queueCarousel.getActive() : queueList.getActive() });
     focusQueueAfterSettings = !hadCovers && showingCovers() && sheetOpen();
@@ -322,7 +350,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     const my = seq;
     clearTimeout(qRetryTimer);
     const items = await (music.queue?.().catch(() => null) ?? Promise.resolve(null));
-    if (my !== seq || mode !== 'queue' || !Array.isArray(items)) return;
+    if (my !== seq || mode !== 'queue' || picking || !Array.isArray(items)) return;
 
     if (items.length && sameQueueTracks(renderedItems, items)) {
       let selectedIdx = items.findIndex((it) => it.selected);
@@ -347,6 +375,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
   }
 
   async function openQueue() {
+    if (picking) return;
     if (mode === 'queue') { close(); return; }
     if (mode === 'lyrics') close();
     const my = ++seq;
@@ -359,10 +388,9 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     renderedItems = [];
 
     const showStack = !settings.get('coverCarousel');
-    const openDrawer = showStack || !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const openDrawer = showStack || !calm.matches;
     const itemsPromise = music.queue?.().catch(() => []) ?? Promise.resolve([]);
-    const opened = openDrawer ? onQueueOpen?.({ showStack }) : null;
-    drawerReady = !showStack && opened ? Promise.resolve(opened) : null;
+    if (openDrawer) onQueueOpen?.({ showStack });
 
     queueCarousel.stop();
     queueCarousel.el.hidden = true;
@@ -370,7 +398,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     qNowBtn.hidden = true;
     queueList.setItems([], { animate: false });
     qScroll.scrollTop = 0;
-    qveil.classList.remove('closing');
+    qveil.classList.remove('closing', 'picking');
     qveil.classList.add('show');
     qSheet.open();
 
@@ -403,7 +431,7 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     lastShuffle = s.shuffle;
     if (s.queueSig !== undefined) lastQueueSig = s.queueSig;
     if (mode === 'lyrics' && trackChanged) loadLyrics(s);
-    if (mode !== 'queue') return;
+    if (mode !== 'queue' || picking) return;
     if (trackChanged || shuffleChanged || sigChanged) {
       if (trackChanged && s.videoId) syncQueueSelection(s.videoId);
       clearTimeout(qRefreshTimer);
@@ -419,8 +447,14 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     banner.show({ message, kind, actionLabel: onRetry ? 'Retry' : null, onAction: onRetry });
   }
 
+  listenForCoverPickSkip(() => {
+    if (!pendingPick) return false;
+    close();
+    return true;
+  });
   addEventListener('keydown', (e) => {
     if (mode !== 'queue' || sheetOpen()) return;
+    if (picking) { e.preventDefault(); e.stopImmediatePropagation(); return; }
     if (mode === 'queue' && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
     if (showingCovers() && e.key === 'Tab' && !e.altKey && !e.ctrlKey && !e.metaKey) {
       const controls = [queueCarousel.listboxEl, ...(!qNowBtn.hidden ? [qNowBtn] : []), qCloseBtn];
@@ -449,6 +483,9 @@ export function createLiner({ music, onQueueOpen = null, onQueueCovers = null, o
     close,
     restoreQueueFocusAfterSettings,
     setStatus,
+    tilt(tx, ty) {
+      if (mode === 'queue' && !picking) qTilt.update(tx, ty);
+    },
     isOpen: () => !!mode,
     isQueueCarouselOpen: () => mode === 'queue' && showingCovers(),
   };

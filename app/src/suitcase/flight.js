@@ -90,6 +90,10 @@ export function createFlights({ scene, suitcase, camera, view, worldCase = false
 
   // The disc: { matrixWorld (world pose of the vinyl leaving the sleeve), cover (THREE.Texture) }.
   function receive(disc) {
+    return receiveAt(poseIn(camera, disc.matrixWorld, true), disc.cover);
+  }
+
+  function receiveAt(from, cover, extra = {}) {
     for (const f of [...flights]) if (f.kind === 'in') land(f);      // a quicker pick: the last one lands now
     // whatever is on the platter lifts off and flies away
     const old = suitcase.liftRecord();
@@ -99,7 +103,25 @@ export function createFlights({ scene, suitcase, camera, view, worldCase = false
       launch('out', { pos: sp, quat: sq, scale: ss.x }, old.cover, { spin: old.spin });
     }
     suitcase.held = true;
-    return launch('in', poseIn(camera, disc.matrixWorld, true), disc.cover, { baseVideoId: suitcase.videoId });
+    return launch('in', from, cover, { baseVideoId: suitcase.videoId, ...extra });
+  }
+
+  function receiveFromScreen({ rect, yaw, pitch, instant, hideSleeve }, viewport, cover) {
+    if (instant) {
+      finish();
+      suitcase.placeRecord(cover, { claimFor: { baseVideoId: suitcase.videoId } });
+      return;
+    }
+    const { left, top, width, height } = viewport;
+    const x = (rect.left + rect.width / 2 - left) / width * 2 - 1;
+    const y = 1 - (rect.top + rect.height / 2 - top) / height * 2;
+    const d = Math.max(view.near * 2, seat().hover.d * 0.65);
+    const pos = new THREE.Vector3(x * th() * view.aspect * d, y * th() * d, -d);
+    const quat = new THREE.Quaternion().setFromEuler(
+      _e.set(THREE.MathUtils.degToRad(-pitch), THREE.MathUtils.degToRad(yaw), 0, 'YXZ'),
+    ).multiply(Q_FLAT_TO_DISC);
+    const scale = Math.max(rect.width, rect.height) / height * d * th() / L.recordRadius;
+    return receiveAt({ pos, quat, scale }, cover, { screenOrigin: true, hideSleeve });
   }
 
   function remove(f) {
@@ -108,11 +130,11 @@ export function createFlights({ scene, suitcase, camera, view, worldCase = false
     flights.splice(flights.indexOf(f), 1);
   }
 
-  function land(f) {
+  function land(f, animate = true) {
     remove(f);
     suitcase.held = false;
     suitcase.placeRecord(f.cover, { claimFor: { baseVideoId: f.baseVideoId } });
-    suitcase.thump(0.05);
+    if (animate) suitcase.thump(0.05);
   }
 
   // Where the incoming record is at time f.t: pop, fly, drop.
@@ -148,7 +170,7 @@ export function createFlights({ scene, suitcase, camera, view, worldCase = false
       quat.copy(S.quat);
       rate = 3.5;
     }
-    const wob = 1 - clamp01((t - T_POP) / (T_FLY + T_DROP * 0.6));   // the wobble dies away before it lands
+    const wob = (1 - clamp01((t - T_POP) / (T_FLY + T_DROP * 0.6))) * (f.screenOrigin ? smooth(t / T_POP) : 1);
     _qw.setFromEuler(_e.set(0.38 * wob * Math.sin(t * 9.5), 0, 0.3 * wob * Math.cos(t * 7.3)));
     _qs.setFromAxisAngle(UP, -f.spin);
     g.quaternion.copy(quat).multiply(_qw).multiply(_qs);
@@ -188,10 +210,22 @@ export function createFlights({ scene, suitcase, camera, view, worldCase = false
     }
   }
 
+  // Jump to the end: incoming records land now, outgoing ones are gone.
+  function finish({ animate = true } = {}) {
+    for (const f of [...flights]) (f.kind === 'in' ? land(f, animate) : remove(f));
+    frozen = false;
+  }
+
+  function finishScreenPick() {
+    const pick = flights.find(f => f.kind === 'in' && f.screenOrigin);
+    if (!pick) return false;
+    pick.hideSleeve?.();
+    finish({ animate: false });
+    return true;
+  }
+
   return {
-    receive, update,
-    // jump to the end: incoming records land now, outgoing ones are gone (the mini window closing mid-flight)
-    finish() { for (const f of [...flights]) (f.kind === 'in' ? land(f) : remove(f)); frozen = false; },
+    receive, receiveFromScreen, update, finish, finishScreenPick,
     get active() { return flights.length > 0; },
     duration: T_IN,
     get list() { return flights; },

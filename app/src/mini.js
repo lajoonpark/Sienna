@@ -28,6 +28,7 @@ import { registerLamp, glowMesh } from './env.js';
 import { LISTENING_TABLE, LOUNGE_LAMP, buildLoungeCore, buildCourtyardVista } from './loungecorner.js';
 import { createLiner, showWebGLError } from './liner.js';
 import { injectTokens } from './ui/tokens.js';
+import { listenForCoverPickSkip } from './ui/cover-pick-input.js';
 import { settings } from './settings.js';
 
 injectTokens();
@@ -169,8 +170,7 @@ camera.add(hud);
 const flights = createFlights({ scene: hud, suitcase, camera, view: camera, worldCase: true });
 const tray = createRecordTray({ suitcase, kit: suitcase.recordKit, onDisc: (d) => flights.receive(d) });
 
-// ---- Up next queue (liner.js): the bottom drawer slides open and stays out while the torn-paper
-// list sits over the card; a pick flies the record out of the drawer onto the platter ----
+// ---- Up next queue (liner.js): records fly to the platter from the carousel or drawer ----
 const _drawerPt = new THREE.Vector3();
 const drawerScreenPos = () => {
   tray.centerPoint(_drawerPt).project(camera);
@@ -189,7 +189,7 @@ const liner = timePart('liner', () => createLiner({
   },
   onQueueClose: () => tray.closeHold(),
   getDrawerPos: drawerScreenPos,
-  onPickQueue: (it, idx) => {
+  onPickQueue: (it, idx, from) => {
     if (it.videoId) {
       const play = {
         videoId: it.videoId,
@@ -201,7 +201,11 @@ const liner = timePart('liner', () => createLiner({
     } else {
       music.command('queueIndex', it.index ?? idx);
     }
-    tray.run(getCover(it.art, 512).tex);
+    const cover = getCover(it.art, 512).tex;
+    if (from) {
+      tray.closeHold();
+      flights.receiveFromScreen(from, renderer.domElement.getBoundingClientRect(), cover);
+    } else tray.run(cover);
   },
 }));
 
@@ -237,19 +241,13 @@ music.onAccount?.(() => Promise.resolve(listenAgainBusy).then(() => { listenAgai
 const search = timePart('search', () => createSearch({
   music,
   coverSuggestions: true,
-  coverDrawer: {
-    open: () => phase === 'open' && !liner.isOpen() && !tray.moving ? tray.openHold([], { showStack: false }) : null,
-    position: drawerScreenPos,
-    close: () => { if (!liner.isOpen()) tray.closeHold(); },
-  },
-  onPlay: (item, { fromCoverPicker }) => {
+  onPlay: (item, { fromCoverPicker, from }) => {
     const cover = getCover(item.art, 512).tex;
     if (fromCoverPicker) {
       tray.finish();
       flights.finish();
-      const baseVideoId = suitcase.videoId;
       startSong(music, suitcase, item);
-      suitcase.placeRecord(cover, { claimFor: { baseVideoId } });
+      flights.receiveFromScreen(from, renderer.domElement.getBoundingClientRect(), cover);
       return;
     }
     startSong(music, suitcase, item);
@@ -260,6 +258,7 @@ const search = timePart('search', () => createSearch({
     return listenAgain ?? busy;
   },
 }));
+listenForCoverPickSkip(flights.finishScreenPick);
 caption.show(true, true);
 
 // ---- player state ----
@@ -342,6 +341,8 @@ function stepFrame(dt) {
   parallax.x += (parallax.tx - parallax.x) * p;
   parallax.y += (parallax.ty - parallax.y) * p;
   applyCamera(parallax.x, parallax.y);
+  liner.tilt(parallax.x, parallax.y);
+  search.tilt(parallax.x, parallax.y);
   suitcase.update(dt);
   tray.update(dt);
   flights.update(dt);

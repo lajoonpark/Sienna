@@ -26,6 +26,41 @@ test('carousel drawer opens and closes without launching the queue vinyl stack',
   assert.strictEqual(drawer.position.z, 0);
 });
 
+test('a carousel record starts at the extracted disc and lands on the live platter', async () => {
+  const THREE = await import('three');
+  const { createFlights } = await load('suitcase/flight');
+  const { LAYOUT } = await load('tonearm');
+  const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(45, 2, 0.1, 100);
+  const cover = {};
+  const seated = [], platter = new THREE.Matrix4().makeTranslation(-1, -0.5, -4);
+  const suitcase = {
+    videoId: 'previous',
+    seatMatrix: () => platter,
+    liftRecord: () => null,
+    recordKit: { build: () => ({ group: new THREE.Group(), labelMat: new THREE.MeshBasicMaterial() }) },
+    placeRecord: (...args) => seated.push(args),
+    thump() {},
+  };
+  const flights = createFlights({ scene, suitcase, camera, view: camera });
+  const viewport = { left: 50, top: 20, width: 800, height: 400 };
+  const f = flights.receiveFromScreen({ rect: { left: 550, top: 100, width: 100, height: 100 }, yaw: 0, pitch: 0 }, viewport, cover);
+  const ndc = f.group.position.clone().project(camera);
+  near(ndc.x, 0.375);
+  near(ndc.y, 0.35);
+  near(LAYOUT.recordRadius * f.group.scale.x / (-f.group.position.z * Math.tan(Math.PI / 8)), 0.25);
+  assert.ok(suitcase.held);
+  flights.update(1);
+  platter.setPosition(-0.5, -0.35, -4);
+  flights.update(1);
+  near(f.group.position.distanceTo(new THREE.Vector3().setFromMatrixPosition(platter)), 0);
+  assert.deepStrictEqual(seated, [[cover, { claimFor: { baseVideoId: 'previous' } }]]);
+  assert.strictEqual(suitcase.held, false);
+  assert.strictEqual(flights.active, false);
+  flights.receiveFromScreen({ instant: true }, viewport, cover);
+  assert.strictEqual(seated.length, 2);
+  assert.strictEqual(flights.active, false);
+});
+
 test('tuck: a real strip hit stays awake beneath a stationary pointer', async () => {
   const { createCaseHover } = await load('suitcase/tuck');
   const hover = createCaseHover();

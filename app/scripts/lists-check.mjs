@@ -72,7 +72,10 @@ try {
         f.drawerOpens.push(showStack);
         return new Promise(resolve => { f.drawerReady = resolve; });
       },
-      onPickQueue: (item, i) => music.command('queueIndex', item.index ?? i),
+      onPickQueue: (item, i, from) => {
+        f.queuePickOrigin = from;
+        music.command('queueIndex', item.index ?? i);
+      },
     });
     f.search = createSearch({ music, onPlay: item => f.played.push(item), onOpenCollection: item => f.collections.push(item) });
     f.collection = createCollectionList({ music, onPlay: item => f.played.push(item), onShuffle: (item, col, pool) => f.shuffled.push({ item, col, pool }) });
@@ -262,10 +265,16 @@ try {
   await page.waitForFunction(() => document.querySelector('.ln-qbox').getBoundingClientRect().height > innerHeight * 0.9);
   assert.ok((await queueSheet.boundingBox()).width > page.viewportSize().width * 0.9);
   assert.ok((await centered.boundingBox()).width > page.viewportSize().width * 0.38);
+  assert.equal(await queueWheel.evaluate(el => getComputedStyle(el).getPropertyValue('--cover-size').trim()), 'min(50cqw, 98cqh)');
   const queueCoverBounds = await centered.boundingBox();
   const queueCaptionBounds = await queueSheet.locator('.la-details').boundingBox();
   assert.ok(queueCaptionBounds.y >= queueCoverBounds.y + queueCoverBounds.height, 'the queue caption sits below the centered cover');
-  assert.match(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), /^shape\(/);
+  assert.equal(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), 'none');
+  assert.equal(await queueSheet.locator('.ui-paper-bg').evaluate(el => getComputedStyle(el, '::after').content), 'none');
+  assert.equal(await queueWheel.locator('.la-stage').evaluate(el => parseFloat(getComputedStyle(el).perspective) > 0), true);
+  assert.match(await queueCover(2).evaluate(el => el.style.transform), /translateZ.*rotateY/);
+  assert.equal(await centered.locator('.la-sleeve-face').count(), 2);
+  assert.equal(await centered.locator('.la-disc-face').count(), 3);
   assert.equal(await queueWheel.evaluate(el => el === document.activeElement), true, 'the queue wheel is focused on open');
   assert.equal(await queueWheel.getAttribute('aria-activedescendant'), await centered.getAttribute('id'));
   assert.equal(await current.getAttribute('data-index'), '1');
@@ -276,9 +285,11 @@ try {
   await wait(600);
   assert.equal((await page.evaluate(() => fixture.queuePaperSizes())).length, 1, 'the unrolling queue uses one full-size paper texture');
   await page.evaluate(() => fixture.drawerReady());
-  await page.locator('.la-vinyl-flight').first().waitFor();
-  assert.equal(await page.locator('.la-vinyl-flight').count(), 3);
-  await page.locator('.la-vinyl-flight').first().waitFor({ state: 'detached' });
+  assert.equal(await page.locator('.la-vinyl-flight').count(), 0);
+  const neutralTransform = await queueSheet.evaluate(el => getComputedStyle(el).transform);
+  await page.evaluate(() => fixture.liner.tilt(0.8, -0.6));
+  assert.notEqual(await queueSheet.evaluate(el => getComputedStyle(el).transform), neutralTransform);
+  await page.evaluate(() => fixture.liner.tilt(0, 0));
   await page.keyboard.press('ArrowRight');
   await expectCentered(2);
   await page.keyboard.press('ArrowLeft');
@@ -349,13 +360,22 @@ try {
   await expectCentered(1);
   await page.keyboard.press('Space');
   await expectCentered(2);
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.ln-qveil.picking .is-picked');
+  assert.equal(await queueCover(1).count(), 0, 'other records leave the accessibility tree during the pick');
+  assert.equal(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).visibility), 'hidden');
+  await page.waitForFunction(() => fixture.queuePickOrigin?.rect.width > 0);
+  assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), ['queueIndex', 2]);
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(() => fixture.liner.openQueue());
+  await expectCentered(2);
   await page.keyboard.press('ArrowLeft');
   await expectCentered(1);
   assert.equal(await queueCover(2).evaluate(el => el.style.transform.includes('rotateY')), false);
   assert.equal(await queueSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), 'none');
   await page.keyboard.press('Enter');
   assert.deepEqual(await page.evaluate(() => fixture.commands.at(-1)), ['queueIndex', 1]);
+  assert.deepEqual(await page.evaluate(() => fixture.queuePickOrigin), { instant: true });
   await page.evaluate(() => fixture.liner.openQueue());
   await expectCentered(2);
   assert.equal(await page.evaluate(() => fixture.drawerOpens.length), 1, 'reduced motion leaves the queue drawer closed');
@@ -366,6 +386,21 @@ try {
   assert.equal(await page.locator('.ln-qveil .la-wheel').isVisible(), false);
   assert.equal(await page.getByRole('button', { name: 'Now playing', exact: true }).isVisible(), false);
   await page.keyboard.press('Escape');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.evaluate(async () => {
+    fixture.settings.set('coverCarousel', true);
+    await fixture.liner.openQueue();
+  });
+  await expectCentered(2);
+  const interruptedPick = await queueWheel.evaluate(el => {
+    const before = fixture.commands.length;
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    fixture.liner.close();
+    return [fixture.commands.length - before, fixture.commands.at(-1), fixture.queuePickOrigin];
+  });
+  assert.deepEqual(interruptedPick, [1, ['queueIndex', 2], { instant: true }], 'closing mid-extraction still plays the pick');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(() => fixture.settings.set('coverCarousel', false));
   await page.evaluate(async () => {
     const { createSettingsPanel } = await import('/src/settings-panel.js');
     fixture.panel = createSettingsPanel({ onClose: fixture.liner.restoreQueueFocusAfterSettings });
@@ -515,21 +550,17 @@ try {
     const { settings } = await import('/src/settings.js');
     const items = Array.from({ length: 8 }, (_, i) => ({ title: `Record ${i}`, subtitle: `Artist ${i}`, kind: 'song' }));
     settings.set('coverCarousel', true);
-    const played = [], pickModes = [];
-    const drawer = { opens: 0, closes: 0,
-      open() { this.opens++; return new Promise(resolve => { this.release = resolve; }); },
-      position: () => ({ x: 560, y: 640 }),
-      close() { this.closes++; },
-    };
+    const played = [], pickModes = [], origins = [];
     const search = createSearch({
       music: { search: async q => Array.from({ length: 7 }, (_, i) => ({ title: `${q} result ${i + 1}`, subtitle: 'Search artist', kind: 'song', art: window.fixture.artFor?.(q, i) })) },
       suggest: () => ({ title: 'Listen again', items }),
-      coverSuggestions: true, coverDrawer: drawer, onPlay: (item, { fromCoverPicker }) => {
+      coverSuggestions: true, onPlay: (item, { fromCoverPicker, from }) => {
         played.push(item.title);
         pickModes.push(fromCoverPicker);
+        origins.push(from);
       },
     });
-    window.fixture = { search, played, pickModes, settings, drawer };
+    window.fixture = { search, played, pickModes, origins, settings };
     search.open();
   });
   const carousel = page.locator('.la-wheel[aria-orientation="vertical"]');
@@ -545,12 +576,20 @@ try {
   }
   await carousel.waitFor();
   await expectCover(0);
+  assert.equal(await carousel.getByRole('option').count(), 8, 'off-screen carousel options remain accessible');
+  assert.equal(await carousel.locator('[data-index="7"] .la-sleeve-front').evaluate(el => getComputedStyle(el).visibility), 'hidden');
   assert.equal(await input.getAttribute('aria-controls'), await carousel.getAttribute('id'));
   await wait(550);
   const searchSheet = page.locator('.cs');
   assert.ok((await searchSheet.boundingBox()).height > page.viewportSize().height * 0.9);
   assert.ok((await activeCover.boundingBox()).height > page.viewportSize().height * 0.35);
-  assert.match(await searchSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), /^shape\(/);
+  assert.equal(await searchSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).clipPath), 'none');
+  assert.equal(await carousel.evaluate(el => getComputedStyle(el).getPropertyValue('--cover-size').trim()), 'min(96cqw, 92cqh)');
+  assert.match(await carousel.locator('[data-index="1"]').evaluate(el => el.style.transform), /translateZ.*rotateX/);
+  const neutral = await searchSheet.evaluate(el => getComputedStyle(el).transform);
+  await page.evaluate(() => fixture.search.tilt(0.8, -0.6));
+  assert.notEqual(await searchSheet.evaluate(el => getComputedStyle(el).transform), neutral);
+  await page.evaluate(() => fixture.search.tilt(0, 0));
   const desktopSize = page.viewportSize();
   await page.setViewportSize({ width: 540, height: 620 });
   const miniCoverBounds = await activeCover.boundingBox();
@@ -561,19 +600,24 @@ try {
   assert.ok(miniHintBounds.y >= miniCaptionBounds.y + miniCaptionBounds.height && miniHintBounds.y + miniHintBounds.height <= 620,
     'the Listen again hint fits below the caption within the mini player');
   await page.setViewportSize(desktopSize);
-  await page.evaluate(() => fixture.drawer.release());
-  const discs = page.locator('.la-vinyl-flight');
-  await discs.first().waitFor();
-  assert.equal(await discs.count(), 3);
-  const landing = await discs.first().evaluate(el => {
-    const [entry, , , finish] = el.getAnimations()[0].effect.getKeyframes();
-    return { entryX: new DOMMatrix(entry.transform).e, finishX: new DOMMatrix(finish.transform).e, width: el.offsetWidth };
+  assert.equal(await page.locator('.la-vinyl-flight').count(), 0);
+  const closingCover = await activeCover.evaluate(card => {
+    fixture.search.close();
+    const { x, y, width, height } = card.getBoundingClientRect();
+    const hit = document.elementFromPoint(x + width / 2, y + height / 2);
+    if (hit?.closest('.la-cover') !== card) return null;
+    hit.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    return card.classList.contains('is-picked');
   });
-  const firstSlot = await activeCover.boundingBox();
-  assert.ok(Math.abs(landing.entryX + landing.width / 2 - 560) < 1);
-  assert.ok(Math.abs(landing.finishX + landing.width / 2 - firstSlot.x - firstSlot.width / 2) < 1);
-  await discs.first().waitFor({ state: 'detached' });
-  assert.equal(await page.evaluate(() => fixture.drawer.closes), 1);
+  assert.notEqual(closingCover, null, 'the centered sleeve can still be hit during the close transition');
+  await wait(300);
+  await page.keyboard.press('Control+Alt+J');
+  assert.equal(await page.evaluate(() => fixture.search.isOpen()), true, 'the Search shortcut works after clicking during close');
+  assert.equal(closingCover, false, 'a click during close does not extract the record');
+  assert.deepEqual(await page.evaluate(() => fixture.played), []);
+  await expectCover(0);
+  await wait(550);
+  pass('Listen again ignores clicks during close and Search can reopen from the keyboard');
   await page.keyboard.press('ArrowDown');
   await expectCover(1);
   const wheelBounds = await carousel.boundingBox();
@@ -593,18 +637,27 @@ try {
   await page.mouse.up();
   await page.waitForFunction(() => Number(document.querySelector('.la-wheel[aria-orientation="vertical"] [aria-selected="true"]')?.dataset.index) >= 4);
   assert.deepEqual(await page.evaluate(() => fixture.played), [], 'drag release does not play a cover');
+  await page.keyboard.press('Home');
+  await expectCover(0);
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.cs.cover-picking .is-picked');
+  assert.equal(await searchSheet.locator('.ui-paper-layer').evaluate(el => getComputedStyle(el).visibility), 'hidden');
+  await page.waitForFunction(() => fixture.origins[0]?.rect.width > 0);
+  assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0']);
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(() => fixture.search.open());
+  await carousel.waitFor();
   await page.keyboard.press('Home');
   await expectCover(0);
   assert.equal(await carousel.getByRole('option', { name: coverName(1) }).evaluate(el => el.style.transform.includes('rotateX')), false);
   await page.keyboard.press('Enter');
-  assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0']);
+  assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0', 'Record 0']);
+  assert.deepEqual(await page.evaluate(() => fixture.origins.at(-1)), { instant: true });
   await page.evaluate(() => fixture.search.open());
   await carousel.waitFor();
-  assert.equal(await page.evaluate(() => fixture.drawer.opens), 1, 'reduced motion leaves the drawer closed');
   await activeCover.click();
-  assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0', 'Record 0']);
+  assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0', 'Record 0', 'Record 0']);
   await page.mouse.move(0, 0);
   await page.evaluate(() => { fixture.search.open(); fixture.settings.set('coverCarousel', false); });
   await page.locator('.cs .ui-list-row').first().waitFor();
@@ -612,8 +665,8 @@ try {
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('sienna.settings')).coverCarousel), false);
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
-  assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0', 'Record 0', 'Record 0']);
-  assert.deepEqual(await page.evaluate(() => fixture.pickModes), [true, true, false]);
+  assert.deepEqual(await page.evaluate(() => fixture.played), ['Record 0', 'Record 0', 'Record 0', 'Record 0']);
+  assert.deepEqual(await page.evaluate(() => fixture.pickModes), [true, true, true, false]);
   await page.evaluate(() => { fixture.search.open(); fixture.settings.set('coverCarousel', true); });
   await carousel.waitFor();
   await input.fill('Match');
@@ -815,6 +868,62 @@ try {
   pass('Listen again: drawer discs land in covers, keyboard/Enter, side and centre clicks, wheel, drag, reduced motion and paper fallback');
   pass('typed search: five covers above the full ruled list, independent keyboard navigation, native typing, centered click/Enter, reduced motion and live setting');
   pass('typed search covers: each result\'s own artwork across query changes, covers clipped by the paper while it rolls up and unrolls');
+
+  await page.setViewportSize({ width: 540, height: 620 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`http://127.0.0.1:${port}/mini.html?shot&wc=0`);
+  await page.waitForFunction(() => window.__mini && window.__ready, null, { timeout: 60000 });
+  await page.evaluate(async () => {
+    const { settings } = await import('/src/settings.js');
+    settings.set('coverCarousel', true);
+    settings.set('miniAutoClose', false);
+    settings.set('playOnArm', true);
+    await window.__seek(0.4);
+    window.__mini.music.onState(s => { window.pickState = s; });
+  });
+  for (const queue of [true, false]) {
+    const cover = page.locator(`${queue ? '.ln-qveil.show' : '.cs.show'} .la-full .la-cover[aria-selected="true"]`);
+    for (const phase of ['extraction', 'flight']) {
+      for (const input of ['Escape', 'Enter', 'click']) {
+        const label = `${queue ? 'Up next' : 'Listen again'} / ${phase} / ${input}`;
+        if (queue) await page.evaluate(() => window.__mini.liner.openQueue());
+        else await page.keyboard.press('Control+Alt+J');
+        await cover.waitFor();
+        const title = await cover.evaluate((card, phase) => {
+          const title = card.closest('.la-full').querySelector('.la-title').textContent;
+          document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          const [slide] = card.querySelector('.la-disc').getAnimations();
+          if (phase === 'flight') slide.finish();
+          else slide.pause();
+          return title;
+        }, phase);
+        if (phase === 'flight') await page.waitForFunction(() => window.__mini.flights.list.some(f => f.screenOrigin));
+        if (input === 'click') await page.mouse.click(2, 2);
+        else if (input === 'Escape') {
+          await page.keyboard.down('Escape');
+          await page.keyboard.down('Escape');
+          assert.equal(await page.evaluate(() => window.__mini.phase), 'open', `${label}: holding Escape must not close the player`);
+          await page.keyboard.up('Escape');
+        } else await page.keyboard.press(input);
+        assert.deepEqual(await page.evaluate(queue => {
+          const { flights, suitcase, phase } = window.__mini;
+          const picked = document.querySelector(`${queue ? '.ln-qveil' : '.cs'} .is-picked`);
+          return [flights.active, suitcase.debug.seatHas, suitcase.held, suitcase.debug.cue?.landed, phase,
+            getComputedStyle(picked).visibility];
+        }, queue), [false, true, false, true, 'open', 'hidden'], label);
+        await page.waitForFunction(() => window.__mini.suitcase.debug.cue?.ready === true);
+        await page.evaluate(() => { for (let i = 0; i < 90; i++) window.__mini.step(1 / 60); });
+        await page.waitForFunction(title => window.pickState?.title === title && window.pickState?.playerState === 1, title);
+        await page.keyboard.press('Control+Alt+J');
+        await page.locator('.cs.show .cs-input').waitFor();
+        await page.keyboard.press('Control+Alt+J');
+      }
+    }
+  }
+  pass('Up next and Listen again: Esc, Enter and click skip extraction or flight, seat and play the pick, and leave Search usable');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(() => window.__mini.phase), 'closing', 'a separate Escape press still closes the player');
+  pass('holding Escape after a skip does not close the mini player; a fresh press still closes it');
   assert.deepEqual(errors, []);
   console.log(`all lists checks passed -> ${out}`);
 } finally { await browser.close(); await server.close(); }
