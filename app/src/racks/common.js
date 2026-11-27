@@ -48,7 +48,7 @@ import { chooseDiscDir } from './clear.js';
 import { uploadSoon } from '../warmup.js';
 import { paintOffThread } from '../coverworker.js';
 import { safeArtUrl, artSizeOk, isMissingFrame } from '../arturl.js';
-import { toon, crisp, unpinned } from '../materials.js';
+import { toon, crisp, crispText, unpinned } from '../materials.js';
 import { rng } from '../rand.js';
 import { brushStroke } from '../ui/brush.js';
 import { COLORS } from '../ui/tokens.js';
@@ -684,7 +684,7 @@ export function createTag({ w = 0.34, h = 0.1, wrap = true } = {}) {
   tex.anisotropy = 8;
   const h2 = wrap ? h * TAG_H2 / TAG_H1 : h;
   const geo = new THREE.PlaneGeometry(w, h2).translate(0, -(h2 - h) / 2, 0);
-  const mesh = new THREE.Mesh(geo, crisp({ map: tex, alphaTest: 0.4 }));
+  const mesh = new THREE.Mesh(geo, crispText({ map: tex, alphaTest: 0.4 }));
   mesh.visible = false;
   let seq = 0;
   const tag = { mesh, ready: Promise.resolve(), w, h, h2, lines: 1 };

@@ -224,3 +224,21 @@ export function crisp(params) {
   }
   return m;
 }
+
+// crisp() for small lettering (the name tags). Their canvas has about twice the pixels it covers on screen,
+// so plain mipmapping blends in a copy smaller than the screen and the letters go soft, more so below Full
+// sharpness. TEXT_LOD_BIAS reads one nearer full size, for the colour and for crisp()'s self-light.
+const TEXT_LOD_BIAS = -0.75;
+export function crispText(params) {
+  const m = crisp(params);
+  const before = m.onBeforeCompile, key = m.customProgramCacheKey.bind(m);
+  m.onBeforeCompile = (shader, r) => {
+    before.call(m, shader, r);
+    const bias = TEXT_LOD_BIAS.toFixed(2);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <map_fragment>', `diffuseColor *= texture2D(map, vMapUv, ${bias});`)
+      .replace('#include <emissivemap_fragment>', `totalEmissiveRadiance *= texture2D(emissiveMap, vEmissiveMapUv, ${bias}).rgb;`);
+  };
+  m.customProgramCacheKey = () => `text-${key()}`;
+  return m;
+}

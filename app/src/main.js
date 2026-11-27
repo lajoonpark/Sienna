@@ -8,7 +8,7 @@ import { createLightSlots } from './lightslots.js';
 import { WATERCOLOUR, FONT, onLettering } from './style.js';
 import { createWatercolour, renderOverlay } from './watercolour.js';
 import { createSky } from './sky.js';
-import { toon, crisp, unpinned, GLOW_LAYER } from './materials.js';
+import { toon, crisp, crispText, unpinned, GLOW_LAYER } from './materials.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
 import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
@@ -1268,6 +1268,7 @@ if (shotMode) {
     unpinned(toon('#ffffff', { map: rackWarmTex })),
     crisp({ map: rackWarmTex }),
     crisp({ map: rackWarmTex, alphaTest: 0.4 }),
+    crispText({ map: rackWarmTex, alphaTest: 0.4 }),
   ];
   const rackWarm = new THREE.Group();
   for (const m of rackWarmMats) rackWarm.add(new THREE.Mesh(rackWarmGeo, m));
