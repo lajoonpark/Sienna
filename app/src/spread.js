@@ -444,6 +444,7 @@ export function createSpread({ camera, music, onPlay }) {
     get isOpen() { return !!st; },
     get busy() { return busy; },
     get hovered() { return hovered; },
+    get tag() { return tag; }, // its name tag (main.js lays the sharp copy over it)
     get page() { return st?.page ?? 0; },
     get pages() { return st?.recs ? pageCount(st) : 0; },
     get loaded() { return !!st?.recs; },

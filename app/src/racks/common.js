@@ -644,7 +644,8 @@ function tagTitle(g, title, maxW, wrap) {
   g.font = `48px ${FONT}`;
   return { lines: lines.map((l) => ellipsize(g, l, maxW)), size: 48 };
 }
-function drawTag(g, item, seed, wrap) {
+// paper, ink: which of the two to draw (both unless the lettering is on the sharp layer, tagsharp.js)
+function drawTag(g, item, seed, wrap, { paper = true, ink = true } = {}) {
   const r = rng(seed), w = TAG_W;
   g.clearRect(0, 0, TAG_W, TAG_H2);
   g.textBaseline = 'middle';
@@ -658,11 +659,14 @@ function drawTag(g, item, seed, wrap) {
   for (let x = w - pad; x >= pad; x -= 14) g.lineTo(x, h - pad - r() * 6);
   for (let y = h - pad; y >= pad; y -= 14) g.lineTo(pad + r() * 6, y);
   g.closePath();
-  g.fillStyle = COLORS.paper;
-  g.fill();
-  g.strokeStyle = 'rgba(112,87,66,.35)';
-  g.lineWidth = 3;
-  g.stroke();
+  if (paper) {
+    g.fillStyle = COLORS.paper;
+    g.fill();
+    g.strokeStyle = 'rgba(112,87,66,.35)';
+    g.lineWidth = 3;
+    g.stroke();
+  }
+  if (!ink) return lines.length;
   g.fillStyle = COLORS.ink;
   g.font = `${size}px ${FONT}`;
   const lh = size * 1.02, top = lines.length > 1 ? 30 + lh / 2 : h * 0.4;
@@ -687,16 +691,32 @@ export function createTag({ w = 0.34, h = 0.1, wrap = true } = {}) {
   const mesh = new THREE.Mesh(geo, crispText({ map: tex, alphaTest: 0.4 }));
   mesh.visible = false;
   let seq = 0;
-  const tag = { mesh, ready: Promise.resolve(), w, h, h2, lines: 1 };
+  // For the screen-resolution lettering laid over the tag (tagsharp.js): rev counts what has been drawn (0:
+  // nothing to show yet), paintInk(g) draws the lettering alone on another canvas of canvasW x canvasH units,
+  // and setBare(true) leaves the tag itself as blank paper meanwhile (true back: it was redrawn).
+  const tag = { mesh, ready: Promise.resolve(), w, h, h2, lines: 1, rev: 0, canvasW: TAG_W, canvasH: wrap ? TAG_H2 : TAG_H1 };
+  let drawn = 0, bare = false;
   let shown = null; // [item, seed] last drawn
+  const redraw = () => { tag.lines = drawTag(g, shown[0], shown[1], wrap, { ink: !bare }); tex.needsUpdate = true; };
+  const draw = () => { redraw(); tag.rev = ++drawn; };
+  tag.paintInk = (into) => { if (shown) drawTag(into, shown[0], shown[1], wrap, { paper: false }); };
+  tag.setBare = (on) => {
+    if (on === bare) return false;
+    bare = on;
+    if (!tag.rev) return false; // the next show draws it
+    redraw();
+    return true;
+  };
   tag.show = (item, seed = 3) => {
     const my = ++seq;
     mesh.visible = true;
     shown = [item, seed];
-    tag.ready = fontReady.then(() => { if (my === seq) { tag.lines = drawTag(g, item, seed, wrap); tex.needsUpdate = true; } });
+    tag.rev = 0;
+    bare = false;
+    tag.ready = fontReady.then(() => { if (my === seq) draw(); });
   };
   // Settings > Lettering: redraw what it shows in the new face (a hidden tag is drawn on its next show)
-  onLettering(tag, () => { if (shown && mesh.visible) { tag.lines = drawTag(g, shown[0], shown[1], wrap); tex.needsUpdate = true; } });
+  onLettering(tag, () => { if (shown && mesh.visible) draw(); });
   tag.hide = () => { seq++; mesh.visible = false; mesh.removeFromParent(); };
   return tag;
 }

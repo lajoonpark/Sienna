@@ -8,6 +8,7 @@ import { createLightSlots } from './lightslots.js';
 import { WATERCOLOUR, FONT, onLettering } from './style.js';
 import { createWatercolour, renderOverlay } from './watercolour.js';
 import { createSky } from './sky.js';
+import { createSharpTag } from './tagsharp.js';
 import { toon, crisp, crispText, unpinned, GLOW_LAYER } from './materials.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
@@ -1138,13 +1139,28 @@ function frame(t, dtOverride, draw = true) {
     // full paint detail around where you look (the eased cursor), cheaper toward the corners (?fovea=0: off)
     if (FOVEA_AT) painter.setFovea?.(FOVEA_AT[0], FOVEA_AT[1], FOVEA);
     else painter.setFovea?.((tilt.x + 1) / 2, 1 - (tilt.y + 1) / 2, FOVEA);
+    updateSharpTag(ui);
     const whole = painter.stats.full;
     painter.render(scene, camera, t, suitcase.overlay);
     // something changed while nothing was moving (a cover arrived): full rate for a moment. Not for the sun's
     // creep: that one frame is all there is to it, every 5 s all day, and waking for each kept a still shop
     // looking at itself 16 times a second instead of 2.
     if (painter.stats.full !== whole && pacer?.deep && !timeOfDay.stepped) pacer.kick();
-  } else { renderer.render(scene, camera); renderOverlay(renderer, suitcase.overlay); }
+  } else { updateSharpTag(ui); renderer.render(scene, camera); renderOverlay(renderer, suitcase.overlay); }
+}
+
+// The words on the name tag under the cursor, at the screen's own resolution (tagsharp.js). They lie over the
+// whole picture, so it stands aside for anything the picture would pass in front of the tag: a record being picked
+// or flying to the suitcase, the suitcase in hand, the list, and a trip's bars or paint wipe.
+const sharpTag = createSharpTag();
+const sharpTags = [];
+function updateSharpTag(ui) {
+  const rack = currentRack(), core = rack?.core;
+  const covered = !ui || suitcase.over || suitcase.flying || collectionList.isOpen() || !!core?.sleeves[core.hovered]?.picking
+    || (painter?.bars ?? 0) > 0 || (!pinnedPose && nav.wipe > 0.001 && nav.wipe < 1.999);
+  sharpTags.length = 0;
+  if (!covered) sharpTags.push(spread.tag, core?.tag);
+  if (sharpTag.update(camera, sharpTags)) painter?.invalidate();
 }
 
 addEventListener('resize', () => {
