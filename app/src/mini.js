@@ -23,6 +23,7 @@ import { maxFps } from './pacer.js';
 import { createKit, updateLod } from './kit.js';
 import { GLOW_LAYER } from './materials.js';
 import { createSky } from './sky.js';
+import { leanShadowMap } from './shadowmap.js';
 import { createTimeOfDay } from './timeofday.js';
 import { registerLamp, glowMesh } from './env.js';
 import { LISTENING_TABLE, LOUNGE_LAMP, buildLoungeCore, buildCourtyardVista } from './loungecorner.js';
@@ -81,23 +82,6 @@ Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, n
 sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.025;
 scene.add(sun, sun.target);
-
-function leanShadowMap() {
-  if (!sun.castShadow) return;
-  if (sun.shadow.map?.texture.format === THREE.RedFormat) return;
-  sun.shadow.map?.dispose();
-  const { x, y } = sun.shadow.mapSize;
-  const map = new THREE.WebGLRenderTarget(x, y, { format: THREE.RedFormat, generateMipmaps: false });
-  map.texture.name = 'sun.shadowMapColour';
-  map.depthBuffer = true;
-  map.depthTexture = new THREE.DepthTexture(x, y, THREE.UnsignedIntType);
-  map.depthTexture.name = 'sun.shadowMap';
-  map.depthTexture.format = THREE.DepthFormat;
-  map.depthTexture.compareFunction = THREE.LessEqualCompare;
-  map.depthTexture.minFilter = map.depthTexture.magFilter = THREE.LinearFilter;
-  sun.shadow.map = map;
-  sun.shadow.camera.updateProjectionMatrix();
-}
 
 const sky = createSky();
 scene.add(sky.dome);
@@ -335,7 +319,7 @@ function updateShadows(t) {
   const sunMoved = sun.position.distanceToSquared(shadowSun) > 0.05 * 0.05 || sun.castShadow !== shadowSunOn;
   const moving = (suitcase.lidMoving || tray.moving) && t - shadowLastAt >= 1 / 12;
   if (sunMoved || moving || shadowLastAt < 0) {
-    leanShadowMap();
+    leanShadowMap(renderer, sun, { depth32: true, dropColour: false });   // (shadowmap.js; 1 MB of colour layer is not worth a driver's quirk here)
     renderer.shadowMap.needsUpdate = true;
     shadowLastAt = t;
     shadowSun.copy(sun.position);
