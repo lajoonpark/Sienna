@@ -42,7 +42,8 @@ async function load({ failFirst = false, held = false } = {}) {
       },
       playlistArt: async () => [], search: async () => [], play: async () => {}, command: async () => {}, signIn: async () => {},
       onState: () => {},
-      onAccount: (cb) => { window.__signedIn = cb; },
+      // (every listener, as the real bridge does: the search card listens too)
+      onAccount: (cb) => { (window.__accountCbs ??= []).push(cb); window.__signedIn = (on) => window.__accountCbs.forEach((fn) => fn(on)); },
     };
     window.siennaMini = { onOpen: (cb) => { window.__open = cb; }, onClose: () => {}, closing: () => {}, closed: () => {} };
     window.__sleeves = () => [...document.querySelectorAll('.cs-stage .la-cover')].map((c) => c.getAttribute('aria-label').split(' · ')[0]);

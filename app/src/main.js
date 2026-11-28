@@ -590,16 +590,23 @@ async function loadShelves({ force = false } = {}) {
 }
 loadShelves();
 music.onAccount(() => loadShelves({ force: true }));   // signed in, out or switched: that account's shelves
-music.onStatus?.((st) => {
+// The hidden player says when it is in trouble (offline, crashed, YouTube Music not answering) and when it
+// is well again; it retries by itself meanwhile (electron/ytm.cjs).
+function playerStatus(st) {
   if (!st?.ok) {
-    liner.setStatus(st?.error || 'Connection to YouTube Music was interrupted.', () => { music.retry?.(); loadShelves({ force: true }); });
+    liner.setStatus(st?.error || 'Connection to YouTube Music was interrupted.',
+      () => { music.retry?.(); loadShelves({ force: true }); }, st?.offline ? 'offline' : 'error');
   } else if (!shelves.length) {
     liner.setStatus(null);
     loadShelves({ force: true });
   } else {
     liner.setStatus(null);
   }
-});
+}
+music.onStatus?.(playerStatus);
+// It may have been in trouble before this page was there to be told (Sienna started offline, the shop
+// window reopened): ask once. Only trouble is news here; the shelves are already on their way.
+Promise.resolve(music.status?.()).then((st) => { if (st && !st.ok) playerStatus(st); }).catch(() => {});
 addEventListener('online', () => {
   liner.setStatus(null);
   if (!shelves.length) { music.retry?.(); loadShelves({ force: true }); }

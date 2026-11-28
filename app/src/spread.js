@@ -129,7 +129,12 @@ export function createSpread({ camera, music, onPlay }) {
   root.name = 'album-spread';
   camera.add(root);
   const tag = createTag({ w: 0.46, h: 0.13 });
-  const cache = new Map();  // playlistId -> Promise<songs>
+  // playlistId -> { songs: Promise<songs>, at }. Kept as long as the main process keeps its own answer
+  // (LIST_TTL_MS in electron/ytm.cjs), then asked for again: a playlist you add songs to is not stuck
+  // at what it held when it was first opened.
+  const cache = new Map();
+  const CACHE_MS = 10 * 60 * 1000, CACHE_MAX = 60;
+  music.onAccount?.(() => cache.clear());   // another account: its own playlists
   const stickers = new Map(); // track number -> texture (shared by every album)
   let st = null;            // the album out now: { album, songs, recs, page, sleeve, from, closing }
   const leaving = [];       // spreads still flying back into their sleeves
@@ -146,12 +151,14 @@ export function createSpread({ camera, music, onPlay }) {
   function fetchSongs(album) {
     const k = keyOf(album);
     if (!k || !music.albumSongs) return Promise.resolve([]);
-    if (!cache.has(k)) {
-      const p = music.albumSongs(album).catch(() => []);
-      cache.set(k, p);
-      p.then((s) => { if (!s.length) cache.delete(k); }); // try again next time
-    }
-    return cache.get(k);
+    const hit = cache.get(k);
+    if (hit && performance.now() - hit.at < CACHE_MS) return hit.songs;
+    const entry = { songs: music.albumSongs(album).catch(() => []), at: performance.now() };
+    cache.delete(k);
+    cache.set(k, entry);
+    if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);   // the oldest goes
+    entry.songs.then((s) => { if (!s.length && cache.get(k) === entry) cache.delete(k); }); // try again next time
+    return entry.songs;
   }
 
   // one record: a group (posed every frame) holding the spinning vinyl + label and the sticker
