@@ -98,7 +98,7 @@ const BIG_KEEP = 32;
 // A cover that could not be fetched (a timeout while a shelf's worth loads at once, a dropped
 // connection) is tried again after these waits, instead of staying blank paper for good.
 const RETRY_MS = [5000, 20000, 60000];
-const [avgC, avgG] = typeof document !== 'undefined' ? canvas(8, 8) : [];
+const [, avgG] = typeof document !== 'undefined' ? canvas(8, 8) : [];
 
 // Spine colour from the cover: the average, deepened a little so the row reads as a painted band.
 function averageColor(img) {

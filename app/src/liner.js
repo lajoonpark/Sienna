@@ -80,8 +80,6 @@ const CSS = `
 .ln-fatal-card code { font-size: var(--sienna-text-xs); background: var(--sienna-paper-lo); padding: 2px var(--sienna-space-2); border-radius: 4px; }
 `;
 
-const mmss = (s) => (s ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '');
-
 export function showWebGLError(err) {
   injectTokens();
   if (!document.getElementById('ln-css')) {

@@ -43,7 +43,7 @@ const WHEEL_PAGE = 90;              // px of sideways scroll that turn a page
 const PLAY_ALL = '#b5332b';         // red vinyl
 
 const ss = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
-const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3();
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3();
 const _e = new THREE.Euler(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 const _up = new THREE.Vector3();
 

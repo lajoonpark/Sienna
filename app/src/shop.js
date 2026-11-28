@@ -16,10 +16,9 @@ import { createKit, trs, mul } from './kit.js';
 import { brickWall, plasterPanel, lunetteShape, archHole, barrelVault, flagstones, PALETTES } from './masonry.js';
 import { blk, rod, pottedPlant, railPlanter, postIvy, bougainvillea } from './details.js';
 import { recordShelf, binTable, crateOfRecords, turntable, speaker, armchair, rug, floorLamp, hangingPlant, trailingIvy, floorTree, spiralStair, pendant, ladder } from './interior.js';
-import { toon } from './materials.js';
 import { rng } from './rand.js';
 import {
-  PLASTER, PAL, LOUNGE, LOUNGE_VAULT, LOUNGE_WINDOW as WINDOW, STACKS, LIBRARY, GH, GARDEN,
+  PLASTER, LOUNGE, LOUNGE_VAULT, STACKS, LIBRARY, GH, GARDEN,
   frame, reveal, cotto, lunetteWall, crossWall, sideWalls,
   buildLoungeCore, buildCourtyardVista,
 } from './loungecorner.js';

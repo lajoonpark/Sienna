@@ -22,7 +22,6 @@ const smooth01 = (t) => { t = clamp01(t); return t * t * (3 - 2 * t); };
 const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 const TAU = Math.PI * 2;
 const angleDiff = (a, b) => { let d = (b - a) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
-const lerpAngle = (a, b, t) => a + angleDiff(a, b) * t;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 
 // look direction <-> yaw / pitch (yaw 0 looks down -z, positive yaw turns left; no roll ever)
@@ -287,7 +286,7 @@ function createRouter(home, stations) {
 }
 
 export function createNav({ home, stations, startAt = null }) {
-  const { idOf, camOf, stationIndex, route, dedupe } = createRouter(home, stations);
+  const { camOf, route, dedupe } = createRouter(home, stations);
 
   // ---- a planned flight: a smooth curve through waypoints, and where the camera looks on the way ----
   function makePlan(wps, aimFrom, aimTo, durOverride) {

@@ -5,7 +5,7 @@
 // repaint), and mark now-playing with an indigo edge band & badge.
 import { dabCluster, TONES } from '../brushpaint.js';
 import { paintedCoverURL } from '../coverpaint.js';
-import { COLORS, injectTokens } from './tokens.js';
+import { injectTokens } from './tokens.js';
 import { paperSurface } from './paper.js';
 import { injectCrateCss, renderHints } from './crate.js';
 import { inkButton } from './inputs.js';

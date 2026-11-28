@@ -4,7 +4,6 @@
 // brings a cover out over the counter's edge, in front of every row: the front step's come straight
 // forward, the ones behind rise over the row in front first.
 import * as THREE from 'three';
-import { rng } from '../rand.js';
 import { createRackCore, createSign, addBox, paint, WOOD, THICK } from './common.js';
 
 const SZ = 0.33;
