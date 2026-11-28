@@ -25,6 +25,7 @@ import { createTour } from './tour.js';
 import { createCameraTilt } from './camera-tilt.js';
 import { settings } from './settings.js';
 import { createPacer } from './pacer.js';
+import { createFpsTicket } from './fps.js';
 import { createQuality } from './quality.js';
 import { createMusic } from './music.js';
 import { createPlayer } from './suitcase/player.js';
@@ -37,7 +38,6 @@ import { queueStackArts, queuePick } from './queue-pick.js';
 import { onOverlay } from './ui/sheet.js';
 import { setLamp } from './ui/veil.js';
 import { injectTokens } from './ui/tokens.js';
-import { paperSurface } from './ui/paper.js';
 import './fonts.js';
 
 injectTokens();
@@ -993,29 +993,8 @@ let lastT = 0;
 let hoverOn = -1;
 let trayDone = false;
 let pickDone = false;
-// ---- frame-rate readout (Settings > Frame rate, or ?fps=1): average fps and the slowest frame ----
-const fpsBox = document.createElement('div');
-fpsBox.className = 'fps-ticket';
-fpsBox.style.cssText = 'position:fixed;right:var(--sienna-space-8);bottom:var(--sienna-space-6);z-index:var(--sienna-z-chrome);width:calc(var(--sienna-space-10) * 4);height:calc(var(--sienna-space-8) + var(--sienna-space-1));box-sizing:border-box;font:var(--sienna-text-xs)/1.3 var(--sienna-serif);font-variant-numeric:lining-nums tabular-nums;white-space:nowrap;color:var(--sienna-ink);padding:var(--sienna-space-2) var(--sienna-space-3);pointer-events:none;display:none';
-const fpsText = document.createElement('span');
-fpsText.textContent = '— fps · worst — ms';
-fpsBox.appendChild(fpsText);
-document.body.appendChild(fpsBox);
-paperSurface(fpsBox);
-const fpsOn = () => params.get('fps') === '1' || !!settings.get('fps');
-fpsBox.style.display = fpsOn() ? 'block' : 'none';
-settings.on('fps', () => { fpsBox.style.display = fpsOn() ? 'block' : 'none'; });
-// Settings > Lettering changes live: everything with lettering repaints itself (style.js onLettering).
-const fpsStat = { n: 0, since: performance.now(), last: performance.now(), worst: 0 };
-function tickFps() {
-  if (fpsBox.style.display === 'none') return;
-  const now = performance.now();
-  fpsStat.worst = Math.max(fpsStat.worst, now - fpsStat.last);
-  fpsStat.last = now; fpsStat.n++;
-  if (now - fpsStat.since < 500) return;
-  fpsText.textContent = `${Math.round(fpsStat.n * 1000 / (now - fpsStat.since))} fps · worst ${fpsStat.worst.toFixed(1)} ms`;
-  fpsStat.n = 0; fpsStat.since = now; fpsStat.worst = 0;
-}
+// the frame-rate readout in the corner (Settings > Frame rate, or ?fps=1): fps.js
+const fps = createFpsTicket();
 
 const FOVEA = params.has('fovea') ? Number(params.get('fovea')) : 0.45; // reach of full detail, share of the height
 // ?foveaAt=x,y pins where you look (uv, y up) for screenshots, e.g. 0.1,0.15 = on the suitcase
@@ -1288,7 +1267,7 @@ if (shotMode) {
     const start = performance.now() - t0 * 1000;
     pacer = createPacer({
       renderer,
-      step: (now) => { tickFps(); frame((now - start) / 1000); watchCamera(); },
+      step: (now) => { fps.tick(); frame((now - start) / 1000); watchCamera(); },
       busy: () => nav.intro || !nav.settled || spread.busy || suitcase.flying || suitcase.tray.moving || suitcase.over || suitcase.suitcase.lidMoving,
       // a spinning record on screen wants a smooth turn; otherwise only lanterns and the boil move (Brush strokes: only the ragged border boils; the older looks: all of it)
       idleFps: () => (player?.playerState === 1 && suitcase.tucked < 0.5 ? 30 : 12),
