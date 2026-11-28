@@ -3,12 +3,12 @@
 // Writes search.json (songs search) and a few probe files next to it.
 import { _electron as electron } from 'playwright';
 import { writeFileSync } from 'node:fs';
-import { outDir, sandboxArgs } from './safe.mjs';
+import { outDir, sandboxArgs, glArgs } from './safe.mjs';
 const S = outDir(process.argv[2], 'sienna-capture');
 const query = process.argv[3] || 'lemon';
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), ...glArgs(), `--user-data-dir=${S}/ud`, '.'],
   timeout: 60000,
 });
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);

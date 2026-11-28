@@ -3,11 +3,12 @@
 //   node scripts/intro-trace.mjs [width] [height] [query]
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
+import { glArgs } from './safe.mjs';
 const w = Number(process.argv[2] ?? 480), h = Number(process.argv[3] ?? 300), q = process.argv[4] ?? '';
 const port = Number(process.env.SIENNA_PORT) || 5244;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] }); // the Radeon (see work rules)
+const b = await chromium.launch({ args: glArgs() }); // the Radeon (see work rules)
 const page = await b.newPage({ viewport: { width: w, height: h } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 page.on('console', (m) => { if (m.text().startsWith('[trace]')) console.log(m.text()); });

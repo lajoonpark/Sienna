@@ -61,6 +61,7 @@ export function createCollectionList({ onPlay, onShuffle = null, music = null } 
   root.addEventListener('pointerdown', e => { if (e.target !== input) e.preventDefault(); });
   root.addEventListener('mousedown', e => { if (e.target !== input) e.preventDefault(); });
   let isOpen = false, seq = 0, collection = null, allSongs = [], filtered = [], field = 'all', source = null, playing = null;
+  let nowId = music?.state?.videoId ?? null;   // the song playing, as the player last said (kept while shut too)
   function markNowPlaying(videoId, force = false) {
     if (!force && playing === videoId) return;
     playing = videoId;
@@ -72,7 +73,7 @@ export function createCollectionList({ onPlay, onShuffle = null, music = null } 
     count.textContent = input.value.trim() ? `${filtered.length} of ${allSongs.length}` : `${allSongs.length} songs`;
     list.setItems(filtered, { emptyMessage: 'nothing found' });
     input.removeAttribute('aria-activedescendant');
-    markNowPlaying(music?.state?.videoId ?? null, true);
+    markNowPlaying(nowId, true);   // the rows are new: mark the playing one again
     play.setDisabled(!filtered.length); shuffle.setDisabled(!allSongs.length);
   }
   function pick(i) { const item = filtered[i]; if (!item) return; close(); onPlay?.(item, collection); }
@@ -123,7 +124,7 @@ export function createCollectionList({ onPlay, onShuffle = null, music = null } 
     input.setAttribute('aria-expanded', 'false'); root.classList.remove('show'); input.blur();
     card.close();
   }
-  music?.onState?.(state => { if (isOpen) markNowPlaying(state.videoId ?? null); });
+  music?.onState?.(state => { nowId = state.videoId ?? null; if (isOpen) markNowPlaying(nowId); });
   window.addEventListener('keydown', e => { if (isOpen && e.target !== input) { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); close(); } } }, true);
   window.addEventListener('pointerdown', e => { if (isOpen && !root.contains(e.target)) close(); }, true);
   return { open, close, isOpen: () => isOpen, ready: bar.ready };

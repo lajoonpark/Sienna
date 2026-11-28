@@ -17,16 +17,18 @@ import { createCaption } from './controls.js';
 import { createFlights } from './suitcase/flight.js';
 import { createRecordTray } from './suitcase/tray.js';
 import { createSearch } from './search.js';
-import { getCover } from './racks/common.js';
+import { getCover, trimCovers } from './racks/common.js';
 import { paintedCoverURL } from './coverpaint.js';
 import { maxFps } from './pacer.js';
 import { createKit, updateLod } from './kit.js';
 import { GLOW_LAYER } from './materials.js';
 import { createSky } from './sky.js';
+import { leanShadowMap } from './shadowmap.js';
 import { createTimeOfDay } from './timeofday.js';
 import { registerLamp, glowMesh } from './env.js';
 import { LISTENING_TABLE, LOUNGE_LAMP, buildLoungeCore, buildCourtyardVista } from './loungecorner.js';
 import { createLiner, showWebGLError } from './liner.js';
+import { queueStackArts, queuePick } from './queue-pick.js';
 import { onOverlay } from './ui/sheet.js';
 import { setLamp } from './ui/veil.js';
 import { injectTokens } from './ui/tokens.js';
@@ -81,23 +83,6 @@ Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, n
 sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.025;
 scene.add(sun, sun.target);
-
-function leanShadowMap() {
-  if (!sun.castShadow) return;
-  if (sun.shadow.map?.texture.format === THREE.RedFormat) return;
-  sun.shadow.map?.dispose();
-  const { x, y } = sun.shadow.mapSize;
-  const map = new THREE.WebGLRenderTarget(x, y, { format: THREE.RedFormat, generateMipmaps: false });
-  map.texture.name = 'sun.shadowMapColour';
-  map.depthBuffer = true;
-  map.depthTexture = new THREE.DepthTexture(x, y, THREE.UnsignedIntType);
-  map.depthTexture.name = 'sun.shadowMap';
-  map.depthTexture.format = THREE.DepthFormat;
-  map.depthTexture.compareFunction = THREE.LessEqualCompare;
-  map.depthTexture.minFilter = map.depthTexture.magFilter = THREE.LinearFilter;
-  sun.shadow.map = map;
-  sun.shadow.camera.updateProjectionMatrix();
-}
 
 const sky = createSky();
 scene.add(sky.dome);
@@ -178,26 +163,15 @@ const liner = timePart('liner', () => createLiner({
   music,
   onQueueOpen: ({ showStack }) => tray.openHold(lastState?.art ? [getCover(lastState.art, 256).tex] : [], { showStack }),
   onQueueCovers: (items) => {
-    if (!items?.length) return;
-    const sel = items.findIndex((it) => it.selected);
-    const ordered = sel > 0 ? [...items.slice(sel), ...items.slice(0, sel)] : items;
-    const covers = ordered.slice(0, 5).map((it) => getCover(it.art, 256).tex);
+    const covers = queueStackArts(items).map((art) => getCover(art, 256).tex);
     if (covers.length) tray.setStackCovers(covers);
   },
   onQueueClose: () => tray.closeHold(),
   getDrawerPos: drawerScreenPos,
   onPickQueue: (it, idx, from) => {
-    if (it.videoId) {
-      const play = {
-        videoId: it.videoId,
-        ...(it.playlistId ? { playlistId: it.playlistId } : {}),
-        ...(it.params ? { params: it.params } : {}),
-        ...(it.fromLive ? { fromLive: true, queueIndex: it.index ?? idx } : {}),
-      };
-      startSong(music, suitcase, { play });
-    } else {
-      music.command('queueIndex', it.index ?? idx);
-    }
+    const { play, queueIndex } = queuePick(it, idx);
+    if (play) startSong(music, suitcase, { play });
+    else music.command('queueIndex', queueIndex);
     const cover = getCover(it.art, 512).tex;
     if (from) {
       tray.closeHold();
@@ -267,6 +241,8 @@ const search = timePart('search', () => createSearch({
 onOverlay((open) => { if (open) setLamp(drawerScreenPos()); });
 listenForCoverPickSkip(flights.finishScreenPick);
 caption.show(true, true);
+// a mini window summoned all day keeps only the covers it still shows (racks/common.js trimCovers)
+setInterval(() => trimCovers({ roots: [scene] }), 5 * 60 * 1000);
 
 // ---- player state ----
 let lastState = null;
@@ -333,7 +309,7 @@ function updateShadows(t) {
   const sunMoved = sun.position.distanceToSquared(shadowSun) > 0.05 * 0.05 || sun.castShadow !== shadowSunOn;
   const moving = (suitcase.lidMoving || tray.moving) && t - shadowLastAt >= 1 / 12;
   if (sunMoved || moving || shadowLastAt < 0) {
-    leanShadowMap();
+    leanShadowMap(renderer, sun, { depth32: true, dropColour: false });   // (shadowmap.js; 1 MB of colour layer is not worth a driver's quirk here)
     renderer.shadowMap.needsUpdate = true;
     shadowLastAt = t;
     shadowSun.copy(sun.position);

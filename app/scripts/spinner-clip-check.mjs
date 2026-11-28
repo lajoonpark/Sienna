@@ -9,13 +9,14 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { mkdirSync } from 'node:fs';
+import { glArgs } from './safe.mjs';
 const out = process.argv[2] ?? 'spinner-clip-out';
 const angles = (process.argv[3] ?? '0.4,0.9,-0.5,1.3').split(',').map(Number);
 mkdirSync(out, { recursive: true });
 const port = Number(process.env.SIENNA_PORT) || 5249;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 const W = 1170, H = 730;
 const page = await b.newPage({ viewport: { width: W, height: H } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));

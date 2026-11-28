@@ -6,13 +6,14 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { mkdirSync } from 'node:fs';
+import { glArgs } from './safe.mjs';
 const out = process.argv[2] ?? 'spin-out';
 const carryAt = (process.argv[3] ?? '6,1,4').split(',').map(Number);
 mkdirSync(out, { recursive: true });
 const port = Number(process.env.SIENNA_PORT) || 5249;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 const W = 1170, H = 730;
 let problems = 0;
 const open = async (at) => {

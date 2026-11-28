@@ -8,11 +8,12 @@ import { createLightSlots } from './lightslots.js';
 import { WATERCOLOUR, FONT, onLettering } from './style.js';
 import { createWatercolour, renderOverlay } from './watercolour.js';
 import { createSky } from './sky.js';
+import { leanShadowMap } from './shadowmap.js';
 import { createSharpTag } from './tagsharp.js';
 import { toon, crisp, crispText, unpinned, GLOW_LAYER } from './materials.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
-import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
+import { getCover, setCoverUploader, restoreCovers, trimCovers, coverStats } from './racks/common.js';
 import { focusHover, framedAtRest, hoverPanBounds, lockHover, zoomCutNeeded } from './racks/hover.js';
 import { warmUp } from './warmup.js';
 import { STATIONS, HOME, assignShelves } from './stations.js';
@@ -24,6 +25,7 @@ import { createTour } from './tour.js';
 import { createCameraTilt } from './camera-tilt.js';
 import { settings } from './settings.js';
 import { createPacer } from './pacer.js';
+import { createFpsTicket } from './fps.js';
 import { createQuality } from './quality.js';
 import { createMusic } from './music.js';
 import { createPlayer } from './suitcase/player.js';
@@ -32,10 +34,10 @@ import { createSpread } from './spread.js';
 import { createCollectionList } from './collection-list.js';
 import { isLikedCollection, shouldUseCollectionList } from './collection-filter.js';
 import { createLiner, showWebGLError } from './liner.js';
+import { queueStackArts, queuePick } from './queue-pick.js';
 import { onOverlay } from './ui/sheet.js';
 import { setLamp } from './ui/veil.js';
 import { injectTokens } from './ui/tokens.js';
-import { paperSurface } from './ui/paper.js';
 import './fonts.js';
 
 injectTokens();
@@ -117,44 +119,11 @@ Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, n
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.03;
 scene.add(sun, sun.target);
-// The shadow map, made here rather than by three. PCF shadows sample only its depth layer, but three gives
-// its target a full RGBA colour layer too (64 MB at 4096 px, written and never read). three cannot make a
-// target without one, so it is made as the smallest, one byte a pixel (16 MB), and then taken off the
-// framebuffer and freed (dropShadowColour): WebGL 2 draws to a depth-only framebuffer. Otherwise as three makes
-// it (WebGLShadowMap: PCF, no reversed depth); made again whenever timeofday.js has let go of it for the night.
-// Made at the first shadow draw (updateShadows), not here: a new texture takes a Math.random uuid, and the
-// street and shop below are built from Math.random, so making it now would build a different street.
-function leanShadowMap() {
-  if (!sun.castShadow) return;
-  if (sun.shadow.map?.texture.format === THREE.RedFormat) return;
-  sun.shadow.map?.dispose();   // one three made itself (a render got there first): swap it
-  const { x, y } = sun.shadow.mapSize;
-  const map = new THREE.WebGLRenderTarget(x, y, { format: THREE.RedFormat, generateMipmaps: false });
-  map.texture.name = 'sun.shadowMapColour';
-  map.depthTexture = new THREE.DepthTexture(
-    x, y, params.get('shadow32') === '1' ? THREE.UnsignedIntType : THREE.UnsignedShortType,
-  );
-  map.depthTexture.name = 'sun.shadowMap';
-  map.depthTexture.format = THREE.DepthFormat;
-  map.depthTexture.compareFunction = THREE.LessEqualCompare;
-  map.depthTexture.minFilter = map.depthTexture.magFilter = THREE.LinearFilter;
-  sun.shadow.map = map;
-  sun.shadow.camera.updateProjectionMatrix();
-  if (params.get('shadowColour') !== '1') dropShadowColour(map);
-}
-// Frees the colour layer of a shadow map nobody reads. If the driver will not draw without one, it stays.
-function dropShadowColour(map) {
-  const gl = renderer.getContext(), prev = renderer.getRenderTarget();
-  renderer.initRenderTarget(map);
-  const fb = renderer.properties.get(map).__webglFramebuffer, tex = renderer.properties.get(map.texture).__webglTexture;
-  if (fb && tex && !Array.isArray(fb)) {
-    renderer.state.bindFramebuffer(gl.FRAMEBUFFER, fb);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, null, 0);
-    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) gl.deleteTexture(tex); // (three's later delete of it is a no-op)
-    else gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-  }
-  renderer.setRenderTarget(prev);
-}
+// The sun's shadow map is made lean, at the first shadow draw (updateShadows): see shadowmap.js.
+const sunShadowMap = () => leanShadowMap(renderer, sun, {
+  depth32: params.get('shadow32') === '1',
+  dropColour: params.get('shadowColour') !== '1',
+});
 
 const sky = createSky();
 scene.add(sky.dome);
@@ -228,10 +197,7 @@ const liner = createLiner({
     return suitcase.openDrawer(initialCovers, { showStack });
   },
   onQueueCovers: (items) => {
-    if (!items?.length) return;
-    const sel = items.findIndex((it) => it.selected);
-    const ordered = sel > 0 ? [...items.slice(sel), ...items.slice(0, sel)] : items;
-    const covers = ordered.slice(0, 5).map((it) => getCover(it.art, 256).tex);
+    const covers = queueStackArts(items).map((art) => getCover(art, 256).tex);
     if (covers.length) suitcase.setDrawerCovers(covers);
   },
   onQueueClose: () => {
@@ -241,17 +207,9 @@ const liner = createLiner({
   getDrawerPos: () => suitcase.drawerScreenPos(),
   onPickQueue: (it, idx, from) => {
     pacer?.kick();
-    if (it.videoId) {
-      const play = {
-        videoId: it.videoId,
-        ...(it.playlistId ? { playlistId: it.playlistId } : {}),
-        ...(it.params ? { params: it.params } : {}),
-        ...(it.fromLive ? { fromLive: true, queueIndex: it.index ?? idx } : {}),
-      };
-      startSong(music, suitcase.suitcase, { play });
-    } else {
-      music.command('queueIndex', it.index ?? idx);
-    }
+    const { play, queueIndex } = queuePick(it, idx);
+    if (play) startSong(music, suitcase.suitcase, { play });
+    else music.command('queueIndex', queueIndex);
     const cover = getCover(it.art, 512).tex;
     if (from) suitcase.receiveFromScreen(from, cover);
     else suitcase.dispense(cover);
@@ -374,7 +332,7 @@ function updateShadows(t) {
   if (nav.intro) { if (due) shadowOwed = true; due = doorDone; }
   else if (shadowOwed) { due = true; shadowOwed = false; }
   if (sunMoved || due || shadowLastAt < 0) {
-    leanShadowMap();   // the first draw, or the sun is back after the night
+    sunShadowMap();   // the first draw, or the sun is back after the night
     renderer.shadowMap.needsUpdate = true;
     shadowLastAt = t;
     shadowSun.copy(sun.position); shadowSunOn.v = sun.castShadow;
@@ -590,16 +548,23 @@ async function loadShelves({ force = false } = {}) {
 }
 loadShelves();
 music.onAccount(() => loadShelves({ force: true }));   // signed in, out or switched: that account's shelves
-music.onStatus?.((st) => {
+// The hidden player says when it is in trouble (offline, crashed, YouTube Music not answering) and when it
+// is well again; it retries by itself meanwhile (electron/ytm.cjs).
+function playerStatus(st) {
   if (!st?.ok) {
-    liner.setStatus(st?.error || 'Connection to YouTube Music was interrupted.', () => { music.retry?.(); loadShelves({ force: true }); });
+    liner.setStatus(st?.error || 'Connection to YouTube Music was interrupted.',
+      () => { music.retry?.(); loadShelves({ force: true }); }, st?.offline ? 'offline' : 'error');
   } else if (!shelves.length) {
     liner.setStatus(null);
     loadShelves({ force: true });
   } else {
     liner.setStatus(null);
   }
-});
+}
+music.onStatus?.(playerStatus);
+// It may have been in trouble before this page was there to be told (Sienna started offline, the shop
+// window reopened): ask once. Only trouble is news here; the shelves are already on their way.
+Promise.resolve(music.status?.()).then((st) => { if (st && !st.ok) playerStatus(st); }).catch(() => {});
 addEventListener('online', () => {
   liner.setStatus(null);
   if (!shelves.length) { music.retry?.(); loadShelves({ force: true }); }
@@ -611,6 +576,14 @@ addEventListener('offline', () => {
 setInterval(() => {
   if (!document.hidden && nav.at === AT_HOME && nav.settled && navigator.onLine) loadShelves();
 }, 45 * 60 * 1000);
+// Covers that have left the racks (a restock, a search, a queue that moved on) are let go of now and then,
+// so a shop left open all day does not keep every picture it ever showed (racks/common.js trimCovers).
+const dropOldCovers = (opts = {}) => trimCovers({
+  roots: [scene, suitcase.overlay.scene],
+  keep: racks.flatMap((r) => r?.core.sleeves.map((sl) => sl.small) ?? []),
+  ...opts,
+});
+setInterval(() => dropOldCovers(), 5 * 60 * 1000);
 // Application menu actions (Settings, About, Restock, Home, Library Room).
 music.app?.onMenu?.((action) => {
   if (action === 'settings') settingsPanel.open();
@@ -670,6 +643,7 @@ if (!window.sienna || window.sienna.isDev) window.__siennaDebug = {
     return res;
   },
   get shelves() { return shelves; },
+  covers: { trim: dropOldCovers, stats: coverStats }, // scripts/covers-check.mjs
   get player() { return player; },
   get rack() { return racks[nav.at >= 0 ? nav.at : 0] ?? racks.find(Boolean); }, // the rack you are at
   racks,
@@ -1019,29 +993,8 @@ let lastT = 0;
 let hoverOn = -1;
 let trayDone = false;
 let pickDone = false;
-// ---- frame-rate readout (Settings > Frame rate, or ?fps=1): average fps and the slowest frame ----
-const fpsBox = document.createElement('div');
-fpsBox.className = 'fps-ticket';
-fpsBox.style.cssText = 'position:fixed;right:var(--sienna-space-8);bottom:var(--sienna-space-6);z-index:var(--sienna-z-chrome);width:calc(var(--sienna-space-10) * 4);height:calc(var(--sienna-space-8) + var(--sienna-space-1));box-sizing:border-box;font:var(--sienna-text-xs)/1.3 var(--sienna-serif);font-variant-numeric:lining-nums tabular-nums;white-space:nowrap;color:var(--sienna-ink);padding:var(--sienna-space-2) var(--sienna-space-3);pointer-events:none;display:none';
-const fpsText = document.createElement('span');
-fpsText.textContent = '— fps · worst — ms';
-fpsBox.appendChild(fpsText);
-document.body.appendChild(fpsBox);
-paperSurface(fpsBox);
-const fpsOn = () => params.get('fps') === '1' || !!settings.get('fps');
-fpsBox.style.display = fpsOn() ? 'block' : 'none';
-settings.on('fps', () => { fpsBox.style.display = fpsOn() ? 'block' : 'none'; });
-// Settings > Lettering changes live: everything with lettering repaints itself (style.js onLettering).
-const fpsStat = { n: 0, since: performance.now(), last: performance.now(), worst: 0 };
-function tickFps() {
-  if (fpsBox.style.display === 'none') return;
-  const now = performance.now();
-  fpsStat.worst = Math.max(fpsStat.worst, now - fpsStat.last);
-  fpsStat.last = now; fpsStat.n++;
-  if (now - fpsStat.since < 500) return;
-  fpsText.textContent = `${Math.round(fpsStat.n * 1000 / (now - fpsStat.since))} fps · worst ${fpsStat.worst.toFixed(1)} ms`;
-  fpsStat.n = 0; fpsStat.since = now; fpsStat.worst = 0;
-}
+// the frame-rate readout in the corner (Settings > Frame rate, or ?fps=1): fps.js
+const fps = createFpsTicket();
 
 const FOVEA = params.has('fovea') ? Number(params.get('fovea')) : 0.45; // reach of full detail, share of the height
 // ?foveaAt=x,y pins where you look (uv, y up) for screenshots, e.g. 0.1,0.15 = on the suitcase
@@ -1314,7 +1267,7 @@ if (shotMode) {
     const start = performance.now() - t0 * 1000;
     pacer = createPacer({
       renderer,
-      step: (now) => { tickFps(); frame((now - start) / 1000); watchCamera(); },
+      step: (now) => { fps.tick(); frame((now - start) / 1000); watchCamera(); },
       busy: () => nav.intro || !nav.settled || spread.busy || suitcase.flying || suitcase.tray.moving || suitcase.over || suitcase.suitcase.lidMoving,
       // a spinning record on screen wants a smooth turn; otherwise only lanterns and the boil move (Brush strokes: only the ragged border boils; the older looks: all of it)
       idleFps: () => (player?.playerState === 1 && suitcase.tucked < 0.5 ? 30 : 12),

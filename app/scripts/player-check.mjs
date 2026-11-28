@@ -2,12 +2,12 @@
 // so possibly an ad), and how much it fetched. Compare SIENNA_PLAYER_DIET=0 (no diet) with the default.
 //   npm run build && xvfb-run -a node scripts/player-check.mjs [out_dir]     (SIENNA_PLAY_S=40)
 import { _electron as electron } from 'playwright';
-import { outDir, sandboxArgs } from './safe.mjs';
+import { outDir, sandboxArgs, glArgs } from './safe.mjs';
 const S = outDir(process.argv[2], 'sienna-player-check');
 const PLAY_S = Number(process.env.SIENNA_PLAY_S || 40);
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), ...glArgs(), `--user-data-dir=${S}/ud`, '.'],
   env: { ...process.env, SIENNA_TEST: '1' },
   timeout: 60000,
 });

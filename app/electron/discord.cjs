@@ -97,6 +97,8 @@ function createDiscordRpc({ clientId = process.env.SIENNA_DISCORD_CLIENT_ID || D
     s.once('error', fail);
     s.once('connect', () => {
       s.removeListener('error', fail);
+      // switched off (or connected another way) while this one was on its way: let it go
+      if (!enabled || sock) { s.on('error', () => {}); s.destroy(); return; }
       sock = s;
       connecting = false;
       s.on('data', handleData);

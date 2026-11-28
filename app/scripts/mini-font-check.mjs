@@ -4,11 +4,11 @@
 // Usage (Linux server): npm run build && xvfb-run -a node scripts/mini-font-check.mjs out_dir
 import { _electron as electron } from 'playwright';
 import assert from 'node:assert';
-import { outDir, sandboxArgs } from './safe.mjs';
+import { outDir, sandboxArgs, glArgs } from './safe.mjs';
 const S = outDir(process.argv[2], 'sienna-font-check');
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), ...glArgs(), `--user-data-dir=${S}/ud`, '.'],
   env: { ...process.env, SIENNA_TEST: '1' },
   timeout: 60000,
 });

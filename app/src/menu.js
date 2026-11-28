@@ -105,7 +105,7 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
   let shown = false;
   let tiltX = 0, tiltY = 0;
   let over = 0;
-  let receded = false, cursorX = null;
+  let receded = false;
   const buttons = [];      // { el, side, seed, key }
   // (also when a word stops taking the pointer under a still cursor: no pointerleave comes then)
   const leave = (b) => { if (b.in) { b.in = false; over = Math.max(0, over - 1); } };
@@ -247,7 +247,6 @@ export function createMenu({ onGo, onHome, getAvoid = () => null } = {}) {
     // overlaps then slide off to their edge and fade, until the record goes down.
     update(dt, x01, recede, hold = null, aside = false) {
       receded = recede;
-      cursorX = x01;
       const ke = 1 - Math.exp(-12 * Math.min(dt, 0.2)); // ~0.25 s
       for (const side of [L, R]) {
         const near = x01 != null && (side === L ? x01 < 0.16 : x01 > 0.84);

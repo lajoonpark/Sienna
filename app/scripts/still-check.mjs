@@ -3,14 +3,13 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { readFileSync } from 'node:fs';
-import { outDir as safeOutDir } from './safe.mjs';
-
+import { outDir as safeOutDir, glArgs } from './safe.mjs';
 const [outArg, query = 'hour=12&shelves=8&at=home', a = '20', b = '20.7'] = process.argv.slice(2);
 const outDir = safeOutDir(outArg, 'sienna-still');
 const port = Number(process.env.SIENNA_PORT) || 5197;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: glArgs() });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto(`http://127.0.0.1:${port}/?shot&${query}`);

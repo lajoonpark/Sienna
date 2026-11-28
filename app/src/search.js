@@ -113,7 +113,16 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
   let pendingCover = null;
   let stripChord = STRIP_CHORDS[0];
   let coversOn = false, coverRun = 0;
+  // `${filter}|${query}` -> results, so going back over what you typed is instant. The newest CACHE_MAX
+  // are kept (every keystroke that paused long enough is a key).
   const cache = new Map();
+  const CACHE_MAX = 80;
+  const remember = (key, items) => {
+    cache.delete(key);
+    cache.set(key, items);
+    if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+  };
+  music.onAccount?.(() => cache.clear());
   const showingCovers = () => coversOn;
   const chordKeys = chord => (isMac
     ? `${chord.ctrlKey ? '⌃' : ''}${chord.altKey ? '⌥' : ''}${chord.shiftKey ? '⇧' : ''}↑`
@@ -322,7 +331,7 @@ export function createSearch({ music, onPlay, suggest = null, coverSuggestions =
     try {
       const items = await music.search(q, filter);
       if (mine !== seq || !isOpen) return;
-      cache.set(key, items); apply(items, key);
+      remember(key, items); apply(items, key);
     } catch {
       if (mine !== seq || !isOpen) return;
       pendingEnter = false; note('error', 'could not search', run);

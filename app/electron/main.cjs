@@ -45,6 +45,10 @@ let discord = null;
 let quitting = false;
 let lastTrayKey = '';
 let lastTrack = null;
+// A shop page that dies again this soon after it was reopened is left closed (the tray or the Dock opens
+// it again), rather than reopened for ever.
+const SHOP_CRASH_LOOP_MS = 30000;
+let shopCrashAt = -Infinity;
 
 const appWebContents = () => [win?.webContents, mini?.window?.webContents];
 const trusted = makeTrusted(appWebContents);
@@ -60,6 +64,12 @@ function sendShop(channel, ...args) {
 function sendBoth(channel, ...args) {
   sendShop(channel, ...args);
   mini?.send(channel, ...args);
+}
+
+// A command from the menus, the tray or the media keys: nobody waits for its answer, so a player that
+// cannot take it (still loading, offline) is a line in the log and not an unhandled rejection.
+function playerCommand(name) {
+  ytm?.command(name).catch((e) => console.warn(`[sienna] ${name}:`, e?.message ?? e));
 }
 
 function startPlayer() {
@@ -84,7 +94,7 @@ function startPlayer() {
 
 function createWindow() {
   const extraArgs = isPackaged() ? [] : ['--sienna-dev'];
-  win = new BrowserWindow({
+  const w = win = new BrowserWindow({
     icon: path.join(__dirname, 'icon.png'),
     width: 1280,
     height: 800,
@@ -98,32 +108,32 @@ function createWindow() {
       additionalArguments: extraArgs,
     },
   });
-  lockNavigation(win.webContents, isAppUrl);
+  lockNavigation(w.webContents, isAppUrl);
   const dev = devServerUrl();
   const query = devEnv('SIENNA_QUERY');
-  if (dev) {
-    const base = dev.href;
-    win.loadURL(query ? `${base}${base.includes('?') ? '&' : '?'}${query}` : base);
-  } else {
-    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), query ? { search: query } : {});
-  }
-  for (const ev of ['show', 'hide', 'minimize', 'restore', 'focus', 'blur']) win.on(ev, updateActive);
-  win.webContents.on('render-process-gone', (_e, details) => {
+  const loading = dev
+    ? w.loadURL(query ? `${dev.href}${dev.href.includes('?') ? '&' : '?'}${query}` : dev.href)
+    : w.loadFile(path.join(__dirname, '..', 'dist', 'index.html'), query ? { search: query } : {});
+  loading.catch((e) => console.warn('[sienna] the shop did not load:', e.message));
+  for (const ev of ['show', 'hide', 'minimize', 'restore', 'focus', 'blur']) w.on(ev, updateActive);
+  w.webContents.on('render-process-gone', (_e, details) => {
     if (quitting) return;
     console.warn('[sienna] shop renderer crashed:', details?.reason);
-    const old = win;
-    win = null;
-    if (old && !old.isDestroyed()) old.destroy();
-    createWindow();
+    const again = Date.now() - shopCrashAt < SHOP_CRASH_LOOP_MS;
+    shopCrashAt = Date.now();
+    if (!w.isDestroyed()) w.destroy();   // (its 'closed' below lets go of it)
+    if (again) console.warn('[sienna] the shop keeps crashing: left closed, open it again from the menu bar');
+    else createWindow();
   });
   // Closing the shop window frees GPU memory while Sienna stays alive in the tray/menu bar
   // so music keeps playing across macOS, Windows, and Linux. Quit from the tray or app menu exits.
-  win.on('closed', () => {
-    win = null;
+  w.on('closed', () => {
+    if (win === w) win = null;
     updateActive();
     // The shop just released its renderer and GPU memory. That is exactly when the mini player is
-    // useful, so warm it here rather than holding a second full renderer all the time.
-    mini?.prewarm();
+    // useful, so warm it here rather than holding a second full renderer all the time. Not while
+    // quitting: a window made now would keep Sienna from quitting until it was closed too.
+    if (!quitting) mini?.prewarm();
   });
 }
 
@@ -134,6 +144,7 @@ function updateActive() {
 }
 
 function openSienna() {
+  if (quitting) return;
   if (!win || win.isDestroyed()) { createWindow(); return; }
   if (win.isMinimized()) win.restore();
   win.show();
@@ -149,13 +160,20 @@ function toggleSienna() {
   openSienna();
 }
 
+// A menu item that the shop itself carries out (Settings…, Restock Shelves…). The shop is opened for it
+// if it was closed, and told once its page is up: a page still loading is not listening yet.
+function sendAction(action) {
+  openSienna();
+  const w = win;
+  if (!w || w.isDestroyed()) return;
+  const send = () => { if (win === w && !w.isDestroyed()) w.webContents.send('app:menu', action); };
+  if (w.webContents.isLoading()) w.webContents.once('did-finish-load', send);
+  else send();
+}
+
 function buildAppMenu() {
   const mac = process.platform === 'darwin';
   const dev = !isPackaged();
-  const sendAction = (action) => {
-    openSienna();
-    setTimeout(() => sendShop('app:menu', action), 50);
-  };
   const template = [
     ...(mac ? [{
       label: 'Sienna',
@@ -198,14 +216,14 @@ function buildAppMenu() {
     {
       label: 'Playback',
       submenu: [
-        { label: 'Play / Pause', click: () => ytm?.command('toggle') },
-        { label: 'Next Track', click: () => ytm?.command('next') },
-        { label: 'Previous Track', click: () => ytm?.command('previous') },
+        { label: 'Play / Pause', click: () => playerCommand('toggle') },
+        { label: 'Next Track', click: () => playerCommand('next') },
+        { label: 'Previous Track', click: () => playerCommand('previous') },
         { type: 'separator' },
-        { label: 'Like Track', click: () => ytm?.command('like') },
-        { label: 'Mute / Unmute', click: () => ytm?.command('mute') },
-        { label: 'Toggle Shuffle', click: () => ytm?.command('shuffle') },
-        { label: 'Cycle Repeat', click: () => ytm?.command('repeat') },
+        { label: 'Like Track', click: () => playerCommand('like') },
+        { label: 'Mute / Unmute', click: () => playerCommand('mute') },
+        { label: 'Toggle Shuffle', click: () => playerCommand('shuffle') },
+        { label: 'Cycle Repeat', click: () => playerCommand('repeat') },
       ],
     },
     {
@@ -249,10 +267,10 @@ function updateTrayMenu(s = lastTrack) {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: short, enabled: false },
     { type: 'separator' },
-    { label: playing ? 'Pause' : 'Play', enabled: !!s?.videoId, click: () => ytm?.command('toggle') },
-    { label: 'Next', enabled: !!s?.videoId, click: () => ytm?.command('next') },
-    { label: 'Previous', enabled: !!s?.videoId, click: () => ytm?.command('previous') },
-    { label: liked ? 'Unlike' : 'Like', enabled: !!s?.videoId && !s?.adPlaying, click: () => ytm?.command('like') },
+    { label: playing ? 'Pause' : 'Play', enabled: !!s?.videoId, click: () => playerCommand('toggle') },
+    { label: 'Next', enabled: !!s?.videoId, click: () => playerCommand('next') },
+    { label: 'Previous', enabled: !!s?.videoId, click: () => playerCommand('previous') },
+    { label: liked ? 'Unlike' : 'Like', enabled: !!s?.videoId && !s?.adPlaying, click: () => playerCommand('like') },
     { type: 'separator' },
     { label: 'Open Mini Player', click: () => mini?.toggle() },
     { label: 'Open Sienna', click: openSienna },
@@ -338,10 +356,10 @@ if (!app.requestSingleInstanceLock()) {
         trusted,
         windows: appWebContents,
         media: {
-          toggle: () => ytm?.command('toggle'),
-          next: () => ytm?.command('next'),
-          previous: () => ytm?.command('previous'),
-          pause: () => ytm?.command('pause'),
+          toggle: () => playerCommand('toggle'),
+          next: () => playerCommand('next'),
+          previous: () => playerCommand('previous'),
+          pause: () => playerCommand('pause'),
         },
       },
     ).register();

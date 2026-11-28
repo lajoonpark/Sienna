@@ -6,11 +6,12 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import assert from 'node:assert';
+import { glArgs } from './safe.mjs';
 
 const port = Number(process.env.SIENNA_PORT) || 5241;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: glArgs() });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const ok = (name) => console.log('ok  ', name);
 
@@ -42,7 +43,8 @@ async function load({ failFirst = false, held = false } = {}) {
       },
       playlistArt: async () => [], search: async () => [], play: async () => {}, command: async () => {}, signIn: async () => {},
       onState: () => {},
-      onAccount: (cb) => { window.__signedIn = cb; },
+      // (every listener, as the real bridge does: the search card listens too)
+      onAccount: (cb) => { (window.__accountCbs ??= []).push(cb); window.__signedIn = (on) => window.__accountCbs.forEach((fn) => fn(on)); },
     };
     window.siennaMini = { onOpen: (cb) => { window.__open = cb; }, onClose: () => {}, closing: () => {}, closed: () => {} };
     window.__sleeves = () => [...document.querySelectorAll('.cs-stage .la-cover')].map((c) => c.getAttribute('aria-label').split(' · ')[0]);

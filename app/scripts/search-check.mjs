@@ -4,13 +4,12 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import assert from 'node:assert';
-import { outDir } from './safe.mjs';
-
+import { outDir, glArgs } from './safe.mjs';
 const out = outDir(process.argv[2], 'sienna-search');
 const port = Number(process.env.SIENNA_PORT) || 5231;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: glArgs() });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 page.on('console', (m) => { if (m.type() === 'error') console.log('[console.error]', m.text()); });

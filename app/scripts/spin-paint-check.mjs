@@ -8,14 +8,14 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { writeFileSync } from 'node:fs';
-import { outDir as safeOutDir } from './safe.mjs';
+import { outDir as safeOutDir, glArgs } from './safe.mjs';
 const outDir = safeOutDir(process.argv[2], 'sienna-spin-paint');
 const turns = (process.argv[3] ?? '0,0.35,0.8,1.6').split(',').map(Number), dpr = Number(process.argv[4] ?? 2);
 const port = Number(process.env.SIENNA_PORT) || 5252;
 const [vw, vh] = (process.env.SIENNA_VIEWPORT || '1440x900').split('x').map(Number);
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 const page = await b.newPage({ viewport: { width: vw, height: vh }, deviceScaleFactor: dpr });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto(`http://127.0.0.1:${port}/index.html?shelves=8&at=6&guest&tour=0&${process.env.SIENNA_QUERY ?? ""}`, { waitUntil: 'commit', timeout: 0 });

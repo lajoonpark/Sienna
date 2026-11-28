@@ -137,6 +137,27 @@ export function createCaption({ parent = document.body, variant = 'shop', onSeek
     const b = bar.getBoundingClientRect();
     if (duration > 0) onSeek?.(Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)) * duration);
   });
+  // It says it is a slider, so it answers the keyboard like one: the arrows move 5 s, Page Up / Down 30 s,
+  // Home and End go to the ends. The press stops here: with the line focused, the shop's own arrow keys
+  // (previous / next song, volume) are not what is meant.
+  const SEEK_KEYS = { ArrowLeft: -5, ArrowDown: -5, ArrowRight: 5, ArrowUp: 5, PageDown: -30, PageUp: 30, Home: -Infinity, End: Infinity };
+  bar.addEventListener('keydown', (e) => {
+    const step = SEEK_KEYS[e.key];
+    if (step === undefined || e.altKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!(duration > 0)) return;
+    const to = Math.min(duration, Math.max(0, (lastP / 100) * duration + step));
+    onSeek?.(to);
+    // shown at once (the player takes a moment to say so itself), so a second press goes on from here
+    lastP = (to / duration) * 100;
+    if (scrubP == null) {
+      fill.style.width = `${lastP}%`;
+      timeEl.textContent = `${fmtTime(to)} / ${fmtTime(duration)}`;
+    }
+    lastAria = -Infinity;
+    updateAria(to);
+  });
 
   return {
     el: root,

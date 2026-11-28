@@ -8,11 +8,12 @@
 //   node scripts/pass-check.mjs [stations=0,...,7] [samples per rack=6]   (SIENNA_PORT)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
+import { glArgs } from './safe.mjs';
 const stations = (process.argv[2] ?? '0,1,2,3,4,5,6,7').split(',').map(Number), n = Number(process.argv[3] ?? 6);
 const port = Number(process.env.SIENNA_PORT) || 5244;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 let total = 0;
 for (const at of stations) {
   const page = await b.newPage({ viewport: { width: 1170, height: 730 } });

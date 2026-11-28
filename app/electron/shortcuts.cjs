@@ -56,7 +56,7 @@ function createShortcuts(actions, { trusted = () => false, windows = () => [], m
   }
   function registerOne(name) {
     let ok = false;
-    try { ok = globalShortcut.register(keys[name], fired[name]); } catch { ok = false; }   // throws on a malformed accelerator
+    try { ok = globalShortcut.register(keys[name], fired[name]); } catch { /* throws on a malformed accelerator */ }
     if (ok) failed.delete(name);
     else { failed.add(name); console.warn(`Sienna: could not register ${keys[name]} (${name})`); }
     return ok;
@@ -76,7 +76,7 @@ function createShortcuts(actions, { trusted = () => false, windows = () => [], m
     if (clash) { resume(); return { ok: false, error: 'clash', with: clash }; }
     const old = keys[name];
     keys[name] = accel;
-    paused = false;
+    paused = false; pausedBy = null;
     unregisterAll();
     registerMediaKeys();
     let ok = true;
@@ -87,8 +87,24 @@ function createShortcuts(actions, { trusted = () => false, windows = () => [], m
     return { ok: true };
   }
   // While Settings is recording a new shortcut, the global ones are let go, so pressing one reaches the page.
-  function pause() { paused = true; unregisterAll(); }
-  function resume() { if (paused) { paused = false; registerAll(); } }
+  // The page that asked (`by`, its webContents) may go away before it says it is done: its window is
+  // closed, it reloads, it crashes. They come back then too, or the shortcuts and the media keys would
+  // stay dead until Sienna was started again.
+  let pausedBy = null;
+  const watched = new WeakSet();
+  function pause(by = null) {
+    paused = true;
+    pausedBy = by;
+    unregisterAll();
+    if (!by || watched.has(by)) return;
+    watched.add(by);
+    const gone = () => { if (pausedBy === by) resume(); };
+    for (const ev of ['destroyed', 'render-process-gone', 'did-navigate']) by.on(ev, gone);
+  }
+  function resume() {
+    pausedBy = null;
+    if (paused) { paused = false; registerAll(); }
+  }
 
   const refuse = () => { throw new Error('ipc from an untrusted page'); };
   ipcMain.handle('keys:get', (e) => (trusted(e) ? state() : refuse()));
@@ -96,11 +112,11 @@ function createShortcuts(actions, { trusted = () => false, windows = () => [], m
   ipcMain.handle('keys:reset', (e) => {
     if (!trusted(e)) refuse();
     for (const k of Object.keys(DEFAULTS)) keys[k] = DEFAULTS[k];
-    paused = false;
+    paused = false; pausedBy = null;
     registerAll(); save(); broadcast();
     return state();
   });
-  ipcMain.on('keys:pause', (e, on) => { if (trusted(e)) (on ? pause() : resume()); });
+  ipcMain.on('keys:pause', (e, on) => { if (trusted(e)) (on ? pause(e.sender) : resume()); });
 
   return {
     register() {

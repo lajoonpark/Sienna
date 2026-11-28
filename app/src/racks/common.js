@@ -6,6 +6,8 @@
 //   getCover(url, size = 256) -> { tex, loaded: Promise, color }   URL-keyed cache. 256 px for
 //        resting sleeves, 512 px for the hovered one (LRU of 32). Videos' 16:9 thumbs are cropped to
 //        the middle square. `color` = average cover colour once loaded (null before).
+//   trimCovers({ roots, keep })  lets go of the 256 px covers nothing shows any more (main.js and mini.js
+//        call it now and then); a Sleeve's `small` goes in `keep`.
 //   new Sleeve(item, index, { size = 0.31, thick = 0.014 })       sleeve mesh + vinyl disc.
 //        .mesh (add it to your root; origin = centre of the sleeve, cover faces +z, top edge +y),
 //        .disc (child group, the vinyl, slides out of the top), .lift/.peek/.bump/.appear (0..1,
@@ -54,6 +56,7 @@ import { brushStroke } from '../ui/brush.js';
 import { COLORS } from '../ui/tokens.js';
 import { FONT, fontReady, onLettering } from '../style.js';
 import { createPlayTracker } from './play.js';
+import { staleCovers } from './cover-cache.js';
 
 export { fontReady, createPlayTracker }; // live: a Lettering change swaps it (style.js)
 
@@ -95,7 +98,7 @@ const BIG_KEEP = 32;
 // A cover that could not be fetched (a timeout while a shelf's worth loads at once, a dropped
 // connection) is tried again after these waits, instead of staying blank paper for good.
 const RETRY_MS = [5000, 20000, 60000];
-const [avgC, avgG] = typeof document !== 'undefined' ? canvas(8, 8) : [];
+const [, avgG] = typeof document !== 'undefined' ? canvas(8, 8) : [];
 
 // Spine colour from the cover: the average, deepened a little so the row reads as a painted band.
 function averageColor(img) {
@@ -130,9 +133,15 @@ function paintPump() {
 // painted on again (the cover arriving, Settings > Cover art). Not the 512 px ones: the LRU below lets go
 // of those while a record on the platter may still show one, and three then uploads it again from its canvas.
 const SLIM_UP_TO = 256;
-function slim(tex, c, size) {
+function slim(tex, c, size, e) {
   if (size > SLIM_UP_TO) return;
-  tex.onUpdate = () => { if (c.width === size) c.width = c.height = 1; }; // three calls this after each upload
+  // three calls this after each upload
+  tex.onUpdate = () => {
+    // Let go of (trimCovers), and here it is on the GPU again: something still shows it after all, and has
+    // most likely just been handed its one-pixel canvas. Take it back and paint it again.
+    if (e.asleep) wakeCover(e);
+    else if (c.width === size) c.width = c.height = 1;
+  };
 }
 // before drawing on a cover's canvas: its full size again (a shrunk one comes back empty, so draw all of it)
 const unslim = (c, size) => { if (c.width !== size) c.width = c.height = size; };
@@ -148,6 +157,7 @@ export function getCover(url, size = 256) {
   const key = `${size}|${url || ''}`;
   let e = covers.get(key);
   if (e) {
+    e.used = performance.now();
     if (size > 256) { bigOrder.splice(bigOrder.indexOf(key), 1); bigOrder.push(key); }
     return e;
   }
@@ -165,8 +175,9 @@ export function getCover(url, size = 256) {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = size > 256 ? 8 : 4;
-  slim(tex, c, size);
-  e = { tex, color: null, loaded: Promise.resolve(), misses: 0, gaveUp: false, colorWaiters: [] };
+  // size, used (when it was last asked for) and asleep (let go of): see trimCovers
+  e = { tex, key, size, used: performance.now(), asleep: false, color: null, loaded: Promise.resolve(), misses: 0, gaveUp: false, colorWaiters: [] };
+  slim(tex, c, size, e);
   // the GPU lost everything (see restoreCovers): the paper again at full size, then the picture
   e.restore = () => { tex.dispose(); unslim(c, size); blank(); tex.needsUpdate = true; e.repaint?.(); };
   covers.set(key, e);
@@ -181,6 +192,7 @@ export function getCover(url, size = 256) {
   if (url) {
     // (again when Settings > Cover art changes: every cover already made is repainted in place)
     e.repaint = () => (e.loaded = paintOffThread(url, size).then((done) => {
+      if (e.asleep) { done?.bitmap.close(); return false; } // let go of meanwhile: nothing to paint it for
       if (!done) return paintHere(url, size, g, tex, e); // no worker, or it could not fetch the picture
       unslim(c, size);
       g.clearRect(0, 0, size, size);
@@ -203,6 +215,41 @@ settings.on('covers', () => { for (const e of covers.values()) e.repaint?.(); })
 // After a lost GPU context three uploads every texture again from its image, and a shrunk canvas has none.
 export function restoreCovers() { for (const e of covers.values()) e.restore(); }
 
+// ---- letting go of covers nobody shows any more ----
+// The resting covers were kept for as long as the window was open, so every restock, search and queue
+// left its pictures on the GPU for good. trimCovers lets go of the ones that no sleeve shows (`keep`: the
+// racks' sleeves hold theirs even while the big hover cover is in their place), that no material under
+// `roots` shows (the album spread, the drawer's stack) and that nobody has asked for in a while
+// (cover-cache.js; idleMs: how long that is, for checks). Asked for again later, a cover is simply made
+// again. -> how many went.
+export function trimCovers({ roots = [], keep = [], idleMs } = {}) {
+  const shown = new Set();
+  const note = (m) => { if (m?.map) shown.add(m.map); };   // (crisp() lights its map through emissiveMap too: the same texture)
+  for (const root of roots) root?.traverse((o) => { if (Array.isArray(o.material)) o.material.forEach(note); else note(o.material); });
+  const inUse = new Set(keep);
+  for (const e of covers.values()) if (shown.has(e.tex)) inUse.add(e);
+  const gone = staleCovers(covers, inUse, performance.now(), idleMs === undefined ? {} : { idleMs });
+  for (const key of gone) {
+    const e = covers.get(key);
+    covers.delete(key);
+    e.asleep = true;
+    e.colorWaiters.length = 0;
+    e.tex.dispose();
+  }
+  return gone.length;
+}
+// A cover that was let go of and turns out to be shown still (see slim): back in the cache, unless its
+// picture has been made afresh meanwhile, and painted again. Once this frame is drawn, not now: this runs
+// in the middle of three's upload of it, where a new version would be taken for the one just uploaded.
+function wakeCover(e) {
+  e.asleep = false;
+  e.used = performance.now();
+  if (!covers.has(e.key)) covers.set(e.key, e);
+  queueMicrotask(() => e.restore());
+}
+// for checks: how many covers are kept, by size
+export const coverStats = () => { const n = { small: 0, big: 0 }; for (const e of covers.values()) n[e.size > 256 ? 'big' : 'small']++; return n; };
+
 // The cover's spine colour, now or once its picture is painted (maybe on a retry).
 // Only while a picture may still come: the waiters hold their sleeves, and the cache never lets go.
 function onCoverColor(e, fn) {
@@ -222,6 +269,7 @@ function paintHere(url, size, g, tex, e) {
       // painting a cover is a few ms of canvas work, and a shelf's worth arrives at once (often
       // during the intro push-in), so they are painted in small slices, a few per frame
       paintSoon(() => {
+        if (e.asleep) { res(false); return; }
         const s = Math.min(img.width, img.height);
         unslim(g.canvas, size);
         g.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
