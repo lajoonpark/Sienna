@@ -33,6 +33,7 @@ import { createSpread } from './spread.js';
 import { createCollectionList } from './collection-list.js';
 import { isLikedCollection, shouldUseCollectionList } from './collection-filter.js';
 import { createLiner, showWebGLError } from './liner.js';
+import { queueStackArts, queuePick } from './queue-pick.js';
 import { onOverlay } from './ui/sheet.js';
 import { setLamp } from './ui/veil.js';
 import { injectTokens } from './ui/tokens.js';
@@ -196,10 +197,7 @@ const liner = createLiner({
     return suitcase.openDrawer(initialCovers, { showStack });
   },
   onQueueCovers: (items) => {
-    if (!items?.length) return;
-    const sel = items.findIndex((it) => it.selected);
-    const ordered = sel > 0 ? [...items.slice(sel), ...items.slice(0, sel)] : items;
-    const covers = ordered.slice(0, 5).map((it) => getCover(it.art, 256).tex);
+    const covers = queueStackArts(items).map((art) => getCover(art, 256).tex);
     if (covers.length) suitcase.setDrawerCovers(covers);
   },
   onQueueClose: () => {
@@ -209,17 +207,9 @@ const liner = createLiner({
   getDrawerPos: () => suitcase.drawerScreenPos(),
   onPickQueue: (it, idx, from) => {
     pacer?.kick();
-    if (it.videoId) {
-      const play = {
-        videoId: it.videoId,
-        ...(it.playlistId ? { playlistId: it.playlistId } : {}),
-        ...(it.params ? { params: it.params } : {}),
-        ...(it.fromLive ? { fromLive: true, queueIndex: it.index ?? idx } : {}),
-      };
-      startSong(music, suitcase.suitcase, { play });
-    } else {
-      music.command('queueIndex', it.index ?? idx);
-    }
+    const { play, queueIndex } = queuePick(it, idx);
+    if (play) startSong(music, suitcase.suitcase, { play });
+    else music.command('queueIndex', queueIndex);
     const cover = getCover(it.art, 512).tex;
     if (from) suitcase.receiveFromScreen(from, cover);
     else suitcase.dispense(cover);

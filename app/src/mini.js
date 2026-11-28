@@ -28,6 +28,7 @@ import { createTimeOfDay } from './timeofday.js';
 import { registerLamp, glowMesh } from './env.js';
 import { LISTENING_TABLE, LOUNGE_LAMP, buildLoungeCore, buildCourtyardVista } from './loungecorner.js';
 import { createLiner, showWebGLError } from './liner.js';
+import { queueStackArts, queuePick } from './queue-pick.js';
 import { onOverlay } from './ui/sheet.js';
 import { setLamp } from './ui/veil.js';
 import { injectTokens } from './ui/tokens.js';
@@ -162,26 +163,15 @@ const liner = timePart('liner', () => createLiner({
   music,
   onQueueOpen: ({ showStack }) => tray.openHold(lastState?.art ? [getCover(lastState.art, 256).tex] : [], { showStack }),
   onQueueCovers: (items) => {
-    if (!items?.length) return;
-    const sel = items.findIndex((it) => it.selected);
-    const ordered = sel > 0 ? [...items.slice(sel), ...items.slice(0, sel)] : items;
-    const covers = ordered.slice(0, 5).map((it) => getCover(it.art, 256).tex);
+    const covers = queueStackArts(items).map((art) => getCover(art, 256).tex);
     if (covers.length) tray.setStackCovers(covers);
   },
   onQueueClose: () => tray.closeHold(),
   getDrawerPos: drawerScreenPos,
   onPickQueue: (it, idx, from) => {
-    if (it.videoId) {
-      const play = {
-        videoId: it.videoId,
-        ...(it.playlistId ? { playlistId: it.playlistId } : {}),
-        ...(it.params ? { params: it.params } : {}),
-        ...(it.fromLive ? { fromLive: true, queueIndex: it.index ?? idx } : {}),
-      };
-      startSong(music, suitcase, { play });
-    } else {
-      music.command('queueIndex', it.index ?? idx);
-    }
+    const { play, queueIndex } = queuePick(it, idx);
+    if (play) startSong(music, suitcase, { play });
+    else music.command('queueIndex', queueIndex);
     const cover = getCover(it.art, 512).tex;
     if (from) {
       tray.closeHold();
