@@ -13,7 +13,7 @@ import { toon, crisp, crispText, unpinned, GLOW_LAYER } from './materials.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
 import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
-import { focusHover, framedAtRest, hoverPanBounds, lockHover } from './racks/hover.js';
+import { focusHover, framedAtRest, hoverPanBounds, lockHover, zoomCutNeeded } from './racks/hover.js';
 import { warmUp } from './warmup.js';
 import { STATIONS, HOME, assignShelves } from './stations.js';
 import { createNav, AT_HOME, paintViews, introBars, BASE_FOV, DOOR_SWING } from './nav.js';
@@ -877,8 +877,10 @@ function steerClear(dt) {
   if (!h || focus.framed) return;
   const p = camera.projectionMatrix.elements, ex = (2 * FOCUS.edge) / innerWidth, ey = (2 * FOCUS.edge) / innerHeight;
   const [l, r, b, t] = h.all;
-  const cur = hoverPanBounds(h, (2 * FOCUS.keep) / innerWidth, (2 * FOCUS.keep) / innerHeight);
-  const fit = [[-1 + ex - l, 1 - ex - r], [FOCUS.floor - b, 1 - ey - t]];
+  const keep = [(2 * FOCUS.keep) / innerWidth, (2 * FOCUS.keep) / innerHeight];
+  const cur = hoverPanBounds(h, keep[0], keep[1]);
+  const safe = [[-1 + ex, 1 - ex], [FOCUS.floor, 1 - ey]];
+  const fit = [[safe[0][0] - l, safe[0][1] - r], [safe[1][0] - b, safe[1][1] - t]];
   // the move that would take the pan back out, where it is not needed
   const back = [(focus.pan.x * p[0]) / h.z, (focus.pan.y * p[5]) / h.z];
   const d = [0, 1].map((i) => clampTo(clampTo(back[i], fit[i]), cur[i]));
@@ -906,7 +908,7 @@ function steerClear(dt) {
   }
   [d[0], d[1]] = best;
   focus.panLeft = Math.hypot(d[0], d[1]);
-  focus.stuck = !within(d[0], fit[0]) || !within(d[1], fit[1]) || bestO > 0;
+  focus.stuck = zoomCutNeeded(h, d, safe, keep, boxes, bestO);
   if (focus.stuck && h.settled) focus.cut = Math.min(1, focus.cut + dt * FOCUS.cutRate);
   // camera right = picture left
   const k = 1 - Math.exp(-dt * FOCUS.panRate);
@@ -1154,13 +1156,18 @@ function frame(t, dtOverride, draw = true) {
 // or flying to the suitcase, the suitcase in hand, the list, and a trip's bars or paint wipe.
 const sharpTag = createSharpTag();
 const sharpTags = [];
+const tagOccluders = () => {
+  const box = suitcase.caseBox();
+  return box ? [box] : null;
+};
 function updateSharpTag(ui) {
   const rack = currentRack(), core = rack?.core;
-  const covered = !ui || suitcase.over || suitcase.flying || collectionList.isOpen() || !!core?.sleeves[core.hovered]?.picking
-    || (painter?.bars ?? 0) > 0 || (!pinnedPose && nav.wipe > 0.001 && nav.wipe < 1.999);
+  const covered = !ui || suitcase.over || suitcase.flying || suitcase.tray.moving || collectionList.isOpen()
+    || !!core?.sleeves[core.hovered]?.picking || (painter?.bars ?? 0) > 0
+    || (!pinnedPose && nav.wipe > 0.001 && nav.wipe < 1.999);
   sharpTags.length = 0;
   if (!covered) sharpTags.push(spread.tag, core?.tag);
-  if (sharpTag.update(camera, sharpTags)) painter?.invalidate();
+  if (sharpTag.update(camera, sharpTags, tagOccluders)) painter?.invalidate();
 }
 
 addEventListener('resize', () => {

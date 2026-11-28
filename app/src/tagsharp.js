@@ -43,6 +43,20 @@ function corners(tag, camera) {
   return out;
 }
 
+// whether any corner-quad overlaps an occluder rect { left, right, top, bottom } in CSS px
+function overlapsAny(q, occluders) {
+  if (!occluders?.length) return false;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of q) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  for (const r of occluders) {
+    if (r && maxX > r.left && minX < r.right && maxY > r.top && minY < r.bottom) return true;
+  }
+  return false;
+}
+
 export function createSharpTag(doc = document) {
   const el = doc.createElement('canvas');
   el.className = 'sharp-tag';
@@ -66,12 +80,15 @@ export function createSharpTag(doc = document) {
 
   return {
     el,
-    update(camera, tags) {
+    update(camera, tags, occluders = null) {
       camera.updateWorldMatrix(true, false);
+      let rects;
       for (const tag of tags) {
         if (!tag?.rev || !onStage(tag.mesh)) continue;
         const q = corners(tag, camera);
         if (!q) continue;
+        if (rects === undefined) rects = typeof occluders === 'function' ? occluders() : occluders;
+        if (overlapsAny(q, rects)) continue;
         const across = (a, b) => Math.hypot(q[b][0] - q[a][0], q[b][1] - q[a][1]);
         const cssW = (across(0, 1) + across(3, 2)) / 2;
         if (cssW < MIN_PX) continue;

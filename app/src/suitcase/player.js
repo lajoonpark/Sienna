@@ -127,6 +127,22 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
   const cursor = () => { if (onCanvasLast) renderer.domElement.style.cursor = suitcase.cursor(); };
   let onCanvasLast = false;
   let onCaptionLast = false;
+  function syncOver() {
+    const prev = over;
+    if (!shown || !pointer || !onCanvasLast) {
+      suitcase.hover(null);
+      over = false;
+    } else if (suitcase.dragging) {
+      over = true;
+    } else if (sunk > 0.3) {
+      // Tucked down: keep controls inert while still blocking hovers on records behind the visible strip.
+      suitcase.hover(null);
+      over = suitcase.touches(pointer, ocam);
+    } else {
+      over = suitcase.hover(pointer, ocam).over;
+    }
+    if (over || prev) cursor();
+  }
   addEventListener('pointermove', (e) => {
     onCanvasLast = onCanvas(e) || suitcase.dragging;
     onCaptionLast = onCaption(e);
@@ -134,9 +150,7 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
     pointerPx = { x: e.clientX, y: e.clientY };
     if (!shown) return;
     if (suitcase.dragging) { suitcase.pointerDrag(ndc, ocam); cursor(); return; }
-    if (!onCanvasLast || sunk > 0.3) { suitcase.hover(null); over = false; return; }
-    over = suitcase.hover(ndc, ocam).over;
-    cursor();
+    syncOver();
   }, true);
   addEventListener('pointerdown', (e) => {
     onCanvasLast = onCanvas(e) || suitcase.dragging;
@@ -217,9 +231,49 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
     }
     tuckStep(dt);
     suitcase.update(dt);
+    syncOver();
     tray.update(dt);
     flights.update(dt);
     caption.setScrub(suitcase.scrubbing ? suitcase.progress : null);
+  }
+
+  // Live CSS-px bounding box of the visible suitcase, for sharpTag to stand aside before text renders over it.
+  const _boxV = new THREE.Vector3();
+  function caseBox() {
+    if (!place.visible) return null;
+    const W = renderer.domElement.clientWidth || innerWidth;
+    const H = renderer.domElement.clientHeight || innerHeight;
+    const { caseRoot } = suitcase.parts;
+    caseRoot.updateWorldMatrix(true, true);
+    ocam.updateMatrixWorld();
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    const visit = (o) => {
+      if (!o.visible) return;
+      if (o.isMesh && o.geometry) {
+        const g = o.geometry;
+        if (!g.boundingBox) g.computeBoundingBox();
+        const b = g.boundingBox;
+        for (let k = 0; k < 8; k++) {
+          _boxV.set(k & 1 ? b.max.x : b.min.x, k & 2 ? b.max.y : b.min.y, k & 4 ? b.max.z : b.min.z)
+            .applyMatrix4(o.matrixWorld)
+            .applyMatrix4(ocam.matrixWorldInverse);
+          if (_boxV.z >= -ocam.near) continue;
+          _boxV.applyMatrix4(ocam.projectionMatrix);
+          x0 = Math.min(x0, _boxV.x); x1 = Math.max(x1, _boxV.x);
+          y0 = Math.min(y0, _boxV.y); y1 = Math.max(y1, _boxV.y);
+        }
+      }
+      for (const c of o.children) visit(c);
+    };
+    visit(caseRoot);
+    if (!(x0 < x1 && y0 < y1)) return null;
+    const pad = 10;
+    return {
+      left: ((x0 + 1) / 2) * W - pad,
+      right: ((x1 + 1) / 2) * W + pad,
+      top: ((1 - y1) / 2) * H - pad,
+      bottom: ((1 - y0) / 2) * H + pad,
+    };
   }
 
   const drawerScreenPos = () => tray.screenSpan(ocam, {
@@ -259,6 +313,7 @@ export function createPlayer({ renderer, painter, music, camera, onQueue = null,
       const right = Math.max(caseRect.right, c?.right ?? 0), top = Math.min(caseRect.top, c?.top ?? Infinity);
       return { left, right, top, bottom, width: right - left, height: bottom - top, x: left, y: top };
     },
+    caseBox,
     tuck(on) { tuckWanted = on; },
     wake(seconds = 2.5) { hold = Math.max(hold, seconds); },
     get tucked() { return sunk; },

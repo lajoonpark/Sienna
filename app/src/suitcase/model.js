@@ -173,9 +173,9 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false, light
   solids.push(add(drawer, rbox(w, 0.08, d, 0.03), mats.leather, 0, 0.04, 0));                                   // drawer floor
   add(drawer, new THREE.BoxGeometry(innerW, 0.025, innerD), mats.lining, 0, 0.09, 0);                           // lined interior bed
   solids.push(add(drawer, rbox(w, drawerH, wt, 0.05), mats.leather, 0, drawerH / 2, d / 2 - wt / 2));           // full-width front wall
-  add(drawer, rbox(w, drawerH - 0.02, wt, 0.04), mats.leather, 0, (drawerH - 0.02) / 2, -d / 2 + wt / 2);       // back wall
+  solids.push(add(drawer, rbox(w, drawerH - 0.02, wt, 0.04), mats.leather, 0, (drawerH - 0.02) / 2, -d / 2 + wt / 2)); // back wall
   for (const sx of [-1, 1]) {
-    add(drawer, rbox(wt, drawerH - 0.02, d - wt * 1.4, 0.04), mats.leather, sx * (w / 2 - wt / 2), (drawerH - 0.02) / 2, 0); // side walls
+    solids.push(add(drawer, rbox(wt, drawerH - 0.02, d - wt * 1.4, 0.04), mats.leather, sx * (w / 2 - wt / 2), (drawerH - 0.02) / 2, 0)); // side walls
     add(drawer, new THREE.BoxGeometry(0.02, drawerH - 0.11, innerD), mats.lining, sx * (innerW / 2 - 0.01), 0.09 + (drawerH - 0.11) / 2, 0); // side lining
     add(drawer, rbox(0.035, 0.055, d - 0.55, 0.012), mats.brass, sx * (w / 2 + 0.005), drawerH - 0.06, -0.05);  // brass slide glides
   }
@@ -183,7 +183,7 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false, light
   add(drawer, new THREE.BoxGeometry(innerW, drawerH - 0.11, 0.02), mats.lining, 0, 0.09 + (drawerH - 0.11) / 2, innerD / 2 - 0.01);  // inner front lining
   add(drawer, rbox(w + 0.03, 0.065, d + 0.03, 0.03), mats.welt, 0, 0.085, 0);                                   // foot welt around bottom
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    add(drawer, rbox(0.3, 0.28, 0.3, 0.05), mats.brass, sx * (w / 2 - 0.1), 0.14, sz * (d / 2 - 0.1));          // bottom brass corners
+    solids.push(add(drawer, rbox(0.3, 0.28, 0.3, 0.05), mats.brass, sx * (w / 2 - 0.1), 0.14, sz * (d / 2 - 0.1))); // bottom brass corners
   }
 
   // ---- lid, hinged along the back top edge ----
@@ -200,11 +200,11 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false, light
   for (const sx of [-1, 1]) add(lidPivot, new THREE.BoxGeometry(band, lip, d - 0.3), mats.leather, sx * (w / 2 - band / 2 - 0.02), -lip / 2 + 0.01, d / 2);
   add(lidPivot, rbox(w + 0.03, 0.07, d + 0.03, 0.03), mats.welt, 0, 0.07, d / 2);
   for (const sx of [-1, 1]) {
-    for (const sz of [0, 1]) add(lidPivot, rbox(0.3, 0.3, 0.3, 0.05), mats.brass, sx * (w / 2 - 0.1), lh - 0.15, 0.1 + sz * (d - 0.2));
+    for (const sz of [0, 1]) solids.push(add(lidPivot, rbox(0.3, 0.3, 0.3, 0.05), mats.brass, sx * (w / 2 - 0.1), lh - 0.15, 0.1 + sz * (d - 0.2)));
     add(lidPivot, rbox(0.34, 0.2, 0.06, 0.012), mats.brass, sx * 0.8, lh * 0.38, d + 0.025);
   }
   add(lidPivot, rbox(0.3, 0.2, 0.06, 0.012), mats.brass, 0, lh * 0.38, d + 0.025);
-  add(lidPivot, rbox(0.7, 0.07, 0.1, 0.03), mats.welt, 0, lh - 0.02, 0.2);           // a strap loop on top
+  solids.push(add(lidPivot, rbox(0.7, 0.07, 0.1, 0.03), mats.welt, 0, lh - 0.02, 0.2)); // a strap loop on top
 
   // ---- the front: speakers & clasps on upper chassis, leather handle pull on the bottom drawer ----
   const z = d / 2;
@@ -216,12 +216,12 @@ export function buildSuitcase({ recordKit, ground = 'shadow', big = false, light
     add(caseRoot, rbox(0.2, 0.05, 0.07, 0.01), mats.dark, sx * 0.8, drawerH + upperH * 0.56, z + 0.045);
   }
   // suitcase handle sits on the front of the full-bottom drawer so pulling it slides the drawer open
-  add(drawer, rbox(0.98, 0.19, 0.13, 0.05), mats.handle, 0, drawerH * 0.54, z + 0.065);
+  solids.push(add(drawer, rbox(0.98, 0.19, 0.13, 0.05), mats.handle, 0, drawerH * 0.54, z + 0.065));
   for (const sx of [-1, 1]) add(drawer, cyl(0.04, 0.03, 10).rotateX(Math.PI / 2), mats.brass, sx * 0.39, drawerH * 0.54, z + 0.135);
   add(caseRoot, rbox(0.2, 0.2, 0.05, 0.01), mats.brass, 0, bh * 0.86, z + 0.03);                   // catch
 
   // ---- platter and the record seat ----
-  add(caseRoot, cyl(L.platterRadius, 0.05, 64), mats.platter, L.record.x, deckTop + 0.025, L.record.z);
+  solids.push(add(caseRoot, cyl(L.platterRadius, 0.05, 64), mats.platter, L.record.x, deckTop + 0.025, L.record.z));
   add(caseRoot, cyl(0.03, 0.12, 12), mats.brass, L.record.x, deckTop + 0.07, L.record.z);   // the spindle stands even with no record on it
   const seat = new THREE.Group();                 // the record turns about its own centre
   seat.position.set(L.record.x, deckTop + 0.06, L.record.z);
