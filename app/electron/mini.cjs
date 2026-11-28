@@ -1,18 +1,26 @@
 // The small window: its global shortcut (Control+Option+K by default, set in Settings > Shortcuts, see
 // shortcuts.cjs) pops up a frameless, transparent, always-on-top window at the cursor with the suitcase
 // on a paper card (mini.html).
-const { BrowserWindow, screen, ipcMain } = require('electron');
+const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('node:path');
 const { lockNavigation, isAppUrl, devServerUrl, devEnv, isPackaged } = require('./security.cjs');
 
 const SIZE = { width: 540, height: 620 };    // matches W x H in src/mini.js
 const RELEASE_MS = (Number(devEnv('SIENNA_MINI_RELEASE_S')) || 5 * 60) * 1000;
+// The page shuts the lid, fades the card and says 'mini:closed' (about a second). If it never does (it
+// hung), the window is put away anyway after this long, rather than left on screen for good.
+const CLOSE_MS = 4000;
 
 function createMini({ onVisible, trusted = () => false } = {}) {
   let win = null;
   let state = 'hidden';                       // hidden | open | closing
   let shownAt = 0;
   let releaseTimer = null;
+  let closeTimer = null;
+  // Sienna is quitting: no window is made from here on. A window made while the others close keeps the
+  // app from ever finishing its quit (it is "still open"), until something closes that one too.
+  let quitting = false;
+  app.on('before-quit', () => { quitting = true; clearTimeout(releaseTimer); clearTimeout(closeTimer); });
 
   function releaseLater() {
     clearTimeout(releaseTimer);
@@ -23,7 +31,7 @@ function createMini({ onVisible, trusted = () => false } = {}) {
     const mac = process.platform === 'darwin';
     const extraArgs = ['--sienna-mini'];
     if (!isPackaged()) extraArgs.push('--sienna-dev');
-    win = new BrowserWindow({
+    const w = win = new BrowserWindow({
       ...SIZE,
       show: false,
       frame: false,
@@ -48,20 +56,27 @@ function createMini({ onVisible, trusted = () => false } = {}) {
         additionalArguments: extraArgs,
       },
     });
-    win.setAlwaysOnTop(true, 'pop-up-menu');
-    if (mac) win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
-    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    win.webContents.on('will-navigate', (e) => e.preventDefault());
-    lockNavigation(win.webContents, isAppUrl);
+    w.setAlwaysOnTop(true, 'pop-up-menu');
+    if (mac) w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+    w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    w.webContents.on('will-navigate', (e) => e.preventDefault());
+    lockNavigation(w.webContents, isAppUrl);
     const dev = devServerUrl();
-    if (dev) win.loadURL(new URL('mini.html', dev).href);
-    else win.loadFile(path.join(__dirname, '..', 'dist', 'mini.html'));
-    win.on('blur', () => { if (state === 'open' && Date.now() - shownAt > 400) close(); });
-    win.on('closed', () => { win = null; state = 'hidden'; sentKey = null; onVisible?.(); });
-    win.webContents.on('did-finish-load', () => { sentKey = null; if (lastState) playerState(lastState); });
-    win.webContents.on('render-process-gone', () => {
-      if (win && !win.isDestroyed()) win.destroy();
-      win = null; state = 'hidden'; sentKey = null; onVisible?.();
+    const loading = dev ? w.loadURL(new URL('mini.html', dev).href) : w.loadFile(path.join(__dirname, '..', 'dist', 'mini.html'));
+    loading.catch((e) => console.warn('[sienna] the mini window did not load:', e.message));
+    w.on('blur', () => { if (state === 'open' && Date.now() - shownAt > 400) close(); });
+    // (only for the window that is the mini window now: one that crashed has been replaced by then)
+    const gone = () => {
+      if (win !== w) return;
+      clearTimeout(closeTimer);
+      win = null; state = 'hidden'; sentKey = null;
+      onVisible?.();
+    };
+    w.on('closed', gone);
+    w.webContents.on('did-finish-load', () => { sentKey = null; if (lastState) playerState(lastState); });
+    w.webContents.on('render-process-gone', () => {
+      if (!w.isDestroyed()) w.destroy();
+      gone();
     });
   }
 
@@ -87,7 +102,9 @@ function createMini({ onVisible, trusted = () => false } = {}) {
   }
 
   function open() {
+    if (quitting) return;
     clearTimeout(releaseTimer);
+    clearTimeout(closeTimer);
     if (!win) create();
     if (state === 'hidden') {
       place();
@@ -96,13 +113,32 @@ function createMini({ onVisible, trusted = () => false } = {}) {
     }
     state = 'open';
     onVisible?.();
-    if (win.webContents.isLoading()) win.webContents.once('did-finish-load', () => send('mini:open'));
+    // (shut again before its page had loaded: it is not opened behind the hidden window's back)
+    if (win.webContents.isLoading()) win.webContents.once('did-finish-load', () => { if (state === 'open') send('mini:open'); });
     else { if (lastState) send('ytm:state', lastState); send('mini:open'); }
+  }
+
+  // Out of sight, and let go of altogether if it is not asked for again for a while.
+  function hide() {
+    clearTimeout(closeTimer);
+    state = 'hidden';
+    if (win && !win.isDestroyed()) win.hide();
+    onVisible?.();
+    releaseLater();
+  }
+
+  // The page is closing (it shuts the lid and fades first): hidden when it says so, or after CLOSE_MS.
+  function closing() {
+    state = 'closing';
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => { if (state === 'closing') hide(); }, CLOSE_MS);
   }
 
   function close() {
     if (state !== 'open') return;
-    state = 'closing';
+    // a page still loading has drawn nothing and is not listening yet: there is nothing to wait for
+    if (!win || win.isDestroyed() || win.webContents.isLoading()) { hide(); return; }
+    closing();
     send('mini:close');
   }
 
@@ -112,22 +148,17 @@ function createMini({ onVisible, trusted = () => false } = {}) {
   }
 
   ipcMain.on('mini:closing', (e) => {
-    if (win && e.sender === win.webContents && trusted(e) && state === 'open') state = 'closing';
+    if (win && e.sender === win.webContents && trusted(e) && state === 'open') closing();
   });
 
   ipcMain.on('mini:closed', (e) => {
     if (!win || e.sender !== win.webContents || !trusted(e)) return;
-    if (state === 'closing' || state === 'open') {
-      state = 'hidden';
-      win.hide();
-      onVisible?.();
-      releaseLater();
-    }
+    if (state === 'closing' || state === 'open') hide();
   });
 
   return {
     isOpen: () => state !== 'hidden',
-    prewarm() { if (!win) { create(); releaseLater(); } },
+    prewarm() { if (!win && !quitting) { create(); releaseLater(); } },
     send,
     state: playerState,
     toggle, open, close,

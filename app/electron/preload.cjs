@@ -5,6 +5,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const isDev = process.argv.includes('--sienna-dev');
+// Subscribe the page to a channel. Nothing is handed back: ipcRenderer.on() returns ipcRenderer itself,
+// and that must never cross the bridge into the page.
+const on = (channel) => (cb) => { ipcRenderer.on(channel, (_e, ...args) => cb(...args)); };
 
 contextBridge.exposeInMainWorld('sienna', {
   isDev,
@@ -31,24 +34,24 @@ contextBridge.exposeInMainWorld('sienna', {
   switchAccount: (i) => ipcRenderer.invoke('ytm:switchAccount', i),
   addAccount: () => ipcRenderer.invoke('ytm:addAccount'),
   signOut: () => ipcRenderer.invoke('ytm:signOut'),
-  onState: (cb) => ipcRenderer.on('ytm:state', (_e, s) => cb(s)),
-  onAccount: (cb) => ipcRenderer.on('ytm:account', (_e, signedIn) => cb(signedIn)),
-  onStatus: (cb) => ipcRenderer.on('ytm:status', (_e, st) => cb(st)),
+  onState: on('ytm:state'),
+  onAccount: on('ytm:account'),
+  onStatus: on('ytm:status'),
   // the brush strokes baked at build time (app/strokes/shop.bin.gz)
   shippedStrokes: () => ipcRenderer.invoke('strokes:shipped'),
   // how warm the computer is, and battery (electron/power.cjs)
   power: {
     get: () => ipcRenderer.invoke('power:get'),
-    onChange: (cb) => ipcRenderer.on('power:state', (_e, s) => cb(s)),
+    onChange: on('power:state'),
   },
   // keyboard shortcuts (electron/shortcuts.cjs)
   keys: {
     get: () => ipcRenderer.invoke('keys:get'),
     set: (name, accel) => ipcRenderer.invoke('keys:set', name, accel),
     reset: () => ipcRenderer.invoke('keys:reset'),
-    pause: (on) => ipcRenderer.send('keys:pause', on),
-    onChange: (cb) => ipcRenderer.on('keys:changed', (_e, k) => cb(k)),
-    onUsed: (cb) => ipcRenderer.on('keys:used', (_e, name) => cb(name)),
+    pause: (paused) => ipcRenderer.send('keys:pause', paused),
+    onChange: on('keys:changed'),
+    onUsed: on('keys:used'),
   },
   // app-level controls (login item, Discord RPC, manual update check, diagnostics, app menu actions)
   app: {
@@ -58,14 +61,14 @@ contextBridge.exposeInMainWorld('sienna', {
     checkUpdates: () => ipcRenderer.invoke('app:checkUpdates'),
     openRelease: (url) => ipcRenderer.invoke('app:openRelease', url),
     diagnostics: () => ipcRenderer.invoke('app:diagnostics'),
-    onMenu: (cb) => ipcRenderer.on('app:menu', (_e, action) => cb(action)),
+    onMenu: on('app:menu'),
   },
 });
 
 if (process.argv.includes('--sienna-mini')) {
   contextBridge.exposeInMainWorld('siennaMini', {
-    onOpen: (cb) => ipcRenderer.on('mini:open', () => cb()),
-    onClose: (cb) => ipcRenderer.on('mini:close', () => cb()),
+    onOpen: on('mini:open'),
+    onClose: on('mini:close'),
     closing: () => ipcRenderer.send('mini:closing'),
     closed: () => ipcRenderer.send('mini:closed'),
   });
