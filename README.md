@@ -203,7 +203,7 @@ test it with `npm test`.
 Run these from `app/`:
 
 ```sh
-npm test                                   # unit tests: security, parser, updater, discord IPC, suitcase
+npm test                                   # unit tests: security, parser, caches, windows and shortcuts, suitcase, racks
 npm run web                                # the shop in a browser, with a fake record store
 npm run build && npm run electron          # run the production build
 npm run dist:mac                           # build unsigned macOS arm64 + x64 (.dmg + .zip)

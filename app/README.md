@@ -148,6 +148,10 @@ callbacks. It never authenticates. Existing `account-check`, `tour-check` and `s
 retain their integration coverage; browser checks accept `SIENNA_ANGLE=swiftshader` on Linux.
 
 On macOS, run the browser checks directly, for example `node scripts/sheets-check.mjs <out_dir>`.
+Every check picks its GPU through `glArgs()` in `scripts/safe.mjs`: Metal on a Mac, Vulkan elsewhere,
+`SIENNA_ANGLE` to override (asking a Mac for Vulkan gets SwiftShader, where checks that time an animation
+fail though nothing is wrong). `SIENNA_PORT` moves a check's dev server when its port is taken. The checks
+that launch the real app (`shortcuts-check`, `mini-font-check`, `e2e`, `mem-check`, ...) open real windows.
 For the Electron shortcut check, use `npm run build && node scripts/shortcuts-check.mjs <out_dir>`
 without Linux's `xvfb-run`. Account, sheets, tour, home and shortcut checks use Cmd+, for Settings on
 macOS (Ctrl+, elsewhere); shortcut labels are Control + Option on macOS and Ctrl + Alt elsewhere.
@@ -172,7 +176,14 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   `ytm:account`, and the shop and mini window reload their shelves (`music.onAccount`). The fake store has two
   pretend accounts (`?guest` starts signed out). Parsers: `parseAccount`/`parseAccounts` in
   `electron/ytm-parse.cjs` (`test/account-parse.test.cjs`). Real switching is untested on the server (no Google
-  account there). Check: `node scripts/account-check.mjs out`.
+  account there). Check: `node scripts/account-check.mjs out`. What the main process remembers of YouTube
+  Music's answers (`electron/cache.cjs`: a playlist's songs and covers for 10 minutes, lyrics, capped) is one
+  account's, so it is forgotten whenever the account changes; a failed request is never kept, and failed
+  lyrics are passed on so the Lyrics card can offer Retry.
+- **When the player is in trouble** (offline, YouTube Music not answering, the hidden page crashed) it says so
+  on `ytm:status`, retries by itself with a growing wait (also when it keeps crashing) and says it is well
+  again only once a page has really loaded. The shop shows the notice with Retry, and asks for the status
+  once when it starts, so a shop opened after the trouble began is told too.
 - **Home**: the intro is a 10 s shot (`src/nav.js` SHOT = where the camera goes, PACE = how fast):
   low behind the fruit stall, rising under the arch, a slow beat under the Sienna sign while the doors
   open, then through them to a home spot just inside the shop. Painted cinema bars (`setBars` in
@@ -257,6 +268,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   the case rises out from under it; moving away or onto an overlay releases it.
   A shared card tag beside it shows the song with a seekable progress slider
   (`createCaption` in `src/controls.js`, also used in the mini window), with Mute, Shuffle, Repeat, Queue and Lyrics stamps.
+  With the slider focused the arrows seek 5 s, Page Up / Down 30 s, Home and End go to the ends (and do not skip songs).
   Its Sign in brush plate hides with the tag while search, collections, Settings, Lyrics, Queue or the tour is open,
   so the tour welcome never duplicates Sign in. Pointer-clicked controls release keyboard focus back to the shop.
   `node scripts/home-check.mjs <out_dir>` checks the shop/mini captions, stamp state and painted tooltips,
@@ -279,6 +291,9 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   clicking away or ⌃⌥K again shuts it, and so does moving the cursor out of it once the cursor has been over it
   (Settings > Playback > Mini player, on by default; `miniAutoClose` in `src/settings.js`, checked by
   `node scripts/mini-leave-check.mjs`). The search shortcut works there too.
+  The hidden window is let go of after five minutes unused and made again when wanted (and when the shop
+  window closes), but never once Sienna is quitting: a window made then kept it running, with no player,
+  until that window was let go of. A page that never answers the close is put away after 4 s.
   Its lounge lamp follows the time-of-day brightness ramps without warm-up flicker (`steady: true`
   in `src/mini.js`); the shop lamps keep their flicker. From `app/`, run
   `node scripts/mini-light-check.mjs <out_dir>` to compare 24 paused painted mini frames at 08:53
@@ -505,12 +520,17 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   or loads and for 6 s after anything was asked of it, twice a second while it sits paused; every 3 s
   otherwise. The hidden mini window is sent the player's state only when something other than the
   position changes (and the newest just before it opens). The macOS volume is read (an `osascript` run)
-  only while a window is on screen: every 3 s while Sienna has the keyboard, every 12 s while you are in
-  another app, and at once when you come back.
+  only while a window is on screen and Sienna has the keyboard: every 5 s, and at once when you come back
+  from another app. Volume changes sent to the player itself (the knob and scrolling send dozens a second) are
+  merged: while one is on its way only the newest waits.
 - **Memory**: `npm run build && xvfb-run -a node scripts/mem-check.mjs [out]` gives memory and CPU per process
   (`SIENNA_DPR=2` pretends a Retina screen; it prints PSS beside the resident size on Linux, and `SIENNA_ANGLE=swiftshader` picks the renderer where there is no Vulkan). The shadow map's unread colour layer is freed once made (`dropShadowColour` in `src/main.js`, 16 MB; `?shadowColour=1` keeps it, e.g. where a driver will not draw without one). A still shop is looked at twice a second, the sun's 5 s creep included, and the hidden tour's animations are paused. The sun's 4096 px shadow map (128 MB of video memory) is let go of while the sun is down
   (`src/timeofday.js`). A resting cover's canvas is shrunk to a pixel once the picture is on the GPU
-  (`slim` in `src/racks/common.js`, about 50 MB for a full shop). The mini window makes no travelling
+  (`slim` in `src/racks/common.js`, about 50 MB for a full shop). Covers that have left the racks (a restock,
+  a search, a queue that moved on) are let go of every five minutes: the ones no sleeve shows, no material in
+  the scene shows and nobody asked for in the last two minutes (`trimCovers` in `src/racks/common.js`, the
+  rule in `src/racks/cover-cache.js`); before, a shop left open kept every cover it had ever shown, a third of
+  a megabyte each. One still shown after all paints itself back. Check: `node scripts/covers-check.mjs [out]`. The mini window makes no travelling
   washes (it has no camera to travel).
 - **Covers**: playlist and mix covers are found in any of YouTube's thumbnail shapes; one that is
   missing or fails to load is painted as a collage of the playlist's first songs (`src/cover.js`).
@@ -533,7 +553,7 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   `?search=lemon`, `?shelves=8` (fake store: fill every station), `?albums=1` (fake store: an albums shelf).
 
 - **Security** (`electron/security.cjs`): every renderer is sandboxed (`app.enableSandbox()`). Permission
-  requests are refused, except full screen and copy-to-clipboard for music.youtube.com. No window opens popups
+  requests are refused everywhere, the hidden player's included. No window opens popups
   or `<webview>`s; the shop and mini window never leave their own page, the player and sign-in windows stay on
   Google's sites. The main process answers ipc only from Sienna's own pages in its own windows. Cover urls must
   point at Google's image hosts (checked on the parsed host: `cleanUrl` in `ytm-parse.cjs`, `src/arturl.js`),
@@ -542,10 +562,8 @@ from another pixel. `?wc=0` (or `SIENNA_QUERY="wc=0" npm run dev`) turns the pai
   given one (`scripts/safe.mjs`) and only pass `--no-sandbox` when run as root or with `SIENNA_NO_SANDBOX=1`.
 
 ```
-npm test                                   # parser, suitcase (lid, knob, scrub, tonearm) tests
+npm test                                   # parser, security, caches, main-process windows and shortcuts, suitcase, racks
 npm run build && xvfb-run -a npm run e2e -- out_dir   # real app vs YouTube Music: shelves, hover, play, buttons
 ```
 
-Not yet: playlists opening into their songs like albums (clicking one plays the whole thing
-for now), media keys. Untested on a Mac: the mini player's focus/Dock behaviour and the real
-global shortcuts.
+Untested on a Mac: the mini player's focus/Dock behaviour and the real global shortcuts.
