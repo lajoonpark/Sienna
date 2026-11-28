@@ -17,7 +17,7 @@ import { createCaption } from './controls.js';
 import { createFlights } from './suitcase/flight.js';
 import { createRecordTray } from './suitcase/tray.js';
 import { createSearch } from './search.js';
-import { getCover } from './racks/common.js';
+import { getCover, trimCovers } from './racks/common.js';
 import { paintedCoverURL } from './coverpaint.js';
 import { maxFps } from './pacer.js';
 import { createKit, updateLod } from './kit.js';
@@ -267,6 +267,8 @@ const search = timePart('search', () => createSearch({
 onOverlay((open) => { if (open) setLamp(drawerScreenPos()); });
 listenForCoverPickSkip(flights.finishScreenPick);
 caption.show(true, true);
+// a mini window summoned all day keeps only the covers it still shows (racks/common.js trimCovers)
+setInterval(() => trimCovers({ roots: [scene] }), 5 * 60 * 1000);
 
 // ---- player state ----
 let lastState = null;

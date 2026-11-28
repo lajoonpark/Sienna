@@ -12,7 +12,7 @@ import { createSharpTag } from './tagsharp.js';
 import { toon, crisp, crispText, unpinned, GLOW_LAYER } from './materials.js';
 import { createTimeOfDay } from './timeofday.js';
 import { createRack } from './racks/index.js';
-import { getCover, setCoverUploader, restoreCovers } from './racks/common.js';
+import { getCover, setCoverUploader, restoreCovers, trimCovers, coverStats } from './racks/common.js';
 import { focusHover, framedAtRest, hoverPanBounds, lockHover, zoomCutNeeded } from './racks/hover.js';
 import { warmUp } from './warmup.js';
 import { STATIONS, HOME, assignShelves } from './stations.js';
@@ -618,6 +618,14 @@ addEventListener('offline', () => {
 setInterval(() => {
   if (!document.hidden && nav.at === AT_HOME && nav.settled && navigator.onLine) loadShelves();
 }, 45 * 60 * 1000);
+// Covers that have left the racks (a restock, a search, a queue that moved on) are let go of now and then,
+// so a shop left open all day does not keep every picture it ever showed (racks/common.js trimCovers).
+const dropOldCovers = (opts = {}) => trimCovers({
+  roots: [scene, suitcase.overlay.scene],
+  keep: racks.flatMap((r) => r?.core.sleeves.map((sl) => sl.small) ?? []),
+  ...opts,
+});
+setInterval(() => dropOldCovers(), 5 * 60 * 1000);
 // Application menu actions (Settings, About, Restock, Home, Library Room).
 music.app?.onMenu?.((action) => {
   if (action === 'settings') settingsPanel.open();
@@ -677,6 +685,7 @@ if (!window.sienna || window.sienna.isDev) window.__siennaDebug = {
     return res;
   },
   get shelves() { return shelves; },
+  covers: { trim: dropOldCovers, stats: coverStats }, // scripts/covers-check.mjs
   get player() { return player; },
   get rack() { return racks[nav.at >= 0 ? nav.at : 0] ?? racks.find(Boolean); }, // the rack you are at
   racks,
