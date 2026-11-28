@@ -5,14 +5,14 @@
 //   npm run build && xvfb-run -a node scripts/mem-check.mjs [out_dir]
 //   (SIENNA_DPR=2 pretends a Retina screen; SIENNA_SETTLE_S=40, SIENNA_CLOSED_S=60; SIENNA_MINI_RELEASE_S=20 lets the closed sample show the mini window let go of)
 import { _electron as electron } from 'playwright';
-import { outDir, sandboxArgs } from './safe.mjs';
+import { outDir, sandboxArgs, glArgs } from './safe.mjs';
 import { readFileSync } from 'node:fs';
 const pss = (pid) => { try { return Math.round(Number(/^Pss:\s+(\d+)/m.exec(readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8'))[1]) / 1024); } catch { return null; } };
 const S = outDir(process.argv[2], 'sienna-mem-check');
 const SETTLE_S = Number(process.env.SIENNA_SETTLE_S || 40), CLOSED_S = Number(process.env.SIENNA_CLOSED_S || 60);
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: [...sandboxArgs(), '--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || 'vulkan'}`, '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, ...(process.env.SIENNA_DPR ? [`--force-device-scale-factor=${process.env.SIENNA_DPR}`] : []), '.'],
+  args: [...sandboxArgs(), ...glArgs(), `--user-data-dir=${S}/ud`, ...(process.env.SIENNA_DPR ? [`--force-device-scale-factor=${process.env.SIENNA_DPR}`] : []), '.'],
   env: { ...process.env, SIENNA_TEST: '1' },
   timeout: 60000,
 });

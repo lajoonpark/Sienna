@@ -5,13 +5,13 @@
 //   INTERRUPT=frame,station: pick another section at that frame (the wipe must run on, or back off, without a jump)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { outDir as safeOutDir } from './safe.mjs';
+import { outDir as safeOutDir, glArgs } from './safe.mjs';
 const outDir = safeOutDir(process.argv[2], 'sienna-wipe');
 const to = Number(process.argv[3] ?? 7), from = process.argv[4] ?? 'home';
 const port = Number(process.env.SIENNA_PORT) || 5253, FPS = Number(process.env.FPS ?? 20), EVERY = Number(process.env.EVERY ?? 2), CUT = 0.8;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 const page = await b.newPage({ viewport: { width: 960, height: 600 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto(`http://127.0.0.1:${port}/index.html?shelves=8&at=${from}&guest&tour=0`, { waitUntil: 'commit', timeout: 0 });

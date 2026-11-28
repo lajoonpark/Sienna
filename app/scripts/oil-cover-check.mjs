@@ -9,7 +9,7 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { writeFileSync } from 'node:fs';
-import { outDir as safeOutDir } from './safe.mjs';
+import { outDir as safeOutDir, glArgs } from './safe.mjs';
 const outDir = safeOutDir(process.argv[2], 'sienna-oil-cover');
 const ats = (process.argv[3] ?? 'home,0,3').split(','), dpr = Number(process.argv[4] ?? 2), q = process.argv[5] ?? '';
 const port = Number(process.env.SIENNA_PORT) || 5251;
@@ -17,7 +17,7 @@ const [vw, vh] = (process.env.SIENNA_VIEWPORT || '1440x900').split('x').map(Numb
 const variants = JSON.parse(process.env.VARIANTS || '[{}]');
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 for (const at of ats) {
   const page = await b.newPage({ viewport: { width: vw, height: vh }, deviceScaleFactor: dpr });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));

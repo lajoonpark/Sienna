@@ -11,12 +11,13 @@
 // hour (the light is worked out again every 5 s) and leave the store at its few shelves (fewer covers to wait for).
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
+import { glArgs } from './safe.mjs';
 const at = process.argv[2] ?? 'home', q = process.argv[3] ?? 'shelves=8';
 const port = Number(process.env.SIENNA_PORT) || 5246;
 const [vw, vh] = (process.env.SIENNA_VIEWPORT || '480x300').split('x').map(Number);
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 const page = await b.newPage({ viewport: { width: vw, height: vh }, deviceScaleFactor: Number(process.env.SIENNA_DPR) || 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 // deep=0: no deep idle (pacer.js), which holds the border's boil still; scripts/idle-check.mjs covers that

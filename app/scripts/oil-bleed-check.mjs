@@ -14,7 +14,7 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { writeFileSync } from 'node:fs';
-import { outDir as safeOutDir } from './safe.mjs';
+import { outDir as safeOutDir, glArgs } from './safe.mjs';
 const outDir = safeOutDir(process.argv[2], 'sienna-oil-bleed');
 const views = (process.argv[3] ?? 't3,t5,t6.5,home,0,1,2,3,4,5,6,7').split(',');
 const dpr = Number(process.argv[4] ?? 2), q = process.argv[5] ?? '';
@@ -24,7 +24,7 @@ const T = Number(process.env.T) || 0.16;
 const CROP = process.env.CROP ? process.env.CROP.split(',').map(Number) : null;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 
 // in the page: draw the frame three ways (all paint, placed dabs only, under-coat only) and find what bled
 async function measure(page, T) {

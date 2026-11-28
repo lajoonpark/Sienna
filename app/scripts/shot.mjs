@@ -2,15 +2,14 @@
 // The page must set window.__ready and window.__seek(t) in ?shot mode.
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { outDir as safeOutDir } from './safe.mjs';
-
+import { outDir as safeOutDir, glArgs } from './safe.mjs';
 const [outArg, ...times] = process.argv.slice(2);
 const outDir = safeOutDir(outArg, 'sienna-shots');
 // SIENNA_PORT lets several screenshot runs work at once
 const port = Number(process.env.SIENNA_PORT) || 5199;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ args: ['--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || 'vulkan'}`, '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: glArgs() });
 // SIENNA_VIEWPORT=1024x640 shoots at another window size (default 1280x720)
 const [vw, vh] = (process.env.SIENNA_VIEWPORT || '1280x720').split('x').map(Number);
 // SIENNA_DPR=2 shoots like a Retina screen

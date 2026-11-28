@@ -9,13 +9,14 @@
 //   VARIANTS='[{},{"noPoint":true}]'  SIENNA_VIEWPORT=1440x900  SIENNA_PORT
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
+import { glArgs } from './safe.mjs';
 const ats = (process.argv[2] ?? 'home,0').split(','), dpr = Number(process.argv[3] ?? 2), q = process.argv[4] ?? '';
 const port = Number(process.env.SIENNA_PORT) || 5249;
 const [vw, vh] = (process.env.SIENNA_VIEWPORT || '1440x900').split('x').map(Number);
 const variants = JSON.parse(process.env.VARIANTS || '[{}]');
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', `--use-angle=${process.env.SIENNA_ANGLE || 'vulkan'}`, '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 for (const at of ats) {
   const page = await b.newPage({ viewport: { width: vw, height: vh }, deviceScaleFactor: dpr });
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));

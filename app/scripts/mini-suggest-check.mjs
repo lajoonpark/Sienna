@@ -6,11 +6,12 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import assert from 'node:assert';
+import { glArgs } from './safe.mjs';
 
 const port = Number(process.env.SIENNA_PORT) || 5241;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: glArgs() });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const ok = (name) => console.log('ok  ', name);
 

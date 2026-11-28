@@ -6,12 +6,12 @@
 // Film strips of one record per row go to out_dir.   node scripts/easel-check.mjs out_dir   (SIENNA_PORT)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { outDir } from './safe.mjs';
+import { outDir, glArgs } from './safe.mjs';
 const out = outDir(process.argv[2], 'easel-check');
 const port = Number(process.env.SIENNA_PORT) || 5245;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 const page = await b.newPage({ viewport: { width: 1170, height: 730 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 // ?shot: no render loop, a frame is drawn only by __seek

@@ -3,6 +3,7 @@
 //   node scripts/hitch-check.mjs [query] [dpr]
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
+import { glArgs } from './safe.mjs';
 
 const q = process.argv[2] ?? '';
 const dpr = Number(process.argv[3] ?? 2);
@@ -12,7 +13,7 @@ const [vw, vh] = (process.env.SIENNA_VIEWPORT || '1440x900').split('x').map(Numb
 
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 const page = await b.newPage({ viewport: { width: vw, height: vh }, deviceScaleFactor: dpr });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 

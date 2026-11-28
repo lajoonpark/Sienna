@@ -7,12 +7,12 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import assert from 'node:assert';
+import { glArgs } from './safe.mjs';
 
 const port = Number(process.env.SIENNA_PORT) || 5243;
-const angle = process.env.SIENNA_ANGLE || 'vulkan';
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const browser = await chromium.launch({ args: ['--use-gl=angle', `--use-angle=${angle}`, '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ args: glArgs() });
 let failed = false;
 
 async function open({ autoClose } = {}) {

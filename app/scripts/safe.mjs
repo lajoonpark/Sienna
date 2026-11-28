@@ -20,6 +20,14 @@ export function outDir(given, name) {
   return dir;
 }
 
+// Which GPU a check draws with (Chromium / Electron flags): Metal on a Mac, Vulkan elsewhere (the Linux
+// server's Radeon). Asking a Mac for Vulkan gets SwiftShader, software rendering, where the checks that
+// time an animation crawl or fail. SIENNA_ANGLE overrides it (swiftshader where there is no GPU at all).
+export function glArgs() {
+  const angle = process.env.SIENNA_ANGLE || (process.platform === 'darwin' ? 'metal' : 'vulkan');
+  return ['--use-gl=angle', `--use-angle=${angle}`, '--ignore-gpu-blocklist', ...(angle === 'swiftshader' ? ['--enable-unsafe-swiftshader'] : [])];
+}
+
 // Electron flags that switch Chromium's sandbox off: only where it cannot work at all (running as root,
 // as in CI containers) or when asked for with SIENNA_NO_SANDBOX=1.
 export function sandboxArgs() {

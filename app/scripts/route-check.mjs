@@ -8,15 +8,14 @@
 //   SIENNA_PORT, CLEAR=0.25 (metres)
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { outDir as safeOutDir } from './safe.mjs';
-
+import { outDir as safeOutDir, glArgs } from './safe.mjs';
 const outArg = process.argv[2];
 const outDir = outArg ? safeOutDir(outArg, 'sienna-route') : null;
 const port = Number(process.env.SIENNA_PORT) || 5251;
 const CLEAR = Number(process.env.CLEAR ?? 0.25);
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 const page = await b.newPage({ viewport: { width: 960, height: 600 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto(`http://127.0.0.1:${port}/index.html?shelves=8&at=home&guest&tour=0`, { waitUntil: 'commit', timeout: 0 });

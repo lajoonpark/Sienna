@@ -6,6 +6,7 @@
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { mkdirSync } from 'node:fs';
+import { glArgs } from './safe.mjs';
 const out = process.argv[2] ?? 'tag-frame-out';
 const stations = (process.argv[3] ?? '0,1,2,3,4,5,6,7').split(',').map(Number), n = Number(process.argv[4] ?? 3);
 mkdirSync(out, { recursive: true });
@@ -14,7 +15,7 @@ const server = await createServer({ server: { port, host: '127.0.0.1', strictPor
 await server.listen();
 // SIENNA_GL=vulkan renders on the real GPU (much faster; adding --enable-features=Vulkan garbles screenshots); the default is software, for machines without one
 const FAST = process.env.SIENNA_GL === 'vulkan';
-const GL = FAST ? ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] : ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'];
+const GL = glArgs();
 const b = await chromium.launch({ args: GL });
 const W = 1170, H = 730, LIMIT = Math.round(((1 + 0.82) / 2) * H);
 let cut = 0;

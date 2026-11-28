@@ -11,6 +11,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { glArgs } from './safe.mjs';
 const out = process.argv[2] ?? 'flicker-out';
 const q = process.argv[3] ?? '';
 const w = Number(process.argv[4] ?? 960), h = Number(process.argv[5] ?? 600);
@@ -19,7 +20,7 @@ fs.mkdirSync(out, { recursive: true });
 const port = Number(process.env.SIENNA_PORT) || 5246;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 const page = await b.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: Number(process.env.DPR) || 2 }); // 2 = the Mac's Retina path (MSAA, half-size wash)
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.addInitScript(({ FPS }) => {

@@ -5,9 +5,10 @@
 // Run after editing an SVG: node scripts/make-icons.mjs
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
+import { glArgs } from './safe.mjs';
 
 const here = (p) => new URL(p, import.meta.url);
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: glArgs() });
 
 async function render(svgFile, size, scale, out) {
   const page = await browser.newPage({ viewport: { width: size, height: size }, deviceScaleFactor: scale });

@@ -4,14 +4,14 @@
 import { _electron as electron } from 'playwright';
 import { createServer } from 'vite';
 import { writeFileSync, readdirSync } from 'node:fs';
-import { outDir, sandboxArgs } from './safe.mjs';
+import { outDir, sandboxArgs, glArgs } from './safe.mjs';
 const S = outDir(process.argv[2], 'sienna-live');
 const port = Number(process.env.SIENNA_PORT) || 5233;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
 const app = await electron.launch({
   cwd: new URL('..', import.meta.url).pathname,
-  args: [...sandboxArgs(), '--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist', `--user-data-dir=${S}/ud`, '.'],
+  args: [...sandboxArgs(), ...glArgs(), `--user-data-dir=${S}/ud`, '.'],
   env: { ...process.env, SIENNA_DEV_URL: `http://127.0.0.1:${port}/search-lab.html`, SIENNA_DUMP: '1' },
   timeout: 60000,
 });

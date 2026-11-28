@@ -1,19 +1,20 @@
 // The album spread with a real mouse (fake store, ?albums=1: the albums sit on the counter easel, station 3).
 //   node scripts/spread-check.mjs [out_dir]      (GPU; SIENNA_PORT, SIENNA_WC)
-// Hovers an album, presses it, checks the records fan out (play-all + one per song, 15 a page), that a
-// record under the cursor lifts and stays under it, that a sideways scroll turns the page, that Esc and a
-// click on empty space put them back, that a song plays from inside its album (the next song follows
-// in album order), that the play-all record plays track 1 and that the camera keeps panning with the
-// cursor while the spread is open. Saves a few screenshots.
+// Hovers an album, presses it, checks the records fan out (play-all + one per song), that a record
+// under the cursor lifts and stays under it, that Esc and a click on empty space put them back, that a
+// song plays from inside its album (the next song follows in album order), that the play-all record
+// plays track 1, that the camera keeps panning with the cursor while the spread is open, and that an
+// album of 16 songs or more opens as a list of its songs instead. Saves a few screenshots.
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import { mkdirSync } from 'node:fs';
+import { glArgs } from './safe.mjs';
 const out = process.argv[2] ?? 'spread-out';
 mkdirSync(out, { recursive: true });
 const port = Number(process.env.SIENNA_PORT) || 5251;
 const server = await createServer({ server: { port, host: '127.0.0.1', strictPort: true }, logLevel: 'error' });
 await server.listen();
-const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=vulkan', '--ignore-gpu-blocklist'] });
+const b = await chromium.launch({ args: glArgs() });
 const W = 1280, H = 760;
 let problems = 0;
 const fail = (msg) => { problems++; console.log('PROBLEM', msg); };
@@ -57,12 +58,15 @@ async function openAlbum(k) {
   return st;
 }
 
-// 1. album with 22 songs (index 2): page 1 shows play-all + 15
-let st = await openAlbum(2);
+// 1. album with 15 songs (index 5), the most the table takes: play-all + 15, one page
+let st = await openAlbum(5);
 if (!st.open || !st.loaded) fail('spread did not open');
-if (st.songs !== 22 || st.n !== 23) fail(`expected 22 songs + play-all, got ${st.songs} / ${st.n}`);
-if (st.out !== 16 || st.arrived !== 16) fail(`page 1 should show 16 records, out ${st.out} arrived ${st.arrived}`);
-if (st.pages !== 2) fail(`expected 2 pages, got ${st.pages}`);
+// (the first fan-out also makes its stickers and shaders: give the last records time to land)
+await page.waitForFunction(() => { const sp = window.__siennaDebug.spread.state; return !!sp?.recs && sp.recs.every((r) => !r.out || r.t >= 1); }, null, { timeout: 15000 }).catch(() => {});
+st = await state();
+if (st.songs !== 15 || st.n !== 16) fail(`expected 15 songs + play-all, got ${st.songs} / ${st.n}`);
+if (st.out !== 16 || st.arrived !== 16) fail(`the page should show 16 records, out ${st.out} arrived ${st.arrived}`);
+if (st.pages !== 1) fail(`expected 1 page, got ${st.pages}`);
 await page.screenshot({ path: `${out}/1-open.png` });
 
 // 2. hover record 5 (track 5): it lifts, and stays under the cursor
@@ -82,17 +86,12 @@ if (st.hovered !== 5) fail('record 5 not hovered');
 if (Math.hypot(under.dx, under.dy) > 4) fail('hovered record left the cursor');
 await page.screenshot({ path: `${out}/2-hover.png` });
 
-// 3. sideways scroll: page 2 (play-all + 7)
+// 3. sideways scroll with a single page: nothing to turn to, and nothing breaks
 await page.mouse.wheel(120, 0);
 await page.waitForTimeout(1500);
 st = await state();
 console.log('after sideways scroll:', JSON.stringify(st));
-if (st.page !== 1 || st.out !== 8) fail(`page 2 should show 8 records, page ${st.page} out ${st.out}`);
-await page.screenshot({ path: `${out}/3-page2.png` });
-await page.mouse.wheel(-120, 0);
-await page.waitForTimeout(1300);
-st = await state();
-if (st.page !== 0) fail('scroll back did not return to page 1');
+if (!st.open || st.page !== 0 || st.out !== 16) fail(`a one-page spread should stay as it is, open ${st.open} page ${st.page} out ${st.out}`);
 
 // 3b. the camera still pans with the cursor while the spread is out (it hangs in the camera's frame)
 const look = () => page.evaluate(() => { const d = window.__siennaDebug.camera.getWorldDirection(window.__siennaDebug.camera.position.clone()); return { x: d.x, y: d.y, z: d.z }; });
@@ -119,7 +118,7 @@ if (atStill !== 3) fail('Esc with the spread open also left the rack');
 
 // 5. open again, click empty space: closes, nothing plays
 const before = await player();
-await openAlbum(2);
+await openAlbum(5);
 await page.mouse.click(W * 0.5, H * 0.93);
 await page.waitForTimeout(1200);
 st = await state();
@@ -128,7 +127,7 @@ if (st.open) fail('click on empty space did not close');
 if ((await player()).videoId !== before.videoId) fail('click on empty space played something');
 
 // 6. open, press track 3: it plays, the spread closes, the next song is track 4 of the same album
-await openAlbum(2);
+await openAlbum(5);
 p = await recAt(3);
 await page.mouse.move(p.x, p.y, { steps: 5 });
 await page.waitForTimeout(700);
@@ -139,13 +138,13 @@ await page.waitForTimeout(6000);
 let pl = await player();
 st = await state();
 console.log('after pressing track 3:', JSON.stringify(pl), 'spread open', st.open);
-if (pl.videoId !== 'fakealb2_2') fail(`expected fakealb2_2 playing, got ${pl.videoId}`);
+if (pl.videoId !== 'fakealb5_2') fail(`expected fakealb5_2 playing, got ${pl.videoId}`);
 if (st.open) fail('spread still open after a pick');
 await page.evaluate(() => window.__siennaDebug.music.command('next'));
 await page.waitForTimeout(400);
 pl = await player();
 console.log('next ->', pl.videoId);
-if (pl.videoId !== 'fakealb2_3') fail(`next should be track 4 (fakealb2_3), got ${pl.videoId}`);
+if (pl.videoId !== 'fakealb5_3') fail(`next should be track 4 (fakealb5_3), got ${pl.videoId}`);
 
 // 7. a 3-song album (index 1), play-all record: plays track 1
 await page.mouse.move(W * 0.5, H * 0.95);
@@ -162,7 +161,21 @@ pl = await player();
 console.log('after play-all:', JSON.stringify(pl));
 if (pl.videoId !== 'fakealb1_0') fail(`play-all should start track 1 (fakealb1_0), got ${pl.videoId}`);
 
-// 8. a song (not an album) still plays straight away as before
+// 8. an album too long for the table (22 songs, index 2) opens as a list of its songs instead
+// (16 songs and up: shouldUseCollectionList in src/collection-filter.js)
+await page.mouse.move(W * 0.5, H * 0.95);
+await page.waitForTimeout(800);
+st = await openAlbum(2);
+const listOpen = () => page.evaluate(() => !!document.querySelector('.cl.list-overlay.show'));
+console.log('22-song album:', JSON.stringify(st), 'song list open', await listOpen());
+if (st.open) fail('a 22-song album fanned out on the table');
+if (!(await listOpen())) fail('a 22-song album did not open its song list');
+await page.screenshot({ path: `${out}/6-list.png` });
+await page.keyboard.press('Escape');
+await page.waitForTimeout(800);
+if (await listOpen()) fail('Esc did not close the song list');
+
+// 9. a song (not an album) still plays straight away as before
 await page.mouse.move(W * 0.5, H * 0.95);
 await page.waitForTimeout(800);
 const songIdx = await page.evaluate(() => window.__siennaDebug.rack.core.sleeves.findIndex((s) => s.item.kind !== 'album'));
@@ -171,4 +184,5 @@ console.log('non-album sleeve on this rack:', songIdx, '(the albums shelf has on
 console.log(problems ? `${problems} problem(s)` : 'ok');
 await b.close();
 await server.close();
+process.exit(problems ? 1 : 0);
 process.exit(problems ? 1 : 0);
