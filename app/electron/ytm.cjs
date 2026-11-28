@@ -1,7 +1,7 @@
 // YouTube Music, played by a hidden music.youtube.com window. That page does the real work
 // (audio, ads, queue, radio, history, likes); Sienna drives it through ytm-page.js and reads
 // shelves from the same internal API the page uses.
-const { BrowserWindow, app, dialog } = require('electron');
+const { BrowserWindow, app, dialog, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
@@ -10,11 +10,19 @@ const {
   normalizeQueue, continuation, artDebug, cleanUrl, parseAccount, parseAccounts,
 } = require('./ytm-parse.cjs');
 const { createSystemVolume } = require('./sysvolume.cjs');
+const { createPromiseCache } = require('./cache.cjs');
 const { YTM_PARTITION, YTM_ORIGIN, devEnv, isGoogleUrl, isHttpsHostAllowed, lockNavigation } = require('./security.cjs');
 
 const PARTITION = YTM_PARTITION; // cookies survive restarts, so you sign in once
 const COMMANDS = new Set(['toggle', 'play', 'pause', 'next', 'previous', 'seek', 'volume', 'mute', 'like', 'shuffle', 'repeat', 'queueIndex']);
+const NEEDS_NUMBER = new Set(['seek', 'volume', 'queueIndex']);   // commands that mean nothing without one
 const HOME = 'https://music.youtube.com/';
+// A player that stops again this soon after it was restarted is not restarted at once, but after a wait
+// that grows (scheduleReload): at once, forever, would spin the machine.
+const CRASH_LOOP_MS = 20000;
+// How long a playlist's songs and covers are kept before YouTube Music is asked again (they change:
+// Liked music, your own playlists).
+const LIST_TTL_MS = 10 * 60 * 1000;
 
 // YouTube Music search filter params (matching ytmusicapi).
 const SEARCH_FILTERS = {
@@ -86,6 +94,7 @@ function pruneDumps(dir) {
 
 function createYtm({ onState, onAccount, onStatus }) {
   const ua = chromeUserAgent();
+  const ytmSession = session.fromPartition(PARTITION);
   let win = null;
   let quitting = false;
   let status = { ok: true, offline: false, error: null, crashed: false };
@@ -93,6 +102,7 @@ function createYtm({ onState, onAccount, onStatus }) {
   let activePlay = null;
   let retryTimer = null;
   let retryAttempt = 0;
+  let lastCrashAt = -Infinity;
 
   function setStatus(next) {
     const merged = { ...status, ...next };
@@ -101,14 +111,20 @@ function createYtm({ onState, onAccount, onStatus }) {
     onStatus?.(status);
   }
 
-  function scheduleReload(reason, offline = false) {
+  function scheduleReload(reason, offline = false, crashed = status.crashed) {
     if (quitting || retryTimer) return;
-    setStatus({ ok: false, offline, error: reason });
+    setStatus({ ok: false, offline, crashed, error: reason });
     const delay = Math.min(30000, 3000 * Math.pow(1.6, retryAttempt++));
     retryTimer = setTimeout(() => {
       retryTimer = null;
       if (!quitting) reloadPlayer();
     }, delay);
+  }
+
+  // Send the player to a page. Its window may be gone (it crashed and is waiting to be restarted).
+  function load(url) {
+    if (!win || win.isDestroyed()) win = createPlayerWindow();
+    return win.loadURL(url);
   }
 
   function bindPlayerWindow(w) {
@@ -123,15 +139,21 @@ function createYtm({ onState, onAccount, onStatus }) {
       }
     });
     // A cookie consent page (EU) needs the user once: show the window until it is accepted.
-    w.webContents.on('did-navigate', (_e, url) => {
+    w.webContents.on('did-navigate', (_e, url, httpCode) => {
       const host = hostOfUrl(url) || '';
       if (/^consent\.(youtube|google)\./.test(host)) w.show();
       else if (w.isVisible() && url.startsWith(HOME)) w.hide();
-      if (url.startsWith(HOME)) {
-        retryAttempt = 0;
-        clearTimeout(retryTimer); retryTimer = null;
-        setStatus({ ok: true, offline: false, error: null, crashed: false });
+      // YouTube Music answered, but with an error page (too many requests, a fault on their side)
+      if (url.startsWith(HOME) && httpCode >= 400) {
+        scheduleReload(`YouTube Music is not answering (HTTP ${httpCode}).`);
+        return;
       }
+      // A page came up: YouTube Music, or one of Google's on the way to it (consent, sign-in). Only here is
+      // the player said to be well again, not when a reload is merely started: while offline every retry
+      // would otherwise report "fine" and then "offline" again, and the shop's notice would blink each time.
+      if (Date.now() - lastCrashAt >= CRASH_LOOP_MS) retryAttempt = 0;   // (one that keeps crashing waits longer each time)
+      clearTimeout(retryTimer); retryTimer = null;
+      setStatus({ ok: true, offline: false, error: null, crashed: false });
     });
     w.webContents.on('did-fail-load', (_e, code, desc, _url, isMainFrame) => {
       if (!isMainFrame || code === -3) return; // -3 = ERR_ABORTED (normal redirect/reload)
@@ -142,10 +164,15 @@ function createYtm({ onState, onAccount, onStatus }) {
     w.webContents.on('render-process-gone', (_e, details) => {
       if (quitting) return;
       console.warn('[sienna] player process crashed:', details?.reason);
-      setStatus({ ok: false, offline: false, crashed: true, error: 'The YouTube Music player stopped unexpectedly. Restarting…' });
       try { if (!w.isDestroyed()) w.destroy(); } catch { /* ignore */ }
-      win = createPlayerWindow();
-      win.loadURL(HOME).catch((err) => scheduleReload(err?.message || 'Could not reload YouTube Music.'));
+      const again = Date.now() - lastCrashAt < CRASH_LOOP_MS;
+      lastCrashAt = Date.now();
+      if (again) {
+        scheduleReload('The YouTube Music player keeps stopping. Trying again shortly…', false, true);
+        return;
+      }
+      setStatus({ ok: false, offline: false, crashed: true, error: 'The YouTube Music player stopped unexpectedly. Restarting…' });
+      load(HOME).catch((err) => scheduleReload(err?.message || 'Could not reload YouTube Music.'));
     });
     w.on('close', (e) => { if (!quitting) { e.preventDefault(); w.hide(); } });
   }
@@ -171,11 +198,10 @@ function createYtm({ onState, onAccount, onStatus }) {
     if (!quitting) scheduleReload(err?.message || 'Could not reach YouTube Music.', true);
   });
 
+  // The status is left as it is: did-navigate says when the player is well again (see there).
   function reloadPlayer() {
     clearTimeout(retryTimer); retryTimer = null;
-    if (!win || win.isDestroyed()) win = createPlayerWindow();
-    setStatus({ ok: true, offline: false, error: null, crashed: false });
-    return win.loadURL(HOME).catch((err) => {
+    return load(HOME).catch((err) => {
       scheduleReload(err?.message || 'Could not reach YouTube Music.', true);
       return false;
     });
@@ -186,12 +212,15 @@ function createYtm({ onState, onAccount, onStatus }) {
     return win.webContents.executeJavaScript(code, true);
   };
 
+  // Resolves once the page can be driven. Asked before every call into it, so it is one question:
+  // 0 = YouTube Music is not up yet, 1 = it is, without window.__sienna (put in now), 2 = all there.
+  const READY_JS = `(window.ytcfg && document.querySelector('ytmusic-app')) ? (window.__sienna ? 2 : 1) : 0`;
   async function ready(timeoutMs = 30000) {
     const t0 = Date.now();
     for (;;) {
-      const ok = await js(`!!(window.ytcfg && document.querySelector('ytmusic-app'))`).catch(() => false);
-      if (ok) {
-        if (!(await js('!!window.__sienna').catch(() => false))) await js(PAGE_JS);
+      const up = await js(READY_JS).catch(() => 0);
+      if (up) {
+        if (up === 1) await js(PAGE_JS);
         return;
       }
       if (Date.now() - t0 > timeoutMs) throw new Error('YouTube Music did not load');
@@ -280,35 +309,43 @@ function createYtm({ onState, onAccount, onStatus }) {
     return parseArtistPage(await api('browse', { browseId: id }), { onNoArt });
   }
 
+  // What is kept of YouTube Music's answers (cache.cjs). Lists are kept for a while only, and an empty one
+  // (a request that went wrong) not at all. They are one account's: 'LM' is whoever is signed in, so all
+  // of it goes when the account changes (forgetAccount), or the next account would be shown the last one's
+  // Liked music.
+  const notEmpty = (list) => list.length > 0;
+  const songArts = createPromiseCache({ ttlMs: LIST_TTL_MS, max: 300, keep: notEmpty });
+  const albumCache = createPromiseCache({ ttlMs: LIST_TTL_MS, max: 60, keep: notEmpty });
+  const lyricsCache = createPromiseCache({ max: 40 });
+  let switchUrls = [];
+  function forgetAccount() {
+    songArts.clear();
+    albumCache.clear();
+    switchUrls = [];
+  }
+
   // Cover urls (up to 4, 256 px) of the first songs of a playlist, album, mix or radio.
-  const songArts = new Map();
   async function playlistArt(play) {
     const ep = cleanEndpoint(play);
     const id = ep?.playlistId;
     if (!id) return [];
-    if (!songArts.has(id)) {
+    return songArts.get(id, async () => {
       const viaNext = () => api('next', { playlistId: id, videoId: ep.videoId, params: ep.params, isAudioOnly: true });
       const viaBrowse = () => api('browse', { browseId: id.startsWith('VL') ? id : `VL${id}` });
       const mix = /^RD/.test(id) && !/^RDCLAK/.test(id);
-      const attempt = (async () => {
-        for (const get of mix ? [viaNext, viaBrowse] : [viaBrowse, viaNext]) {
-          try {
-            const arts = [...new Set(parsePlaylistSongs(await get()).map((x) => x.art).filter(Boolean))];
-            if (arts.length) return arts.slice(0, 4).map((u) => u.replace('w544-h544', 'w256-h256'));
-          } catch (e) { console.warn('[sienna] playlistArt', id, e.message); }
-        }
-        return [];
-      })();
-      songArts.set(id, attempt);
-      attempt.then((a) => { if (!a.length) songArts.delete(id); });
-    }
-    return songArts.get(id);
+      for (const get of mix ? [viaNext, viaBrowse] : [viaBrowse, viaNext]) {
+        try {
+          const arts = [...new Set(parsePlaylistSongs(await get()).map((x) => x.art).filter(Boolean))];
+          if (arts.length) return arts.slice(0, 4).map((u) => u.replace('w544-h544', 'w256-h256'));
+        } catch (e) { console.warn('[sienna] playlistArt', id, e.message); }
+      }
+      return [];
+    });
   }
 
   // Songs of an album, playlist, Liked Music, or mix in order, for the 3D record spread or Collection List.
   // For playlists/albums/Liked Music, follows InnerTube browse continuations so large collections (~600+ songs) load in full.
   const MAX_PLAYLIST_PAGES = 15;
-  const albumCache = new Map();
   async function browseAllSongs(browseId) {
     const seen = new Set();
     const out = [];
@@ -329,64 +366,55 @@ function createYtm({ onState, onAccount, onStatus }) {
     const browseId = cleanId(play?.browseId, 128);
     const id = ep?.playlistId ?? browseId;
     if (!id) return [];
-    if (!albumCache.has(id)) {
-      const attempt = (async () => {
-        const ways = [];
-        const isLiked = ep?.playlistId === 'LM' || browseId === 'VLLM';
-        const mix = !!ep?.playlistId && /^RD/.test(ep.playlistId) && !/^RDCLAK/.test(ep.playlistId);
-        const viaNext = async () => {
-          const seen = new Set();
-          return parsePlaylistSongs(await api('next', { playlistId: ep.playlistId, videoId: ep.videoId, params: ep.params, isAudioOnly: true }))
-            .filter((x) => !seen.has(x.videoId) && seen.add(x.videoId));
-        };
-        if (isLiked) {
-          ways.push(() => browseAllSongs('VLLM'), () => browseAllSongs('FEmusic_liked_videos'));
-          if (ep?.playlistId) ways.push(viaNext);
-        } else if (mix) {
+    return albumCache.get(id, async () => {
+      const ways = [];
+      const isLiked = ep?.playlistId === 'LM' || browseId === 'VLLM';
+      const mix = !!ep?.playlistId && /^RD/.test(ep.playlistId) && !/^RDCLAK/.test(ep.playlistId);
+      const viaNext = async () => {
+        const seen = new Set();
+        return parsePlaylistSongs(await api('next', { playlistId: ep.playlistId, videoId: ep.videoId, params: ep.params, isAudioOnly: true }))
+          .filter((x) => !seen.has(x.videoId) && seen.add(x.videoId));
+      };
+      if (isLiked) {
+        ways.push(() => browseAllSongs('VLLM'), () => browseAllSongs('FEmusic_liked_videos'));
+        if (ep?.playlistId) ways.push(viaNext);
+      } else if (mix) {
+        ways.push(viaNext);
+        if (ep?.playlistId) ways.push(() => browseAllSongs(ep.playlistId.startsWith('VL') ? ep.playlistId : `VL${ep.playlistId}`));
+      } else {
+        if (browseId) ways.push(() => browseAllSongs(browseId));
+        if (ep?.playlistId) {
+          const vl = ep.playlistId.startsWith('VL') ? ep.playlistId : `VL${ep.playlistId}`;
+          if (vl !== browseId) ways.push(() => browseAllSongs(vl));
           ways.push(viaNext);
-          if (ep?.playlistId) ways.push(() => browseAllSongs(ep.playlistId.startsWith('VL') ? ep.playlistId : `VL${ep.playlistId}`));
-        } else {
-          if (browseId) ways.push(() => browseAllSongs(browseId));
-          if (ep?.playlistId) {
-            const vl = ep.playlistId.startsWith('VL') ? ep.playlistId : `VL${ep.playlistId}`;
-            if (vl !== browseId) ways.push(() => browseAllSongs(vl));
-            ways.push(viaNext);
-          }
         }
-        for (const get of ways) {
-          try {
-            const songs = await get();
-            if (songs.length) return songs;
-          } catch (e) { console.warn('[sienna] albumSongs', id, e.message); }
-        }
-        return [];
-      })();
-      albumCache.set(id, attempt);
-      attempt.then((a) => { if (!a.length) albumCache.delete(id); });
-    }
-    return albumCache.get(id);
+      }
+      for (const get of ways) {
+        try {
+          const songs = await get();
+          if (songs.length) return songs;
+        } catch (e) { console.warn('[sienna] albumSongs', id, e.message); }
+      }
+      return [];
+    });
   }
 
-  // Lyrics for a track via `next` -> Lyrics tab browseId -> `browse`.
-  const lyricsCache = new Map();
+  // Lyrics for a track via `next` -> Lyrics tab browseId -> `browse`. null: the song has none (kept).
+  // A request that fails is passed on and not kept, so the Lyrics card can say so and offer Retry
+  // instead of "no lyrics" for a song that has them.
   async function lyrics(videoId) {
     const id = cleanId(videoId, 64);
     if (!id) return null;
-    if (lyricsCache.has(id)) return lyricsCache.get(id);
-    const attempt = (async () => {
+    return lyricsCache.get(id, async () => {
       try {
-        const nextRes = await api('next', { videoId: id, isAudioOnly: true });
-        const tabId = parseLyricsTab(nextRes);
+        const tabId = parseLyricsTab(await api('next', { videoId: id, isAudioOnly: true }));
         if (!tabId) return null;
         return parseLyrics(await api('browse', { browseId: tabId }));
       } catch (e) {
         console.warn('[sienna] lyrics', id, e.message);
-        return null;
+        throw new Error('could not load the lyrics');
       }
-    })();
-    lyricsCache.set(id, attempt);
-    if (lyricsCache.size > 40) lyricsCache.delete(lyricsCache.keys().next().value);
-    return attempt;
+    });
   }
 
   // Up Next queue: reads YouTube Music's live Redux/Polymer store & DOM queue first, and whenever
@@ -462,7 +490,7 @@ function createYtm({ onState, onAccount, onStatus }) {
     const q = new URLSearchParams();
     if (endpoint.videoId) q.set('v', endpoint.videoId);
     if (endpoint.playlistId) q.set('list', endpoint.playlistId);
-    await win.loadURL(`${HOME}watch?${q}`);
+    await load(`${HOME}watch?${q}`);
     return true;
   }
 
@@ -510,13 +538,35 @@ function createYtm({ onState, onAccount, onStatus }) {
     return volumeMode;
   }
 
+  // The player's own volume (not the Mac's). Scrolling and the knob send many a second and each one is a
+  // trip into the page, but only the newest matters: while one is on its way, the rest wait as one.
+  let volumeWanted = null, volumeGoing = null;
+  function sendVolume(v) {
+    volumeWanted = v;
+    volumeGoing ??= (async () => {
+      try {
+        while (volumeWanted !== null) {
+          const next = volumeWanted;
+          volumeWanted = null;
+          await ready();
+          await js(`window.__sienna.command("volume", ${JSON.stringify(next)})`);
+        }
+        return true;
+      } finally { volumeGoing = null; volumeWanted = null; }
+    })();
+    return volumeGoing;
+  }
+
   async function command(name, arg) {
     if (!COMMANDS.has(name)) return false;
-    if (arg !== null && arg !== undefined && typeof arg !== 'number') return false;
+    // a number that is one: NaN would silence the Mac (sysvolume.cjs reads it as 0) or seek to nowhere
+    if (arg !== null && arg !== undefined && !Number.isFinite(arg)) return false;
+    if (NEEDS_NUMBER.has(name) && !Number.isFinite(arg)) return false;
     if (name === 'volume' && useSysVol()) { sysVol.set(arg); return true; }
     if (name === 'mute' && useSysVol()) { sysVol.toggleMute(); stir(); return true; }
     if (name === 'queueIndex' && (!Number.isInteger(arg) || arg < 0 || arg > 200)) return false;
     stir();
+    if (name === 'volume') return sendVolume(arg);
     await ready();
     return js(`window.__sienna.command(${JSON.stringify(name)}, ${JSON.stringify(arg ?? null)})`);
   }
@@ -560,27 +610,34 @@ function createYtm({ onState, onAccount, onStatus }) {
     delete s.who;
     lastSnapshot = s;
     onState(s);
-    if (lastWho !== undefined && who !== lastWho && s.ready) onAccount?.(!!s.signedIn);
+    if (lastWho !== undefined && who !== lastWho && s.ready) {
+      forgetAccount();   // before the shop is told, so what it asks for next is the new account's
+      onAccount?.(!!s.signedIn);
+    }
     if (s.ready) lastWho = who;
   }
 
   // Player diet: hidden page skips images and fonts (unless visible for consent or SIENNA_PLAYER_DIET=0 in dev).
   if (devEnv('SIENNA_PLAYER_DIET') !== '0') {
-    win.webContents.session.webRequest.onBeforeRequest((d, cb) => {
-      const playerId = win && !win.isDestroyed() ? win.webContents.id : -1;
-      cb({ cancel: d.webContentsId === playerId && !win.isDestroyed() && !win.isVisible() && (d.resourceType === 'image' || d.resourceType === 'font') });
+    ytmSession.webRequest.onBeforeRequest((d, cb) => {
+      const hidden = !!win && !win.isDestroyed() && d.webContentsId === win.webContents.id && !win.isVisible();
+      cb({ cancel: hidden && (d.resourceType === 'image' || d.resourceType === 'font') });
     });
   }
 
   // Google sign-in in a singleton visible window that shares the player's cookies.
+  // Its requests go out without Client Hints headers (see FIREFOX_UA). The hook that takes them off sees
+  // every request of the session, the player's included, so it is there only while a sign-in window is.
   const signInIds = new Set();
   let signInWin = null;
-  win.webContents.session.webRequest.onBeforeSendHeaders((d, cb) => {
-    if (signInIds.has(d.webContentsId)) {
-      for (const k of Object.keys(d.requestHeaders)) if (/^sec-ch-ua/i.test(k)) delete d.requestHeaders[k];
-    }
-    cb({ requestHeaders: d.requestHeaders });
-  });
+  function syncSignInHeaders() {
+    ytmSession.webRequest.onBeforeSendHeaders(signInIds.size ? (d, cb) => {
+      if (signInIds.has(d.webContentsId)) {
+        for (const k of Object.keys(d.requestHeaders)) if (/^sec-ch-ua/i.test(k)) delete d.requestHeaders[k];
+      }
+      cb({ requestHeaders: d.requestHeaders });
+    } : null);
+  }
 
   function signIn(parent, start = `https://accounts.google.com/ServiceLogin?service=youtube&continue=${encodeURIComponent(HOME)}`) {
     stir();
@@ -626,7 +683,8 @@ function createYtm({ onState, onAccount, onStatus }) {
     });
     const id = w.webContents.id;
     signInIds.add(id);
-    w.on('closed', () => { signInIds.delete(id); if (signInWin === w) signInWin = null; });
+    syncSignInHeaders();
+    w.on('closed', () => { signInIds.delete(id); syncSignInHeaders(); if (signInWin === w) signInWin = null; });
     w.webContents.setUserAgent(FIREFOX_UA);
     w.loadURL(start).catch(() => {});
     w.webContents.on('did-navigate', (_e, url) => {
@@ -634,7 +692,7 @@ function createYtm({ onState, onAccount, onStatus }) {
         w.close();
         stirredUntil = Date.now() + 30000;
         stir();
-        win.loadURL(HOME).catch(() => {});
+        load(HOME).catch(() => {});
       }
     });
   }
@@ -645,7 +703,6 @@ function createYtm({ onState, onAccount, onStatus }) {
     if (!(await js('!!window.ytcfg?.get?.("LOGGED_IN")'))) return null;
     return parseAccount(await api('account/account_menu', {}));
   }
-  let switchUrls = [];
   async function accounts() {
     await ready();
     if (!(await js('!!window.ytcfg?.get?.("LOGGED_IN")'))) { switchUrls = []; return []; }
@@ -662,7 +719,8 @@ function createYtm({ onState, onAccount, onStatus }) {
     if (!isGoogleUrl(url)) return false;
     stirredUntil = Date.now() + 30000;
     stir();
-    win.loadURL(url).catch(() => {});
+    forgetAccount();
+    load(url).catch(() => {});
     return true;
   }
   function addAccount(parent) {
@@ -671,10 +729,10 @@ function createYtm({ onState, onAccount, onStatus }) {
   async function signOut() {
     stirredUntil = Date.now() + 30000;
     stir();
-    switchUrls = [];
-    await win.webContents.session.clearStorageData();
-    await win.webContents.session.clearCache();
-    win.loadURL(HOME).catch(() => {});
+    forgetAccount();
+    await ytmSession.clearStorageData();
+    await ytmSession.clearCache();
+    load(HOME).catch(() => {});
     return true;
   }
 
