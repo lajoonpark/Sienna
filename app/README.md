@@ -207,7 +207,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   toward you with a paper name tag; click it and its vinyl pops out and flies into the suitcase.
   On the crate table (Quick picks) the record under the cursor comes up with a neighbour each side,
   fanned like a hand of cards, so each is a big target. At any rack, resting the cursor on a record
-  turns the camera part of the way toward it (`updateFocus` in `main.js`, with the hover lock in
+  turns the camera part of the way toward it (`createFocusCamera` in `src/focus-camera.js`, with the hover lock in
   `src/racks/hover.js`: `lockHover` freezes the hovered record to the cursor's spot and `focusHover`
   picks the record under it). The lock shares the rack's lift pick each frame and releases the moment
   the pointer leaves the window or moves off the record, so a sleeve always settles back into its
@@ -225,7 +225,7 @@ shop talks to it only through `window.sienna` (`electron/preload.cjs`).
   holds while a
   record is up, since turning the camera would slide the record across the rack. Once the camera has
   come to rest framing a lifted record it latches there (`framed`, `framedAtRest` in
-  `src/racks/hover.js`; `restPx`/`restZoom`/`restSwing` in `main.js`'s FOCUS), so nothing the record
+  `src/racks/hover.js`; `restPx`/`restZoom`/`restSwing` in `src/focus-camera.js`'s FOCUS), so nothing the record
   does later — the cursor moving on it, the side words — sends the camera off again until the next
   record. Side words a held record still overlaps (`menu.update`'s `hold`) go inert at once, so a
   press on the record can never land on a button; once the record is framed (`aside`) the words it
